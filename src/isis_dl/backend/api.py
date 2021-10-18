@@ -6,20 +6,16 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from itertools import repeat
 from typing import List
 
 import requests
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.share.settings import download_dir, enable_multithread, metadata_file
-
-from isis_dl.share.utils import User, args, Video, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir
+from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir
 
 
 @dataclass
@@ -211,7 +207,7 @@ class CourseDownloader:
         self.courses = self._find_courses()
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.thread_outer_num) as ex:
+            with ThreadPoolExecutor(len(self.courses)) as ex:
                 ex.map(lambda x: x.download(), self.courses)  # type: ignore
 
         else:

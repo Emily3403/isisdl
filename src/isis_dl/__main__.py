@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import collections
 import logging
 import os
 import atexit
@@ -12,7 +11,7 @@ import requests
 from isis_dl.backend.api import CourseDownloader, Course
 from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.backend.crypt import get_credentials
-from isis_dl.share.utils import create_logger, get_args, args, path, MediaType
+from isis_dl.share.utils import create_logger, args, path, MediaType
 import isis_dl.share.settings as settings
 
 
@@ -57,7 +56,6 @@ def _maybe_build_checksums_and_exit():
             for (dirpath, dirnames, filenames) in os.walk(path(settings.download_dir, course, categories)):
                 if filenames:
                     files.extend([(os.path.splitext(file), os.path.join(dirpath, file)) for file in filenames])
-                    print()
 
         for file in find_files(course):
             with file.open("rb") as f:
@@ -99,7 +97,7 @@ def maybe_test_checksums_and_exit():
         checksums = {item for item in checksum_mapping.values()}
 
         num_dup = len(checksum_mapping) - len(checksums)
-        logging.info(f"Number of duplicate files for course {course}: {num_dup} = {num_dup / len(checksum_mapping) * 100}%")
+        logging.info(f"Number of duplicate files for course {course}: {num_dup} = {num_dup / (len(checksum_mapping) or 1) * 100}%")
         if len(checksum_mapping) == len(checksums):
             continue
 
@@ -107,7 +105,7 @@ def maybe_test_checksums_and_exit():
         for key, value in checksum_mapping.items():
             rev_checksums.setdefault(value, set()).add(key)
 
-        for key, value in rev_checksums.items():  # type: ignorea
+        for key, value in rev_checksums.items():  # type: ignore
             if len(value) > 1:
                 logging.debug(f"The following have the checksum {key}:\n{lf.join(value)}\n")
 

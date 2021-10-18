@@ -95,7 +95,7 @@ import logging
 import os
 import pickle
 from getpass import getpass
-from typing import List, Optional
+from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -153,22 +153,28 @@ def decryptor(password: str) -> Optional[User]:
 
 def get_credentials() -> User:
     """
-    Prioritizes: Clean > Encrypted > Input
+    Prioritizes: Args > Clean > Encrypted > Input
     """
     content = None
 
-    if os.path.exists(path(settings.password_dir, settings.clear_password_file)):
+    # First check args
+    if args.login_info is not None:
+        content = User(*args.login_info)
+
+    # Now check the clean file
+    elif os.path.exists(path(settings.password_dir, settings.clear_password_file)):
         # Expected to be \n-seperated: `Username\nPassword\n`.
         # May have \n's around it
         with open(path(settings.password_dir, settings.clear_password_file)) as f:
-            content = re.match("\n*(.+)?\n+(.+)?\n*", f.read()).groups()  # type: ignore
+            login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read()).groups()  # type: ignore
 
-            if len(content) != 2:
-                logging.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(content)}.")
+            if len(login_info) != 2:
+                logging.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(login_info)}.")
                 raise ValueError
 
-            content = User(*content)
+            content = User(*login_info)
 
+    # Now check encrypted file
     elif os.path.exists(path(settings.password_dir, settings.encrypted_password_file)):
         logging.info("Found encrypted file.")
         password = getpass("Please enter the password for the encrypted file: ")
@@ -179,6 +185,7 @@ def get_credentials() -> User:
         else:
             logging.info("Password accepted!")
 
+    # If nothing is found prompt the user
     if content is None:
         logging.info("Please provide authentication for ISIS.")
         username = input("Username: ")

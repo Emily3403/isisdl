@@ -120,6 +120,5 @@ package.
 
 # TODO
 
-- Get rid of the name conflict `isis-dl` and `isis_dl`
 
 [comment]: <> (![Tests]&#40;https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject/actions/workflows/tests.yml/badge.svg&#41;)

@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from hashlib import md5, sha256
+from hashlib import sha256
 from typing import Set, BinaryIO, Tuple, Union, Optional
 
 import isis_dl.backend.api as api

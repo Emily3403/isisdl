@@ -28,26 +28,28 @@ def get_args():
             raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
         return ivalue
 
-    parser = argparse.ArgumentParser(prog="./__main__.py", formatter_class=argparse.RawTextHelpFormatter, description="""
+    parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This programs downloads all courses from your ISIS page.""")
 
     parser.add_argument("-l", "--logging", help="Set the debug level", choices=("debug", "info", "warning", "error"), default="info")
-    parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files. Exits afterwards.", action="store_true")
+    parser.add_argument("-n", "--thread-num", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
+                        default=4)
 
-    parser.add_argument("-on", "--thread-outer-num", help="The number of threads which download courses", type=check_positive, default=4)
-    parser.add_argument("-in", "--thread-inner-num", help="The number of threads which download the content from an individual course", type=check_positive, default=4)
-
-    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files.", action="store_true")
+    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
     parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
 
     # Crypt options
     parser.add_argument("-s", "--store", help="Store the given Username / Password in a file (default = encrypted, can be modified by -c / --clear)", action="store_true")
     parser.add_argument("-c", "--clear", help="Stores the password in clear text (pickle bytes).\nIf you want to live dangerously, enable this option.\n"
                                               "If the -s / --store flag is not set, this option will be ignored silently.", action="store_true")
+    parser.add_argument("-L", "--login-info", help="Uses this information as login information to ISIS.", nargs=2, default=None)
 
+    # Checksum options
     parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files. Then checks if any collisions occurred.\nThis is meant as a debug feature.", action="store_true")
+    parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files. Exits afterwards.", action="store_true")
+
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
-    return parser.parse_args()
+    return parser.parse_known_args()[0]
 
 
 args = get_args()
@@ -242,7 +244,7 @@ class MediaContainer:
             filename_from_url = True
 
         if not filename_from_url and filename is None:
-            logging.debug(f"The filename is None. This is probably a bug. Please investigate!")
+            logging.debug("The filename is None. This is probably a bug. Please investigate!")
 
         assert filename is not None
 
