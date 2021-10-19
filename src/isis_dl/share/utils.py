@@ -10,6 +10,7 @@ import sys
 import os
 import time
 import inspect
+import zipfile
 
 from dataclasses import dataclass
 from functools import wraps
@@ -18,7 +19,7 @@ from typing import Union, Dict, Callable, Optional, cast
 import requests
 from bs4 import BeautifulSoup
 
-from isis_dl.share.settings import working_dir, temp_dir, checksum_algorithm
+from isis_dl.share.settings import working_dir, temp_dir, checksum_algorithm, sleep_time_for_isis
 import isis_dl.backend.api as api
 
 
@@ -276,15 +277,17 @@ class MediaContainer:
 
     def download(self) -> bool:
         if self.running_download is None:
-            i = 0
-            while i < 10:
+            while True:
                 try:
                     self.running_download = self.s.get(self.url, stream=True)
+                    break
                 except requests.exceptions.ConnectionError:
-                    if i == 0:
-                        logging.error(f"Connection aborted for file {self.name!r}")
-                    i += 1
+                    logging.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Maybe consider dropping the thread count. Sleeping for {sleep_time_for_isis}s.")
+                    time.sleep(sleep_time_for_isis)
 
+        if not self.running_download.ok:
+            logging.error(f"The running download is not okay: {self.running_download.reason}. Aborting!")
+            return False
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
 
@@ -305,7 +308,16 @@ class MediaContainer:
             f.write(chunk)
             shutil.copyfileobj(self.running_download.raw, f)
 
+        # Only register the hash after successfully downloading the file
+        self.parent_course.checksum_handler.add(self.hash)
+
         if unpack:
-            shutil.unpack_archive(filename, _fn)
+            try:
+                shutil.unpack_archive(filename, _fn)
+            except (EOFError, zipfile.BadZipFile, shutil.ReadError):
+                logging.warning(f"Bad zip file: {self.name}")
+                x = zipfile.ZipFile(filename)
+                x.extractall(path=_fn)
+                print()
 
         return True

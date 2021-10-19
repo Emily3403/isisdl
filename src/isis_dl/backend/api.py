@@ -3,12 +3,12 @@ This file manages all interaction with the Shibboleth service and ISIS in genera
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from itertools import repeat, chain
+from itertools import repeat
 from queue import Queue
 from threading import Thread
 from typing import List
@@ -121,16 +121,17 @@ class Course:
             with ThreadPoolExecutor(args.thread_num) as ex:
                 @debug_time(f"Instantiating of objects for course {self.name!r}")
                 def instantiate():
-                    # No downloading is required for instantiating these object. Thus it is fine to do this single-threaded.
-                    dl_videos = [MediaContainer.from_video(self.s, video, self) for video in videos]
+                    # As we cannot shuffle the `map`-ed data, we must shuffle the input. However we don't know what the correct args will be - so pack them beforehand.
+                    all_data = [(MediaContainer.from_url, self.s, res, self, session_key) for res in resources] + [(MediaContainer.from_video, self.s, video, self) for video in videos]  # type: ignore
 
-                    # As folders have to download a url we multithread it.
-                    dl_doc = ex.map(MediaContainer.from_url, repeat(self.s), resources, repeat(self), repeat(session_key))
+                    # We shuffle the data to generate a uniform distribution of documents and videos. Documents need more threads and videos bandwidth.
+                    # If they are downloaded at the "same" time the utilization maximizes.
+                    random.shuffle(all_data)
 
-                    return chain(dl_doc, dl_videos)
+                    return ex.map(lambda x: x[0](*x[1:]), all_data)
 
                 # TODO: Should this be `random.shuffle`-ed? This shouldn't matter if we are bandwidth-bottlenecked
-                to_download = instantiate()
+                to_download = list(instantiate())
 
                 nums = list(ex.map(lambda x: x.download(), filter(None, to_download)))  # type: ignore
         else:
@@ -139,6 +140,7 @@ class Course:
                 return [MediaContainer.from_url(self.s, url, self, session_key) for url in resources] + [MediaContainer.from_video(self.s, video, self) for video in videos]
 
             to_download = instantiate()
+            random.shuffle(to_download)
 
             nums = [item.download() for item in filter(None, to_download)]  # type: ignore
 

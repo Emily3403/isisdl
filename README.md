@@ -14,6 +14,70 @@ Version 0.1
 - Automatic unpacking of archives.
 - Efficient and dynamic checksum computing for a very good file recognition.
 
+# Installation
+
+You **will** need a working python3.8 interpreter or above. The script will fail for python3.7 as some new python3.8
+features are used.
+
+The recommended installation is via `pip` - a package manager for python. If `pip` is not yet installed with the python
+interpreter run
+
+```shell
+python3 -m ensurepip
+```
+
+to bootstrap pip.
+
+## pip
+
+Unfortunately this is not possible at the moment. Please refer to the manual installation.
+
+```shell
+pip install isis_dl
+```
+
+This can be either done in a virtual environment or globally (even with root).
+
+To run the downloader simply type
+
+```shell
+isisdl
+```
+
+into your favorite shell.
+
+Please note that, if the virtual environment feature is not used, the `~/.local/bin` directory must be in the PATH,
+otherwise the executable `isisdl` will not be found.
+
+# Manual
+
+This method should only be used when developing as it does **not** provide any benefit otherwise.
+
+[comment]: <> (TODO: Enum)
+Steps:
+
+- Clone this repository
+- `cd isis_dl`
+- `pip install .`
+
+### Developing
+
+If you want to actively contribute to this repository you will want to install the package in editable mode along with
+the development requirements:
+
+```shell
+pip install -e .
+pip install -r requirements_dev.txt
+```
+
+This creates a symlink to the source code in the `pip` package location. It will be treated as if it was installed there
+directly.
+
+Please note that you have to be in a virtual environment in order for this to work as the installation fails otherwise.
+
+There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
+package.
+
 ### File recognition
 
 The file recognition is handled in `src/isis_dl/backend/checksums.py`.
@@ -36,15 +100,17 @@ I'm looking at you `.pdf`) the number of bytes to be read is quite high. For oth
 
 Advantages
 
-- Only download x Bytes of every file.
+- Only download 512 Bytes of every file.
 - Can verify independently of directory structure / filenames.
 - Lookup is O(1) as a HashSet is used as a datastructure.
-- Up to `255 ** x` unique files can be saved per course using this method.
+- Up to `255 ** 512` unique files can be saved per course using this method.
 
 Disadvantages
 
 - For every file in every course x Bytes have to be downloaded.
 - Files are bound to a course.
+
+Note that a default value of `64` suffices to 
 
 ### Can store your password securely
 
@@ -58,17 +124,6 @@ The key is generated based on a password you enter and then stored securely.
 
 TODO: This is currently untested. Please enter your password manually for the moment.
 
-### A customizable settings file
-
-It is located at `src/isis_dl/share/settings.py`. For the most part you will want to keep the default settings, but if
-they don't fit with you, you may easily change them.
-
-#### Download Directory
-
-The default download directory is `~/isis_dl_downloads`. As the intended installation is via `pip`, there is no good "
-current working directory", so one cannot use that. What can be done, however, is migrating this directory to e.g.
-the `Desktop/` or `Documents/`.
-
 #### Hash Settings
 
 **Beware:** If you change these settings you will not be able to recover an encrypted file without restoring the
@@ -77,54 +132,31 @@ settings. I would not recommend changing them.
 You may select any hashing algorithm which is supported. This is any `hashes.HashAlgorithm`. You may also change the
 number of iterations, which will increase / decrease the time it takes to encrypt / decrypt respectively.
 
-# Installation
+### A customizable settings file
 
-As stated above you will need a working python3.8 interpreter or above. The script *will* fail for python3.7 as some new
-python3.8 features are used.
+The file is located at `src/isis_dl/share/settings.py`. For the most part you will want to keep the default settings,
+but if they don't fit your needs, you may easily change them.
 
-The recommended installation is via `pip` - a package manager for python. If `pip` is not yet installed with the python
-interpreter run
+#### Download Directory
 
-[comment]: <> (TODO: Hyperref)
+The default download directory is `~/isis_dl_downloads`. As the intended installation is via `pip`, there is no good
+"current working directory", so one cannot use that.
 
-```shell
-python3 -m ensurepip
-```
+What can be done, however, is migrating this directory to e.g. the `Desktop/` or `Documents/`.
 
-to bootstrap pip.
+# Acknowledgements
 
-## pip
+### isia-tub
 
-Unfortunately this is not possible at the moment. Please refer to the manual installation.
+Please check out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
 
-```shell
-pip install isis_dl
-```
+This was the original inspiration for this library. At the time isia did not offer the functionality of uri-encoding the
+password which lead me to create this library. I have recently implemented this functionality into isia in order to
+benchmark and test both solutions.
 
-This can be either done in a virtual environment or globally (even with root).
+### mCoding
 
-Please note that the `~/.local/bin` directory must be in the PATH, otherwise
+The structure of this project is heavily inspired by the 
+[GitHub](https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject) of mCoding. Consider giving their 
+[video](https://www.youtube.com/watch?v=DhUpxWjOhME) about automated testing a shot.
 
-# Manual
-
-This method should only be used when developing as it does **not** provide any benefit if you are not developing.
-
-[comment]: <> (TODO: Enum)
-Steps:
-
-- Clone this repository
-- `cd isis_dl`
-- `pip install -e .`
-
-Note: If you don't install this in a virtual environment please don't supply the `-e` flag.
-
-
-This creates a symlink to the source code in the `pip` package location. It will be treated as if it was installed there
-directly.
-
-There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
-package.
-
-# TODO
-
-[comment]: <> (![Tests]&#40;https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject/actions/workflows/tests.yml/badge.svg&#41;)

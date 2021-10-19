@@ -87,9 +87,14 @@ def maybe_test_checksums_and_exit():
                 checksum, _ = csh.calculate_checksum(f, f.name)
                 checksum_mapping.update({file.as_posix(): checksum})
 
-        checksums = {item for item in checksum_mapping.values()}
+        checksums: Dict[str, int] = {}
+        for key, value in checksum_mapping.items():
+            checksums.setdefault(value, 0)
+            checksums[value] += 1
 
-        logging.info(f"Number of files with the same checksum: {print_percent(len(checksum_mapping) - len(checksums), len(checksum_mapping))}")
+        # checksums = {item for item in checksum_mapping.values()}
+
+        logging.info(f"Number of files with the same checksum: {print_percent(sum(item for item in checksums.values() if item > 1), len(checksum_mapping))}")
         if len(checksum_mapping) == len(checksums):
             continue
 
@@ -126,6 +131,13 @@ def main():
         logging.info("Done! Bye Bye ^.^")
 
     dl.start()
+
+
+# TODO:
+
+#   TLDR of how password storing works
+#   Implement White- / Blacklist of courses
+#   What happens with corrupted files?
 
 
 if __name__ == '__main__':

@@ -27,8 +27,10 @@ checksum_algorithm = sha256
 # <extension>: (<#bytes to ignore>, <#bytes to read>)
 checksum_num_bytes = {
     ".pdf": (0, None),
-    ".mp4": (0, 512),
+    ".tex": (0, None),
+
     ".zip": (512, 512),
+
     None: (0, 512),
 }
 
@@ -57,5 +59,7 @@ hash_length = 32
 # < Miscellaneous options >
 
 enable_multithread = True
+
+sleep_time_for_isis = 10  # in s
 
 # </ Miscellaneous options >

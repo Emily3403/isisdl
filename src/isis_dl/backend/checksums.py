@@ -4,6 +4,7 @@ This file handles all checksums
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Set, BinaryIO, Tuple, Union, Optional, List
@@ -26,9 +27,9 @@ class CheckSumHandler:
         if checksum in self.checksums:
             return checksum, None
 
-        self.add(checksum)
         return checksum, chunk
 
+    # TODO: Really dynamic calculation of checksum based on the first 64, 512, … bytes → is this too much overhead?
     def calculate_checksum(self, f: BinaryIO, filename: str) -> Tuple[str, bytes]:
         skip, stop = self._generate_size_from_file(filename)
 
@@ -53,6 +54,9 @@ class CheckSumHandler:
 
         ignored = ensure_read(skip)
         chunk = ensure_read(stop)
+
+        if not chunk:
+            logging.error(f"The chunk is empty. This means too much of the {filename = } was ignored. I am using a hash of b\"\" and hoping there aren't any collisions!")
 
         hash_value = checksum_algorithm(chunk).hexdigest()
 
