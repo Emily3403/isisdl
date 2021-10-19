@@ -276,7 +276,15 @@ class MediaContainer:
 
     def download(self) -> bool:
         if self.running_download is None:
-            self.running_download = self.s.get(self.url, stream=True)
+            i = 0
+            while i < 10:
+                try:
+                    self.running_download = self.s.get(self.url, stream=True)
+                except requests.exceptions.ConnectionError:
+                    if i == 0:
+                        logging.error(f"Connection aborted for file {self.name!r}")
+                    i += 1
+
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
 

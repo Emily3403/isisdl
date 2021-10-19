@@ -94,6 +94,8 @@ to bootstrap pip.
 
 ## pip
 
+Unfortunately this is not possible at the moment. Please refer to the manual installation.
+
 ```shell
 pip install isis_dl
 ```
