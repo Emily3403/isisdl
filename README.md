@@ -24,27 +24,26 @@ As the `requests` library provides a file stream, one can only download the firs
 problem with this idea is that some files have a header, which is permanently changing.
 
 Unfortunately I don't have an idea why this is the case. In order to circumvent this problem the first portion of the
-file is skipped.
+file is skipped based on the file type. The lookup table is located in `src/isis_dl/share/settings.py` - with the
+variable being `checksum_num_bytes`.
 
-This is handled dynamically, based on the type of file. The lookup table is located in `src/isis_dl/share/settings.py` -
-with the variable being `checksum_num_bytes`.
+The format is `<extension>: (<#bytes to ignore>, <#bytes to read>)`.
 
-The format is `<extension>: (<#bytes to ignore>, <#bytes to read>)`. This means that one can also set the number of
-bytes to be read for each file type. For files which store a big header (I'm looking at you `.pdf`) the number of bytes
-to be read is quite high. For others e.g. `.mp4` it is not.
+This means that one can also set the number of bytes to be read for each file type. For files which store a big header (
+I'm looking at you `.pdf`) the number of bytes to be read is quite high. For others e.g. `.mp4` it is not.
 
 *Note*: If the file extension is not found the default entry `None` is consulted.
 
 Advantages
 
-- Only download X Bytes of every file.
+- Only download x Bytes of every file.
 - Can verify independently of directory structure / filenames.
 - Lookup is O(1) as a HashSet is used as a datastructure.
-- `255 ** X = Y` unique files can be saved per course using this method.
+- Up to `255 ** x` unique files can be saved per course using this method.
 
 Disadvantages
 
-- For every file in every course X KB have to be downloaded.
+- For every file in every course x Bytes have to be downloaded.
 - Files are bound to a course.
 
 ### Can store your password securely
@@ -56,6 +55,8 @@ The encryption is handled via [Fernet](https://cryptography.io/en/latest/fernet/
 > Fernet is an implementation of symmetric (also known as “secret key”) authenticated cryptography.
 
 The key is generated based on a password you enter and then stored securely.
+
+TODO: This is currently untested. Please enter your password manually for the moment.
 
 ### A customizable settings file
 
@@ -102,6 +103,8 @@ pip install isis_dl
 
 This can be either done in a virtual environment or globally (even with root).
 
+Please note that the `~/.local/bin` directory must be in the PATH, otherwise
+
 # Manual
 
 This method should only be used when developing as it does **not** provide any benefit if you are not developing.
@@ -113,14 +116,15 @@ Steps:
 - `cd isis_dl`
 - `pip install -e .`
 
+Note: If you don't install this in a virtual environment please don't supply the `-e` flag.
+
+
 This creates a symlink to the source code in the `pip` package location. It will be treated as if it was installed there
 directly.
 
 There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
 package.
 
-
 # TODO
-
 
 [comment]: <> (![Tests]&#40;https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject/actions/workflows/tests.yml/badge.svg&#41;)
