@@ -4,8 +4,7 @@ from isis_dl.share.utils import args
 
 
 def test_first(user, password):
-    assert user == "a"
-    assert password == "b"
+    pass
 
 
 def do_it():

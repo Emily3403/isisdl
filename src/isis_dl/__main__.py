@@ -2,9 +2,8 @@
 import logging
 import os
 import atexit
-import shutil
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, List
 
 import requests
 
@@ -28,34 +27,25 @@ def startup():
 
 
 def find_files(course):
-    for file in Path(path(settings.download_dir, course)).rglob("*.*"):
-        if file.name.startswith("."):
-            continue
+    paths = [Path(path(settings.download_dir, course, item)) for item in MediaType.list_dirs()]
 
-        if file.is_dir():
-            # This is an archive: pack in the temp dir.
-            name, ext = os.path.splitext(file.as_posix())
-            new_file_name = path(settings.temp_dir, os.path.basename(name))
+    for directory in map(lambda x: x.iterdir(), paths):
+        for file in directory:
+            if file.name.startswith("."):
+                continue
 
-            shutil.make_archive(new_file_name, ext.replace(".", ""), file)
-            file = Path(new_file_name + ext)
+            if file.is_dir():
+                # This is an archive. It cannot be restored.
+                continue
 
-        yield file
+            yield file
 
 
 def _maybe_build_checksums_and_exit():
     for course in os.listdir(path(settings.download_dir)):
-        the_course = Course.from_path(requests.Session(), course)
-        if the_course is None:
-            continue
+        the_course = Course(requests.Session(), course, "")
 
         csh = CheckSumHandler(the_course, autoload_checksums=False)
-
-        files = []
-        for categories in MediaType.list_dirs():
-            for (dirpath, dirnames, filenames) in os.walk(path(settings.download_dir, course, categories)):
-                if filenames:
-                    files.extend([(os.path.splitext(file), os.path.join(dirpath, file)) for file in filenames])
 
         for file in find_files(course):
             with file.open("rb") as f:
@@ -77,35 +67,40 @@ def maybe_test_checksums_and_exit():
     if not args.test_checksums:
         return
 
+    # Keep the checksums up to date.
     _maybe_build_checksums_and_exit()
 
     lf = "\n"
 
+    def print_percent(num: int, max_num: int):
+        return f"{num} / {max_num} = {num / (max_num or 1) * 100}%"
+
     for course in os.listdir(path(settings.download_dir)):
-        the_course = Course.from_path(requests.Session(), course)
-        if the_course is None:
-            continue
+        logging.info(f"Analyzing course {course}")
+        the_course = Course(requests.Session(), course, "")
 
         checksum_mapping = {}
         csh = CheckSumHandler(the_course, autoload_checksums=False)
 
         for file in find_files(course):
             with file.open("rb") as f:
-                checksum, _ = csh._calculate_checksum(f, f.name)
+                checksum, _ = csh.calculate_checksum(f, f.name)
                 checksum_mapping.update({file.as_posix(): checksum})
 
         checksums = {item for item in checksum_mapping.values()}
 
-        num_dup = len(checksum_mapping) - len(checksums)
-        logging.info(f"Number of duplicate files for course {course}: {num_dup} = {num_dup / (len(checksum_mapping) or 1) * 100}%")
+        logging.info(f"Number of files with the same checksum: {print_percent(len(checksum_mapping) - len(checksums), len(checksum_mapping))}")
         if len(checksum_mapping) == len(checksums):
             continue
 
-        rev_checksums: Dict[str, Set[str]] = {}
+        rev_checksums: Dict[str, List[str]] = {}
         for key, value in checksum_mapping.items():
-            rev_checksums.setdefault(value, set()).add(key)
+            rev_checksums.setdefault(value, list()).append(key)
 
-        for key, value in rev_checksums.items():  # type: ignore
+        same_checksums = {k: v for k, v in rev_checksums.items() if len(v) > 1 and any(os.path.basename(v[0]) != os.path.basename(item) for item in v)}
+        logging.info(f"Number of files with different filenames and same checksum: {print_percent(sum(len(item) for item in same_checksums.values()), len(checksum_mapping))}")
+
+        for key, value in same_checksums.items():  # type: ignore
             if len(value) > 1:
                 logging.debug(f"The following have the checksum {key}:\n{lf.join(value)}\n")
 

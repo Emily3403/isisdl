@@ -9,6 +9,7 @@ import shutil
 import sys
 import os
 import time
+import inspect
 
 from dataclasses import dataclass
 from functools import wraps
@@ -17,7 +18,7 @@ from typing import Union, Dict, Callable, Optional, cast
 import requests
 from bs4 import BeautifulSoup
 
-from isis_dl.share.settings import working_dir, temp_dir
+from isis_dl.share.settings import working_dir, temp_dir, checksum_algorithm
 import isis_dl.backend.api as api
 
 
@@ -33,7 +34,7 @@ def get_args():
 
     parser.add_argument("-l", "--logging", help="Set the debug level", choices=("debug", "info", "warning", "error"), default="info")
     parser.add_argument("-n", "--thread-num", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
-                        default=4)
+                        default=10)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
     parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
@@ -104,17 +105,29 @@ def sanitize_name_for_dir(name: str) -> str:
 
 
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
-def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None):
+def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level=logging.debug):
     def decorator(function):
         @wraps(function)
-        def _impl(self, *method_args, **method_kwargs):
-            logging.debug(f"Starting: {str_to_put if func_to_call is None else func_to_call(self)!r}")
+        def _self_impl(self, *method_args, **method_kwargs):
+            debug_level(f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
             s = time.time()
 
             method_output = function(self, *method_args, **method_kwargs)
-            logging.debug(f"Finished: {str_to_put if func_to_call is None else func_to_call(self)!r} in {time.time() - s:.3f}s")
+            debug_level(f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.time() - s:.3f}s")
 
             return method_output
+
+        def _impl(*method_args, **method_kwargs):
+            debug_level(f"Starting: {str_to_put!r}")
+            s = time.time()
+
+            method_output = function(*method_args, **method_kwargs)
+            debug_level(f"Finished: {str_to_put!r} in {time.time() - s:.3f}s")
+
+            return method_output
+
+        if "self" in inspect.getfullargspec(function).args:
+            return _self_impl
 
         return _impl
 
@@ -216,62 +229,75 @@ class MediaContainer:
     @classmethod
     def from_url(cls, s: requests.Session, url: str, parent_course, session_key: Optional[str] = None):
         if "isis" not in url:
+            # Don't go downloading other stuff.
             return
 
-        elif "mod/url" in url:
-            # This is probably useless
+        elif any(item in url for item in ["mod/url", "mod/page", "mod/forum"]):
+            # These links dont lead to actual files. Ignore them
             return
 
         filename, media_type, running_dl = None, MediaType.document, None
-        filename_from_url = False
 
         if "mod/folder" in url:
             folder_id = url.split("id=")[-1]
             # Use the POST form
             running_dl = s.get("https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": session_key}, stream=True)
+            if not running_dl.ok:
+                logging.debug(f"The folder {folder_id} from {url = } could not be downloaded.\nReason: {running_dl.reason}")
+                return
+
             filename = running_dl.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
             media_type = MediaType.archive
 
         elif "mod/resource" in url:
             # Follow the link and get the file
-            redirect = BeautifulSoup(s.get(url, allow_redirects=False).text, "lxml")
+            req = s.get(url, allow_redirects=False)
+
+            if req.status_code != 303:
+                logging.debug(f"The {url = } does not redirect. I am going to ignore it!")
+                return
+
+            redirect = BeautifulSoup(req.text, "lxml")
 
             links = redirect.find_all("a")
             if len(links) > 1:
                 logging.debug(f"I've found {len(links) = } many links. This should be debugged!")
 
             url = links[0].attrs["href"]
-            filename_from_url = True
+            filename = MediaContainer.name_from_url(url)
 
-        if not filename_from_url and filename is None:
-            logging.debug("The filename is None. This is probably a bug. Please investigate!")
+        if filename is None:
+            logging.warning(f"The filename is None. This is probably a bug. Please investigate!\n{url = }")
+            filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
 
-        assert filename is not None
+        # assert filename is not None
 
         return cls(media_type, parent_course, s, url, filename, running_download=running_dl)
 
     def download(self) -> bool:
-        logging.debug(f"Started downloading {self.name}")
         if self.running_download is None:
             self.running_download = self.s.get(self.url, stream=True)
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
 
         if chunk is None:
-            logging.debug(f"Found {self.name} via checksum. Skipping…")
+            logging.debug(f"Found {self.name!r} via checksum. Skipping…")
             return False
+
+        logging.debug(f"Started downloading {self.name!r}")
 
         filename = self.parent_course.path(self.media_type.dir_name, self.name)
 
-        if args.unzip and self.media_type == MediaType.archive:
-            _fn = filename
+        unpack = args.unzip and self.media_type == MediaType.archive
+        if unpack:
+            _fn = os.path.splitext(filename)[0]
             filename = path(temp_dir, self.name)
 
         with open(filename, "wb") as f:
             f.write(chunk)
             shutil.copyfileobj(self.running_download.raw, f)
 
-        if args.unzip and self.media_type == MediaType.archive:
+        if unpack:
             shutil.unpack_archive(filename, _fn)
 
         return True

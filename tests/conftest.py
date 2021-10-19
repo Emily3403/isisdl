@@ -2,7 +2,7 @@ import pytest
 
 
 def pytest_addoption(parser):
-    parser.addoption("--login-info", action="store", default=None, nargs=2)
+    parser.addoption("--login-info", action="store", default=("", ""), nargs=2)
 
 
 @pytest.fixture

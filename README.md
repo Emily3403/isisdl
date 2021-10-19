@@ -1,4 +1,4 @@
-# isis-dl
+# isis_dl
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 

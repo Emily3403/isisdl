@@ -151,18 +151,18 @@ def decryptor(password: str) -> Optional[User]:
         return None
 
 
-def get_credentials() -> User:
+def get_credentials(read_from_args: Optional[bool] = True) -> User:
     """
     Prioritizes: Args > Clean > Encrypted > Input
     """
     content = None
 
     # First check args
-    if args.login_info is not None:
-        content = User(*args.login_info)
+    if read_from_args and args.login_info is not None:
+        return User(*args.login_info)
 
     # Now check the clean file
-    elif os.path.exists(path(settings.password_dir, settings.clear_password_file)):
+    if os.path.exists(path(settings.password_dir, settings.clear_password_file)):
         # Expected to be \n-seperated: `Username\nPassword\n`.
         # May have \n's around it
         with open(path(settings.password_dir, settings.clear_password_file)) as f:
@@ -172,7 +172,7 @@ def get_credentials() -> User:
                 logging.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(login_info)}.")
                 raise ValueError
 
-            content = User(*login_info)
+            return User(*login_info)
 
     # Now check encrypted file
     elif os.path.exists(path(settings.password_dir, settings.encrypted_password_file)):
@@ -184,14 +184,14 @@ def get_credentials() -> User:
             logging.error("Supplied the wrong password. Please enter the info manually or restart me!")
         else:
             logging.info("Password accepted!")
+            return content
 
     # If nothing is found prompt the user
-    if content is None:
-        logging.info("Please provide authentication for ISIS.")
-        username = input("Username: ")
-        password = getpass("Password: ")
+    logging.info("Please provide authentication for ISIS.")
+    username = input("Username: ")
+    password = getpass("Password: ")
 
-        content = User(username, password)
+    content = User(username, password)
 
     if args.store:
         logging.info("Storing user…")
@@ -201,4 +201,4 @@ def get_credentials() -> User:
             encrypt_password = getpass("Please enter the password to encrypt the file with: ")
             encryptor(encrypt_password, content)
 
-    return content  # type: ignore
+    return content

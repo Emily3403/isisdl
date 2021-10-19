@@ -8,13 +8,16 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from itertools import repeat, chain
+from queue import Queue
+from threading import Thread
 from typing import List
 
 import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.share.settings import download_dir, enable_multithread, metadata_file
+from isis_dl.share.settings import download_dir, enable_multithread
 from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir
 
 
@@ -31,23 +34,23 @@ class Course:
         # Instantiate the CheckSumHandler
         self.checksum_handler = CheckSumHandler(self)
 
-    @classmethod
-    def from_path(cls, s: requests.Session, course_name: str):
-        """
-        Creates and returns the Course object from a given path.
-
-        Will return None if the metadata file was not found.
-
-        :param s: The Session to download with
-        :param course_name: The name of the directory containing a metadata file. This is prepended with `working_dir` and `download_dir`
-        :return: The Course object
-        """
-        try:
-            with open(path(download_dir, course_name, metadata_file)) as f:
-                return cls(s, **json.load(f))
-
-        except FileNotFoundError:
-            logging.error(f"The metadata file of the course {course_name!r} was not found. Aborting!")
+    # @classmethod
+    # def from_path(cls, s: requests.Session, course_name: str):
+    #     """
+    #     Creates and returns the Course object from a given path.
+    #
+    #     Will return None if the metadata file was not found.
+    #
+    #     :param s: The Session to download with
+    #     :param course_name: The name of the directory containing a metadata file. This is prepended with `working_dir` and `download_dir`
+    #     :return: The Course object
+    #     """
+    #     try:
+    #         with open(path(download_dir, course_name, metadata_file)) as f:
+    #             return cls(s, **json.load(f))
+    #
+    #     except FileNotFoundError:
+    #         logging.error(f"The metadata file of the course {course_name!r} was not found. Aborting!")
 
     def prepare_dirs(self) -> None:
         for item in MediaType.list_dirs():
@@ -57,71 +60,92 @@ class Course:
     def url(self) -> str:
         return "https://isis.tu-berlin.de/course/view.php?id=" + self.course_id
 
-    @debug_time(func_to_call=lambda self: f"Download {self.name}")  # type: ignore
-    def download(self) -> None:
+    @debug_time(func_to_call=lambda self: f"Download {self.name!r}", debug_level=logging.info)  # type: ignore
+    def download(self, session_key: str) -> None:
         """
         Downloads the contents of the Course.
         Will output the timing on the DEBUG log.
 
         :return: None
         """
-        soup = BeautifulSoup(self.s.get(self.url).text, "lxml")
 
-        # First we find all resources such as .pdfs etc…
-        resources = BeautifulSoup(self.s.get("https://isis.tu-berlin.de/course/resources.php", params={"id": self.course_id}).text, features="lxml")
-        resources = [item["href"] for item in resources.find("div", {"role": "main"}).find_all("a")]
+        def get_url(queue: Queue[requests.Response], url: str, **kwargs):
+            queue.put(self.s.get(url, **kwargs))
+            return
 
-        def _find_session_id():
-            # Get s ID
-            for item in soup.find_all("a"):
-                try:
-                    if "https://isis.tu-berlin.de/login/logout.php?" in (url := item["href"]):
-                        return url.split("sesskey=")[-1]
-                except KeyError:
-                    # Some links don't lead to anything. Oh well…
-                    pass
+        doc_queue: Queue[requests.Response] = Queue()
+        vid_queue: Queue[requests.Response] = Queue()
 
-            logging.error(f"The ID of the Course {self!r} was not found! Please investigate!")
+        @debug_time(f"Build file list of course {self.name!r}")
+        def build_file_list():
+            # First handle documents
 
-        session_key = _find_session_id()
+            doc_dl = Thread(target=get_url, args=(doc_queue, "https://isis.tu-berlin.de/course/resources.php",), kwargs={"params": {"id": self.course_id}})
+            doc_dl.start()
 
-        # Thank you isia_tub for this field <3
-        video_data = [{
-            "index": 0,
-            "methodname": "mod_videoservice_get_videos",
-            "args": {"coursemoduleid": 0, "courseid": self.course_id}
-        }]
-        videos = self.s.get("https://isis.tu-berlin.de/lib/ajax/service.php", params={"sesskey": session_key}, json=video_data).json()[0]
+            # Now handle videos
+            # Thank you isia_tub for this field <3
+            video_data = [{
+                "index": 0,
+                "methodname": "mod_videoservice_get_videos",
+                "args": {"coursemoduleid": 0, "courseid": self.course_id}
+            }]
 
-        if videos["error"]:
+            vid_dl = Thread(target=get_url, args=(vid_queue, "https://isis.tu-berlin.de/lib/ajax/service.php",), kwargs={"params": {"sesskey": session_key}, "json": video_data})
+            vid_dl.start()
+
+            vid_dl.join()
+            doc_dl.join()
+
+        build_file_list()
+
+        res_soup = BeautifulSoup(doc_queue.get().text, features="lxml")
+        resources = [item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")]
+
+        videos_json = vid_queue.get().json()[0]
+
+        if videos_json["error"]:
             log_level = logging.error
-            if "get_in_or_equal() does not accept empty arrays" in videos["exception"]["message"]:
+            if "get_in_or_equal() does not accept empty arrays" in videos_json["exception"]["message"]:
                 # This is a ongoing bug in ISIS. If a course does not have any videos an exception is raised.
                 # This pushes it to the debug level.
                 log_level = logging.debug
 
-            log_level(f"I had a problem getting the videos for the course {self.name}:\n{videos}\nI am not downloading anything!")
+            log_level(f"I had a problem getting the videos for the course {self.name!r}:\n{videos_json}\nI am not downloading anything!")
 
             return
 
-        videos = [item for item in videos["data"]["videos"]]
-
-        # Instantiate all MediaContainer objects from resources and videos.
-        to_download = [MediaContainer.from_url(self.s, url, self, session_key) for url in resources] + [MediaContainer.from_video(self.s, video, self) for video in videos]
-
-        # Filter entries that are already found via checksum.
-        to_download = list(filter(None, to_download))
+        videos = [item for item in videos_json["data"]["videos"]]
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.thread_inner_num) as ex:
-                nums = list(ex.map(lambda x: x.download(), to_download))  # type: ignore
-        else:
-            nums = [item.download() for item in to_download]
+            with ThreadPoolExecutor(args.thread_num) as ex:
+                @debug_time(f"Instantiating of objects for course {self.name!r}")
+                def instantiate():
+                    # No downloading is required for instantiating these object. Thus it is fine to do this single-threaded.
+                    dl_videos = [MediaContainer.from_video(self.s, video, self) for video in videos]
 
-        logging.info(f"Downloaded {sum(nums)} files from the course {self.name}")
+                    # As folders have to download a url we multithread it.
+                    dl_doc = ex.map(MediaContainer.from_url, repeat(self.s), resources, repeat(self), repeat(session_key))
+
+                    return chain(dl_doc, dl_videos)
+
+                # TODO: Should this be `random.shuffle`-ed? This shouldn't matter if we are bandwidth-bottlenecked
+                to_download = instantiate()
+
+                nums = list(ex.map(lambda x: x.download(), filter(None, to_download)))  # type: ignore
+        else:
+            @debug_time(f"Instantiating of objects for course {self.name!r}")
+            def instantiate():
+                return [MediaContainer.from_url(self.s, url, self, session_key) for url in resources] + [MediaContainer.from_video(self.s, video, self) for video in videos]
+
+            to_download = instantiate()
+
+            nums = [item.download() for item in filter(None, to_download)]  # type: ignore
+
+        logging.info(f"Downloaded {sum(nums)} files from the course {self.name!r}")
 
         if args.file_list and sum(nums):
-            file_list = "\n".join(file.name for file, is_downloaded in zip(to_download, nums) if is_downloaded)
+            file_list = "\n".join(file.name for file, is_downloaded in zip(filter(None, to_download), nums) if is_downloaded and file is not None)  # type: ignore
             logging.info(f"Downloaded files:\n{file_list}")
 
     def path(self, *args) -> str:
@@ -130,17 +154,6 @@ class Course:
         """
         return path(download_dir, self.name, *args)
 
-    def dump(self) -> None:
-        """
-        Dump metadata info into the directory.
-        """
-        to_dump = self.__dict__.copy()
-        del to_dump["s"]
-        del to_dump["checksum_handler"]
-
-        with open(self.path(metadata_file), "w") as f:
-            json.dump(to_dump, f, indent=4)
-
     def __str__(self):
         return self.name
 
@@ -148,7 +161,6 @@ class Course:
         return self.__str__()
 
     def finish(self):
-        self.dump()
         self.checksum_handler.dump()
 
 
@@ -163,7 +175,7 @@ class CourseDownloader:
         return cls(requests.Session(), user)
 
     @debug_time("Authentication with Shibboleth")
-    def _authenticate(self):
+    def _authenticate(self) -> str:
         self.s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
         self.s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
@@ -178,6 +190,14 @@ class CourseDownloader:
             # The redirection did not work → credentials are wrong
             logging.error(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
             exit(69)
+
+        logging.info(f"Credentials for {self.user} accepted!")
+
+        # Extract the session key
+        soup = BeautifulSoup(response.text, features="lxml")
+        session_key: str = soup.find("input", {"name": "sesskey"})["value"]
+
+        return session_key
 
     @debug_time("Find Courses")
     def _find_courses(self):
@@ -195,7 +215,8 @@ class CourseDownloader:
 
         courses = [Course(self.s, title, find_course_id(link)) for title, link in zip(titles, links)]
 
-        courses = courses[3:4]
+        # Debug feature such that I only have to deal with one course at a time
+        # courses = courses[3:4]
 
         for course in courses:
             course.prepare_dirs()
@@ -203,16 +224,16 @@ class CourseDownloader:
         return courses
 
     def start(self):
-        self._authenticate()
+        session_key = self._authenticate()
         self.courses = self._find_courses()
 
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                ex.map(lambda x: x.download(), self.courses)  # type: ignore
+                list(ex.map(lambda x, y: x.download(y), self.courses, repeat(session_key), chunksize=1))  # type: ignore
 
         else:
             for item in self.courses:
-                item.download()
+                item.download(session_key)
 
     def finish(self):
         for item in self.courses:
