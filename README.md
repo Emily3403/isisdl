@@ -1,4 +1,5 @@
 # isis_dl
+![Tests](https://github.com/Emily3403/isis_dl/actions/workflows/tests.yml/badge.svg)
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
