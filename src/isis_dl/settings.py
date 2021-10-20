@@ -15,9 +15,6 @@ temp_dir = ".temp/"  # The directory used to save temporary files e.g. .zip file
 
 intern_dir = ".intern/"  # The directory for intern stuff such as passwords
 
-# Will create a symlink in the working_dir.
-settings_file_location = "settings.py"
-
 # </ Directory options >
 
 # < Checksums >

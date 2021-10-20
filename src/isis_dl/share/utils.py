@@ -119,11 +119,11 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
             return method_output
 
         def _impl(*method_args, **method_kwargs):
-            debug_level(f"Starting: {str_to_put!r}")
+            debug_level(f"Starting: {str_to_put}")
             s = time.time()
 
             method_output = function(*method_args, **method_kwargs)
-            debug_level(f"Finished: {str_to_put!r} in {time.time() - s:.3f}s")
+            debug_level(f"Finished: {str_to_put} in {time.time() - s:.3f}s")
 
             return method_output
 
@@ -255,6 +255,7 @@ class MediaContainer:
             req = s.get(url, allow_redirects=False)
 
             if req.status_code != 303:
+                # TODO: Still download the content
                 logging.debug(f"The {url = } does not redirect. I am going to ignore it!")
                 return
 
@@ -286,7 +287,8 @@ class MediaContainer:
                     time.sleep(sleep_time_for_isis)
 
         if not self.running_download.ok:
-            logging.error(f"The running download is not okay: {self.running_download.reason} (Course: {self.parent_course.name}). Aborting!")
+            logging.error(
+                f"The running download ({self.name}) is not okay: Status: {self.running_download.status_code} - {self.running_download.reason} (Course: {self.parent_course.name}). Aborting!")
             return False
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)

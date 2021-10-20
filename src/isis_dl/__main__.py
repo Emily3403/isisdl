@@ -14,6 +14,14 @@ from isis_dl.share.utils import create_logger, args, path, MediaType
 import isis_dl.share.settings as settings
 
 
+def create_link_to_settings_file():
+    settings_file = os.path.abspath(settings.__file__)
+    try:
+        os.symlink(settings_file, path(settings.settings_file_location))
+    except FileExistsError:
+        pass
+
+
 def startup():
     create_logger()
 
@@ -24,6 +32,8 @@ def startup():
     make(settings.temp_dir)
     make(settings.intern_dir)
     make(settings.password_dir)
+
+    create_link_to_settings_file()
 
 
 def find_files(course):
