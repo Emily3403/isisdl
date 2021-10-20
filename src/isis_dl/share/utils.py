@@ -286,7 +286,7 @@ class MediaContainer:
                     time.sleep(sleep_time_for_isis)
 
         if not self.running_download.ok:
-            logging.error(f"The running download is not okay: {self.running_download.reason}. Aborting!")
+            logging.error(f"The running download is not okay: {self.running_download.reason} (Course: {self.parent_course.name}). Aborting!")
             return False
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
