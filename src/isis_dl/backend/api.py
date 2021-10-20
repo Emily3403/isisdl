@@ -99,7 +99,7 @@ class Course:
 
         build_file_list()
 
-        res_soup = BeautifulSoup(doc_queue.get().text, features="html.parser")
+        res_soup = BeautifulSoup(doc_queue.get().text)
         resources = [item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")]
 
         videos_json = vid_queue.get().json()[0]
@@ -196,14 +196,14 @@ class CourseDownloader:
         logging.info(f"Credentials for {self.user} accepted!")
 
         # Extract the session key
-        soup = BeautifulSoup(response.text, features="html.parser")
+        soup = BeautifulSoup(response.text)
         session_key: str = soup.find("input", {"name": "sesskey"})["value"]
 
         return session_key
 
     @debug_time("Find Courses")
     def _find_courses(self):
-        soup = BeautifulSoup(self.s.get("https://isis.tu-berlin.de/user/profile.php?lang=en").text, features="html.parser")
+        soup = BeautifulSoup(self.s.get("https://isis.tu-berlin.de/user/profile.php?lang=en").text)
 
         links = []
         titles = []

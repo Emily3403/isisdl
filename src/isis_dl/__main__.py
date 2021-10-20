@@ -145,7 +145,6 @@ def main():
 
 
 # TODO:
-ThreadPoolExecutor(max_workers=)
 #   TL;DR of how password storing works
 #   Implement White- / Blacklist of courses
 #   What happens with corrupted files?  → Done

@@ -259,7 +259,7 @@ class MediaContainer:
                 logging.debug(f"The {url = } does not redirect. I am going to ignore it!")
                 return
 
-            redirect = BeautifulSoup(req.text, features="html.parser")
+            redirect = BeautifulSoup(req.text)
 
             links = redirect.find_all("a")
             if len(links) > 1:
