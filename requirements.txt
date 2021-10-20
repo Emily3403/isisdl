@@ -1,5 +1,4 @@
 cryptography
 requests
 beautifulsoup4
-lxml
 coloredlogs

@@ -39,10 +39,11 @@ checksum_num_bytes = {
 
 # < Password / Cryptography options >
 
-# Note: The *_password_file are prepended with password_dir.  # TODO: Get rid of this functionality and move it to here
 password_dir = os.path.join(intern_dir, "Passwords/")
-clear_password_file = "Pass.clean"
-encrypted_password_file = "Pass.encrypted"
+clear_password_file = os.path.join(password_dir, "Pass.clean")
+encrypted_password_file = os.path.join(password_dir, "Pass.encrypted")
+
+already_prompted_file = os.path.join(password_dir, "Pass.prompted")
 
 # Beware: Changing any of these options means loosing compatibility with the old password file.
 hash_iterations = 10 ** 1

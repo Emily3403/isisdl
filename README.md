@@ -155,6 +155,9 @@ This was the original inspiration for this library. At the time isia did not off
 password which lead me to create this library. I have recently implemented this functionality into isia in order to
 benchmark and test both solutions.
 
+#### Comparison
+Downloading my entire isis directory took 22m8s with isia. This is in contrast to the 11m16s it took with isis_dl
+
 ### mCoding
 
 The structure of this project is heavily inspired by the 

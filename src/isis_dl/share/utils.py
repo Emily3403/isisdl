@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
 
     # Crypt options
-    parser.add_argument("-s", "--store", help="Store the given Username / Password in a file (default = encrypted, can be modified by -c / --clear)", action="store_true")
+    parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
     parser.add_argument("-c", "--clear", help="Stores the password in clear text (pickle bytes).\nIf you want to live dangerously, enable this option.\n"
                                               "If the -s / --store flag is not set, this option will be ignored silently.", action="store_true")
     parser.add_argument("-L", "--login-info", help="Uses this information as login information to ISIS.", nargs=2, default=None)
@@ -258,7 +258,7 @@ class MediaContainer:
                 logging.debug(f"The {url = } does not redirect. I am going to ignore it!")
                 return
 
-            redirect = BeautifulSoup(req.text, "lxml")
+            redirect = BeautifulSoup(req.text, features="html.parser")
 
             links = redirect.find_all("a")
             if len(links) > 1:
