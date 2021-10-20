@@ -2,6 +2,7 @@
 import logging
 import os
 import atexit
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List
 
@@ -144,10 +145,23 @@ def main():
 
 
 # TODO:
-
-#   TLDR of how password storing works
+ThreadPoolExecutor(max_workers=)
+#   TL;DR of how password storing works
 #   Implement White- / Blacklist of courses
-#   What happens with corrupted files?
+#   What happens with corrupted files?  → Done
+#
+#   Idea for "Better file downloading":
+#       First download the entire filelists as MediaContainer.
+#       Then make methods from the filelist → is done in MediaContainer itself.
+#       Lastly create the ThreadPoolExecutor(max_workers=args.num_thread) and submit the functions
+#
+#       Note: This is *way* better
+#       → This is the basis for Version 0.2
+#
+
+# Maybe todo
+
+#   Add rate limiter
 
 
 if __name__ == '__main__':

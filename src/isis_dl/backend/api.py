@@ -218,7 +218,7 @@ class CourseDownloader:
         courses = [Course(self.s, title, find_course_id(link)) for title, link in zip(titles, links)]
 
         # Debug feature such that I only have to deal with one course at a time
-        courses = courses[2:3]
+        # courses = courses[2:3]
 
         for course in courses:
             course.prepare_dirs()

@@ -62,7 +62,7 @@ hash_length = 32
 
 # < Miscellaneous options >
 
-enable_multithread = False
+enable_multithread = True
 
 sleep_time_for_isis = 10  # in s
 

@@ -1,4 +1,5 @@
 # isis_dl
+
 ![Tests](https://github.com/Emily3403/isis_dl/actions/workflows/tests.yml/badge.svg)
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
@@ -79,6 +80,25 @@ Please note that you have to be in a virtual environment in order for this to wo
 There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
 package.
 
+# Benchmarks
+
+This is a comparison between `isis_dl` and `isis-tub`.
+
+[comment]: <> (In order to achieve a fair comparison both programs are limited to `50MiB/s` download rate and `10MiB/s` upload rate.)
+With my current setup I have a download rate of `66MiB/s` so that should be plenty of down- / upload left.
+
+All programs are executed once per category with the `time` command prepended. The result is in the table.
+
+#### isia
+
+Note all minute with a comma e.g. 1.2 min it means it in .base 10. Because of that `1.2 min =` 
+
+
+|                       | `isia-tub` | `isis_dl` v 0.1 | `isis_dl` v 0.2 |
+|-----------------------|------------|-----------------|-----------------|
+| Download all courses  | 16.20 mins 11.26 mins / 21,55 mins  (:O what)  | First run: 675,87 secs = 11.25  
+| Download all courses (existant checksums)  |            |                 |                 |
+
 ### File recognition
 
 The file recognition is handled in `src/isis_dl/backend/checksums.py`.
@@ -111,7 +131,7 @@ Disadvantages
 - For every file in every course x Bytes have to be downloaded.
 - Files are bound to a course.
 
-Note that a default value of `64` suffices to 
+Note that a default value of `64` suffices to
 
 ### Can store your password securely
 
@@ -156,11 +176,12 @@ password which lead me to create this library. I have recently implemented this 
 benchmark and test both solutions.
 
 #### Comparison
+
 Downloading my entire isis directory took 22m8s with isia. This is in contrast to the 11m16s it took with isis_dl
 
 ### mCoding
 
-The structure of this project is heavily inspired by the 
-[GitHub](https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject) of mCoding. Consider giving their 
+The structure of this project is heavily inspired by the
+[GitHub](https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject) of mCoding. Consider giving their
 [video](https://www.youtube.com/watch?v=DhUpxWjOhME) about automated testing a shot.
 
