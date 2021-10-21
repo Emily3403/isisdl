@@ -129,7 +129,7 @@ def maybe_test_checksums_and_exit():
     exit(0)
 
 
-def maybe_unpack_archive_and_exit():
+def maybe_unpack_archive_and_exit():y
     # unpack = args.unzip and self.media_type == MediaType.archive
     # if unpack:
     #     _fn = os.path.splitext(filename)[0]

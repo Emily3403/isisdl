@@ -37,19 +37,20 @@ def get_args():
                         default=10)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
-    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
+    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")  # TODO
     parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=1)
 
     # Crypt options
     parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
     parser.add_argument("-c", "--clear", help="Stores the password in clear text (pickle bytes).\nIf you want to live dangerously, enable this option.\n"
                                               "If the -s / --store flag is not set, this option will be ignored silently.", action="store_true")
-    parser.add_argument("-L", "--login-info", help="Uses this information as login information to ISIS.", nargs=2, default=None)
+    parser.add_argument("-L", "--login-info", help="Provide two arguments <[username], [password]>. Uses these as authentication", nargs=2, default=None)
 
     # Checksum options
-    parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files. Then checks if any collisions occurred.\nThis is meant as a debug feature.", action="store_true")
-    parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files. Exits afterwards.", action="store_true")
-    parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
+    parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files and exits. Then checks if any collisions occurred.\nThis is meant as a debug feature.",
+                        action="store_true")
+    parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files and exits", action="store_true")
+    parser.add_argument("-u", "--unzip", help="Unzips existing zipfiles and exists.", action="store_true", default=True)  # TODO: Does this work?
 
     return parser.parse_known_args()[0]
 
