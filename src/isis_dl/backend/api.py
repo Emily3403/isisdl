@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.share.settings import download_dir, enable_multithread
-from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir
+from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir, Status
 
 
 @dataclass
@@ -61,7 +61,7 @@ class Course:
         return "https://isis.tu-berlin.de/course/view.php?id=" + self.course_id
 
     @debug_time(func_to_call=lambda self: f"Download {self.name!r}", debug_level=logging.info)  # type: ignore
-    def download(self, session_key: str) -> None:
+    def download(self, session_key: str) -> List[MediaContainer]:
         """
         Downloads the contents of the Course.
         Will output the timing on the DEBUG log.
@@ -71,15 +71,13 @@ class Course:
 
         def get_url(queue: Queue[requests.Response], url: str, **kwargs):
             queue.put(self.s.get(url, **kwargs))
-            return
 
         doc_queue: Queue[requests.Response] = Queue()
         vid_queue: Queue[requests.Response] = Queue()
 
         @debug_time(f"Build file list of course {self.name!r}")
         def build_file_list():
-            # First handle documents
-
+            # First handle documents → This takes the majority of time
             doc_dl = Thread(target=get_url, args=(doc_queue, "https://isis.tu-berlin.de/course/resources.php",), kwargs={"params": {"id": self.course_id}})
             doc_dl.start()
 
@@ -97,6 +95,7 @@ class Course:
             vid_dl.join()
             doc_dl.join()
 
+        #
         build_file_list()
 
         res_soup = BeautifulSoup(doc_queue.get().text)
@@ -111,44 +110,37 @@ class Course:
                 # This pushes it to the debug level.
                 log_level = logging.debug
 
-            log_level(f"I had a problem getting the videos for the course {self.name!r}:\n{videos_json}\nI am not downloading anything!")
+            log_level(f"I had a problem getting the videos for the course {self.name!r}:\n{videos_json}\nI am not downloading the videos!")
+            videos = []
 
-            return
-
-        videos = [item for item in videos_json["data"]["videos"]]
+        else:
+            videos = [item for item in videos_json["data"]["videos"]]
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.thread_num) as ex:
-                @debug_time(f"Instantiating of objects for course {self.name!r}")
-                def instantiate():
-                    # As we cannot shuffle the `map`-ed data, we must shuffle the input. However we don't know what the correct args will be - so pack them beforehand.
-                    all_data = [(MediaContainer.from_url, self.s, res, self, session_key) for res in resources] + [(MediaContainer.from_video, self.s, video, self) for video in videos]  # type: ignore
+            @debug_time(f"Instantiating objects for course {self.name!r}")
+            def instantiate() -> List[MediaContainer]:
+                with ThreadPoolExecutor(4) as ex:
+                    a = ex.map(MediaContainer.from_url, repeat(self.s), resources, repeat(self), repeat(session_key))
+                    b = ex.map(MediaContainer.from_video, repeat(self.s), videos, repeat(self))
 
-                    # We shuffle the data to generate a uniform distribution of documents and videos. Documents need more threads and videos bandwidth.
-                    # If they are downloaded at the "same" time the utilization maximizes.
-                    random.shuffle(all_data)
+                return list(a) + list(b)
 
-                    return ex.map(lambda x: x[0](*x[1:]), all_data)
+            return instantiate()  # type: ignore
 
-                # TODO: Should this be `random.shuffle`-ed? This shouldn't matter if we are bandwidth-bottlenecked
-                to_download = list(instantiate())
-
-                nums = list(ex.map(lambda x: x.download(), filter(None, to_download)))  # type: ignore
         else:
-            @debug_time(f"Instantiating of objects for course {self.name!r}")
+            @debug_time(f"Instantiating objects for course {self.name!r}")
             def instantiate():
                 return [MediaContainer.from_url(self.s, url, self, session_key) for url in resources] + [MediaContainer.from_video(self.s, video, self) for video in videos]
 
-            to_download = instantiate()
-            random.shuffle(to_download)
+            # nums = [item.download() for item in filter(None, to_download)]  # type: ignore
 
-            nums = [item.download() for item in filter(None, to_download)]  # type: ignore
+            return instantiate()  # type: ignore
 
-        logging.info(f"Downloaded {sum(nums)} files from the course {self.name!r}")
-
-        if args.file_list and sum(nums):
-            file_list = "\n".join(file.name for file, is_downloaded in zip(filter(None, to_download), nums) if is_downloaded and file is not None)  # type: ignore
-            logging.info(f"Downloaded files:\n{file_list}")
+        # logging.info(f"Downloaded {sum(nums)} files from the course {self.name!r}")
+        #
+        # if args.file_list and sum(nums):
+        #     file_list = "\n".join(file.name for file, is_downloaded in zip(filter(None, to_download), nums) if is_downloaded and file is not None)  # type: ignore
+        #     logging.info(f"Downloaded files:\n{file_list}")
 
     def path(self, *args) -> str:
         """
@@ -218,7 +210,7 @@ class CourseDownloader:
         courses = [Course(self.s, title, find_course_id(link)) for title, link in zip(titles, links)]
 
         # Debug feature such that I only have to deal with one course at a time
-        # courses = courses[2:3]
+        courses = courses[3:4]
 
         for course in courses:
             course.prepare_dirs()
@@ -231,11 +223,29 @@ class CourseDownloader:
 
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                list(ex.map(lambda x, y: x.download(y), self.courses, repeat(session_key), chunksize=1))  # type: ignore
+                _to_download = list(ex.map(lambda x, y: x.download(y), self.courses, repeat(session_key)))  # type: ignore
 
         else:
-            for item in self.courses:
-                item.download(session_key)
+            _to_download = [item.download(session_key) for item in self.courses]
+
+        # Collapse and filter the list of lists
+        to_download = [item for row in _to_download for item in row if item is not None]
+
+        # We shuffle the data to generate a uniform distribution of documents and videos. Documents need more threads and videos bandwidth.
+        # If they are downloaded at the "same" time the utilization maximizes.
+        random.shuffle(to_download)
+
+        watcher = Status(to_download)
+        watcher.start()
+
+        if enable_multithread:
+            with ThreadPoolExecutor(args.num_threads) as ex:
+                ex.map(lambda x: x.download(), to_download)  # type: ignore
+        else:
+            for item in to_download:
+                item.download()
+
+        watcher.finish()
 
     def finish(self):
         for item in self.courses:

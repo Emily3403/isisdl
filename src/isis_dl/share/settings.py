@@ -64,6 +64,17 @@ hash_length = 32
 
 enable_multithread = True
 
+# At least 2 ** 10 otherwise the f.write() operation is the bottleneck.
+# Tested with 1 Thread. Can achieve 30-40 MiB/s download
+# Times:
+#   2 ** 10 → 74s
+#   2 ** 11 → 59s
+#   2 ** 12 → 51s
+#   2 ** 13 → 50s
+#   2 ** 14 → 51s
+
+download_chunk_size = 2 ** 12
+
 sleep_time_for_isis = 10  # in s
 
 # </ Miscellaneous options >

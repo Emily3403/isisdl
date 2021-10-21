@@ -2,17 +2,21 @@
 import logging
 import os
 import atexit
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List
 
 import requests
+from bs4 import GuessedAtParserWarning
 
 from isis_dl.backend.api import CourseDownloader, Course
 from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.backend.crypt import get_credentials
 from isis_dl.share.utils import create_logger, args, path, MediaType
 import isis_dl.share.settings as settings
+
+import warnings
+
+warnings.filterwarnings('ignore', category=GuessedAtParserWarning)
 
 
 def create_link_to_settings_file():
@@ -125,6 +129,24 @@ def maybe_test_checksums_and_exit():
     exit(0)
 
 
+def maybe_unpack_archive_and_exit():
+    # unpack = args.unzip and self.media_type == MediaType.archive
+    # if unpack:
+    #     _fn = os.path.splitext(filename)[0]
+    #     filename = path(temp_dir, self.name)
+
+    # if unpack:
+    #     try:
+    #         shutil.unpack_archive(filename, _fn)
+    #     except (EOFError, zipfile.BadZipFile, shutil.ReadError):
+    #         logging.warning(f"Bad zip file: {self.name}")
+    #         x = zipfile.ZipFile(filename)
+    #         x.extractall(path=_fn)
+    #         print()
+
+    pass
+
+
 def main():
     startup()
 
@@ -145,18 +167,15 @@ def main():
 
 
 # TODO:
+
 #   TL;DR of how password storing works
 #   Implement White- / Blacklist of courses
-#   What happens with corrupted files?  → Done
 #
-#   Idea for "Better file downloading":
-#       First download the entire filelists as MediaContainer.
-#       Then make methods from the filelist → is done in MediaContainer itself.
-#       Lastly create the ThreadPoolExecutor(max_workers=args.num_thread) and submit the functions
 #
-#       Note: This is *way* better
-#       → This is the basis for Version 0.2
+#   Only unzip when prompted
 #
+#   Better checksum → include file size + other metadata?
+
 
 # Maybe todo
 

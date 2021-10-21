@@ -4,17 +4,31 @@
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
-Version 0.1
+Version 0.2
 
-## Features
+**This is Version 0.2! Currently it is *not* stable but improves downloading**
 
-### Downloads all Material from all courses of your ISIS page.
+# Features
 
+- Downloads all Material from all courses of your ISIS page.
 - You can whitelist / blacklist courses with a given course ID. [TODO]
 - Multithreaded: A fixed number of threads can be selected at start time.
 - Compatibility: This library will run with any python interpreter that is >= 3.8.
 - Automatic unpacking of archives.
 - Efficient and dynamic checksum computing for a very good file recognition.
+
+## TL;DR
+
+Use this library instead of `isia-tub`. It provides a superset of features while having improved performance.
+
+Install using `pip install isis_dl`. For a manual installation clone this repository and `pip install .`
+
+The first time you run the program you will be prompted if you want to save your password. Look at section encryption
+for more details.
+
+I am planning  on moving a big portion of the documentation to a dedicated doc site.
+
+[comment]: <> (TODO: Hyperref)
 
 # Installation
 
@@ -30,15 +44,18 @@ python3 -m ensurepip
 
 to bootstrap pip.
 
-## pip
+## pip (PyPi)
 
-Unfortunately this is not possible at the moment. Please refer to the manual installation.
+This portion is **not** true but written as if it were. This method is currently unavailable.
+
+I have uploaded the repository to the Python Package index ([PyPi](https://pypi.org/)) where one can download it with
+the command
 
 ```shell
 pip install isis_dl
 ```
 
-This can be either done in a virtual environment or globally (even with root).
+Note that you are executing arbitrary code as user. **Do this at your own risk!**
 
 To run the downloader simply type
 
@@ -53,9 +70,6 @@ otherwise the executable `isisdl` will not be found.
 
 # Manual
 
-This method should only be used when developing as it does **not** provide any benefit otherwise.
-
-[comment]: <> (TODO: Enum)
 Steps:
 
 - Clone this repository
@@ -80,26 +94,65 @@ Please note that you have to be in a virtual environment in order for this to wo
 There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
 package.
 
+
 # Benchmarks
 
-This is a comparison between `isis_dl` and `isis-tub`.
-
-[comment]: <> (In order to achieve a fair comparison both programs are limited to `50MiB/s` download rate and `10MiB/s` upload rate.)
-With my current setup I have a download rate of `66MiB/s` so that should be plenty of down- / upload left.
-
-All programs are executed once per category with the `time` command prepended. The result is in the table.
-
-#### isia
-
-Note all minute with a comma e.g. 1.2 min it means it in .base 10. Because of that `1.2 min =` 
 
 
-|                       | `isia-tub` | `isis_dl` v 0.1 | `isis_dl` v 0.2 |
-|-----------------------|------------|-----------------|-----------------|
-| Download all courses  | 16.20 mins 11.26 mins / 21,55 mins  (:O what)  | First run: 675,87 secs = 11.25  
-| Download all courses (existant checksums)  |            |                 |                 |
+These benchmarks were conducted on a dedicated V-Server with Gigabit internet. Only two courses we downloaded for a
+total of 2.8 GiB.
 
-### File recognition
+A total of 207 files were downloaded with 73 `.mp4` files. For each category 3 tests were conducted with the strategy
+round-robin i.e. 
+```
+Threads 1 (Test 1) → Threads 3 (Test 1) → … → Threads 1 (Test 2) → …
+```
+
+### isia-tub
+This is currently untested aside from my local machine (V-Server is lacking storage). 
+
+The result was ~11min for `isis_dl` and ~15min for `isia-tub`
+
+### isis_dl version 0.1
+
+```
+~ No previous downloads ~
+
+#Threads = 1
+44s | 52s | 58s ≈ 51.33s
+
+#Threads = 3
+29s | 25s | 26s ≈ 26.67s
+
+#Threads = 5
+21s | 21s | 21s ≈ 21.00s
+
+#Threads = 10
+22s | 21s | 20s ≈ 21.00s
+
+
+~ Randomly deleted 50% of files ~
+
+
+~ All files existant ~
+
+#Threads = 1
+34s | 33s | 33s ≈ 33.33s
+
+#Threads = 3
+17s | 18s | 19s ≈ 18.00s
+
+#Threads = 5
+15s | 15s | 16s ≈ 15.33s
+
+#Threads = 10
+14s | 13s | 13s ≈ 13.33s
+```
+
+
+# Documentation on features
+
+## File recognition
 
 The file recognition is handled in `src/isis_dl/backend/checksums.py`.
 
@@ -133,7 +186,7 @@ Disadvantages
 
 Note that a default value of `64` suffices to
 
-### Can store your password securely
+## Can store your password securely
 
 The entire encryption is handled by the `src/isis_dl/backend/crypt.py`.
 
@@ -145,7 +198,7 @@ The key is generated based on a password you enter and then stored securely.
 
 TODO: This is currently untested. Please enter your password manually for the moment.
 
-#### Hash Settings
+### Hash Settings
 
 **Beware:** If you change these settings you will not be able to recover an encrypted file without restoring the
 settings. I would not recommend changing them.
@@ -153,12 +206,12 @@ settings. I would not recommend changing them.
 You may select any hashing algorithm which is supported. This is any `hashes.HashAlgorithm`. You may also change the
 number of iterations, which will increase / decrease the time it takes to encrypt / decrypt respectively.
 
-### A customizable settings file
+## A customizable settings file
 
 The file is located at `src/isis_dl/share/settings.py`. For the most part you will want to keep the default settings,
 but if they don't fit your needs, you may easily change them.
 
-#### Download Directory
+## Download Directory
 
 The default download directory is `~/isis_dl_downloads`. As the intended installation is via `pip`, there is no good
 "current working directory", so one cannot use that.

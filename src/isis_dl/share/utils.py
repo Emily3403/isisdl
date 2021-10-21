@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
+import argparse
 import datetime
 import enum
-import platform
-import logging
-import argparse
-import shutil
-import sys
-import os
-import time
 import inspect
-import zipfile
-
+import logging
+import os
+import platform
+import sys
+import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import Union, Dict, Callable, Optional, cast
+from threading import Thread
+from typing import Union, Dict, Callable, Optional, cast, List
 
 import requests
 from bs4 import BeautifulSoup
 
-from isis_dl.share.settings import working_dir, temp_dir, checksum_algorithm, sleep_time_for_isis
 import isis_dl.backend.api as api
+from isis_dl.share.settings import working_dir, checksum_algorithm, sleep_time_for_isis, download_chunk_size
 
 
 def get_args():
@@ -34,11 +33,12 @@ def get_args():
     This programs downloads all courses from your ISIS page.""")
 
     parser.add_argument("-l", "--logging", help="Set the debug level", choices=("debug", "info", "warning", "error"), default="info")
-    parser.add_argument("-n", "--thread-num", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
+    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
                         default=10)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
-    parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
+    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
+    parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=1)
 
     # Crypt options
     parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
@@ -49,8 +49,8 @@ def get_args():
     # Checksum options
     parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files. Then checks if any collisions occurred.\nThis is meant as a debug feature.", action="store_true")
     parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files. Exits afterwards.", action="store_true")
+    parser.add_argument("-u", "--unzip", help="Does *not* unzip the zipped files.", action="store_true", default=True)  # TODO: Does this work?
 
-    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
     return parser.parse_known_args()[0]
 
 
@@ -152,6 +152,18 @@ class MediaType(enum.Enum):
         return "Videos/", "Material/"
 
 
+class DownloadStatus(enum.Enum):
+    not_started = enum.auto()
+    started = enum.auto()
+    succeeded = enum.auto()
+    found_by_checksum = enum.auto()
+    failed = enum.auto()
+
+    @property
+    def finished(self):
+        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed}  # O(1) lookup time goes brr
+
+
 # Shared between modules.
 @dataclass
 class User:
@@ -201,6 +213,79 @@ class Video:
         return other.created > self.created
 
 
+class Status(Thread):
+    def __init__(self, files: List[MediaContainer]):
+        self.files = files
+        self._running = True
+
+        super().__init__()
+
+    def run(self) -> None:
+        while self._running:
+            # Gather information
+            finished = [item for item in self.files if item.status.finished]
+            checksum = [item for item in self.files if item.status == DownloadStatus.found_by_checksum]
+            failed = [item for item in self.files if item.status == DownloadStatus.failed]
+            waiting_videos = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.video)
+            waiting_documents = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.document)
+
+            logging.info(f"Status: Downloaded {len(finished)} / {len(self.files)} files. Skipped {len(checksum)} files, failed {len(failed)} files.")
+            downloading_videos = "\n".join(repr(item) for item in waiting_videos)
+            downloading_documents = "\n".join(repr(item) for item in waiting_documents)
+
+            logging.debug(f"Currently downloading:\nVideos:\n{downloading_videos}\n\nDocuments:\n{downloading_documents}\n")
+
+            time.sleep(args.status_time)
+
+    def finish(self):
+        self._running = False
+
+
+# Copied from https://stackoverflow.com/a/63839503
+class HumanBytes:
+    METRIC_LABELS: List[str] = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    BINARY_LABELS: List[str] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
+    PRECISION_OFFSETS: List[float] = [0.5, 0.05, 0.005, 0.0005]  # PREDEFINED FOR SPEED.
+    PRECISION_FORMATS: List[str] = ["{}{:.0f} {}", "{}{:.1f} {}", "{}{:.2f} {}", "{}{:.3f} {}"]  # PREDEFINED FOR SPEED.
+
+    @staticmethod
+    def format(num: Union[int, float, None], metric: bool = False, precision: int = 1) -> str:
+        """
+        Human-readable formatting of bytes, using binary (powers of 1024)
+        or metric (powers of 1000) representation.
+        """
+
+        if num is None:
+            return "None"
+
+        unit_labels = HumanBytes.METRIC_LABELS if metric else HumanBytes.BINARY_LABELS
+        last_label = unit_labels[-1]
+        unit_step = 1000 if metric else 1024
+        unit_step_thresh = unit_step - HumanBytes.PRECISION_OFFSETS[precision]
+
+        is_negative = num < 0
+        if is_negative:  # Faster than ternary assignment or always running abs().
+            num = abs(num)
+
+        for unit in unit_labels:
+            if num < unit_step_thresh:
+                # VERY IMPORTANT:
+                # Only accepts the CURRENT unit if we're BELOW the threshold where
+                # float rounding behavior would place us into the NEXT unit: F.ex.
+                # when rounding a float to 1 decimal, any number ">= 1023.95" will
+                # be rounded to "1024.0". Obviously we don't want ugly output such
+                # as "1024.0 KiB", since the proper term for that is "1.0 MiB".
+                break
+            if unit != last_label:
+                # We only shrink the number if we HAVEN'T reached the last unit.
+                # NOTE: These looped divisions accumulate floating point rounding
+                # errors, but each new division pushes the rounding errors further
+                # and further down in the decimals, so it doesn't matter at all.
+                num /= unit_step
+
+        return HumanBytes.PRECISION_FORMATS[precision].format("-" if is_negative else "", num, unit)
+
+
 @dataclass
 class MediaContainer:
     media_type: MediaType
@@ -211,6 +296,8 @@ class MediaContainer:
     date: Optional[datetime.datetime] = None
     running_download: Optional[requests.Response] = None
     hash: Optional[str] = None
+    status: DownloadStatus = DownloadStatus.not_started
+    already_downloaded: int = 0
 
     def __post_init__(self):
         self.name = sanitize_name_for_dir(self.name)
@@ -276,7 +363,11 @@ class MediaContainer:
 
         return cls(media_type, parent_course, s, url, filename, running_download=running_dl)
 
-    def download(self) -> bool:
+    def download(self) -> None:
+        if not self.status.not_started:
+            logging.warning(f"You have prompted a download of a already started / finished file. This could be a bug! {self.status = }")
+            return
+
         if self.running_download is None:
             while True:
                 try:
@@ -286,40 +377,50 @@ class MediaContainer:
                     logging.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Maybe consider dropping the thread count. Sleeping for {sleep_time_for_isis}s.")
                     time.sleep(sleep_time_for_isis)
 
+        self.status = DownloadStatus.started
+
         if not self.running_download.ok:
-            logging.error(
-                f"The running download ({self.name}) is not okay: Status: {self.running_download.status_code} - {self.running_download.reason} (Course: {self.parent_course.name}). Aborting!")
-            return False
+            logging.error(f"The running download ({self.name}) is not okay: Status: {self.running_download.status_code} - {self.running_download.reason} "
+                          f"(Course: {self.parent_course.name}). Aborting!")
+            self.status = DownloadStatus.failed
+            return
 
         self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
 
         if chunk is None:
-            logging.debug(f"Found {self.name!r} via checksum. Skipping…")
-            return False
+            self.status = DownloadStatus.found_by_checksum
+            return
 
-        logging.debug(f"Started downloading {self.name!r}")
-
-        filename = self.parent_course.path(self.media_type.dir_name, self.name)
-
-        unpack = args.unzip and self.media_type == MediaType.archive
-        if unpack:
-            _fn = os.path.splitext(filename)[0]
-            filename = path(temp_dir, self.name)
-
-        with open(filename, "wb") as f:
+        with open(self.parent_course.path(self.media_type.dir_name, self.name), "wb") as f:
             f.write(chunk)
-            shutil.copyfileobj(self.running_download.raw, f)
+            remaining = self.size - len(chunk)
+            while remaining > 0:
+                new = self.running_download.raw.read(download_chunk_size)
+                if len(new) == 0:
+                    # No file left
+                    break
+
+                self.already_downloaded += len(new)
+                remaining -= len(new)
+
+                f.write(new)
+
+        self.status = DownloadStatus.succeeded
 
         # Only register the hash after successfully downloading the file
         self.parent_course.checksum_handler.add(self.hash)
 
-        if unpack:
-            try:
-                shutil.unpack_archive(filename, _fn)
-            except (EOFError, zipfile.BadZipFile, shutil.ReadError):
-                logging.warning(f"Bad zip file: {self.name}")
-                x = zipfile.ZipFile(filename)
-                x.extractall(path=_fn)
-                print()
+    @property
+    def size(self):
+        if self.running_download is None:
+            return None
+        return int(self.running_download.headers["content-length"])
 
-        return True
+    def __lt__(self, other):
+        return self.name < other.name
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return f"[{HumanBytes.format(self.already_downloaded)} / {HumanBytes.format(self.size)}] \t {self.name}"
