@@ -227,6 +227,7 @@ class Status(Thread):
             finished = [item for item in self.files if item.status.finished]
             checksum = [item for item in self.files if item.status == DownloadStatus.found_by_checksum]
             failed = [item for item in self.files if item.status == DownloadStatus.failed]
+
             waiting_videos = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.video)
             waiting_documents = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.document)
 
@@ -412,10 +413,13 @@ class MediaContainer:
         self.parent_course.checksum_handler.add(self.hash)
 
     @property
-    def size(self):
+    def size(self) -> int:
         if self.running_download is None:
-            return None
-        return int(self.running_download.headers["content-length"])
+            return 0
+        try:
+            return int(self.running_download.headers["content-length"])
+        except KeyError:
+            return 0
 
     def __lt__(self, other):
         return self.name < other.name
