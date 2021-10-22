@@ -62,6 +62,12 @@ hash_length = 32
 
 # < Miscellaneous options >
 
+# The number of places the progress bar has. Feel free to change!
+progress_bar_resolution = 16
+
+# When this percentage is reached the progress is not buffered with \n's
+ratio_to_skip_big_progress = 0.7
+
 enable_multithread = True
 
 # At least 2 ** 10 otherwise the f.write() operation is the bottleneck.

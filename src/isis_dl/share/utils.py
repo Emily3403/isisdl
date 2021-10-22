@@ -6,6 +6,7 @@ import datetime
 import enum
 import inspect
 import logging
+import math
 import os
 import platform
 import sys
@@ -13,13 +14,13 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from threading import Thread
-from typing import Union, Dict, Callable, Optional, cast, List
+from typing import Union, Dict, Callable, Optional, cast, List, Tuple
 
 import requests
 from bs4 import BeautifulSoup
 
 import isis_dl.backend.api as api
-from isis_dl.share.settings import working_dir, checksum_algorithm, sleep_time_for_isis, download_chunk_size
+from isis_dl.share.settings import working_dir, checksum_algorithm, sleep_time_for_isis, download_chunk_size, progress_bar_resolution, ratio_to_skip_big_progress
 
 
 def get_args():
@@ -34,7 +35,7 @@ def get_args():
 
     parser.add_argument("-l", "--logging", help="Set the debug level", choices=("debug", "info", "warning", "error"), default="info")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
-                        default=4)
+                        default=3)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")  # TODO
@@ -157,12 +158,36 @@ class DownloadStatus(enum.Enum):
     not_started = enum.auto()
     started = enum.auto()
     succeeded = enum.auto()
+
     found_by_checksum = enum.auto()
+    suspended = enum.auto()
     failed = enum.auto()
 
     @property
     def finished(self):
         return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed}  # O(1) lookup time goes brr
+
+    def make_progress_bar(self, item: MediaContainer):
+        start, end = "╶ ", " ╴"
+
+        def chop_to_last_10(num: Optional[float]) -> Optional[int]:
+            if num is None:
+                return None
+
+            return int(num * progress_bar_resolution)
+
+        progress = chop_to_last_10(item.percent_done)
+
+        string = start
+        if progress is None:
+            string += "~" * progress_bar_resolution
+
+        else:
+            string += "█" * progress + " " * (progress_bar_resolution - progress)
+
+        string += end
+
+        return string
 
 
 # Shared between modules.
@@ -225,17 +250,45 @@ class Status(Thread):
         while self._running:
             # Gather information
             finished = [item for item in self.files if item.status.finished]
-            checksum = [item for item in self.files if item.status == DownloadStatus.found_by_checksum]
+            skipped = [item for item in self.files if item.status == DownloadStatus.found_by_checksum]
             failed = [item for item in self.files if item.status == DownloadStatus.failed]
 
-            waiting_videos = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.video)
-            waiting_documents = sorted(item for item in self.files if item.status == DownloadStatus.started and item.media_type == MediaType.document)
+            currently_downloading = [item for item in self.files if item.status == DownloadStatus.started]
 
-            logging.info(f"Status: Downloaded {len(finished)} / {len(self.files)} files. Skipped {len(checksum)} files, failed {len(failed)} files.")
-            downloading_videos = "\n".join(repr(item) for item in waiting_videos)
-            downloading_documents = "\n".join(repr(item) for item in waiting_documents)
+            def format_int(num: int):
+                # log_10(num) = number of numbers
+                return f"{num:{' '}>{math.ceil(math.log10(len(self.files)))}}"
 
-            logging.debug(f"Currently downloading:\nVideos:\n{downloading_videos}\n\nDocuments:\n{downloading_documents}\n")
+            logging.info(f"Status: Downloaded {format_int(len(finished))} / {format_int(len(self.files))} files. " +
+                         f"Skipped {format_int(len(skipped))} files, failed {format_int(len(failed))} files.")
+
+            # Now determine the the already downloaded amount and display it
+            if currently_downloading:
+                done: List[Tuple[Union[int, float], str]] = [HumanBytes.format(num.already_downloaded) for num in currently_downloading]  # type: ignore
+                first = e_format([num[0] for num in done])
+                first_units = [item[1] for item in done]
+
+                max_values: List[Tuple[Union[int, float], str]] = [HumanBytes.format(num.size) for num in currently_downloading]  # type: ignore
+                second = e_format([num[0] for num in max_values])
+                second_units = [item[1] for item in max_values]
+
+                progress_str = [item.status.make_progress_bar(item) for item in currently_downloading]
+
+                final_str = f"Currently downloading: {len(currently_downloading)} files\n\n"
+
+                final_middle = [
+                    (container.percent_done or 0, f"{progress} [{already} {already_unit} / {size} {size_unit}] - {container.name}")
+
+                    for container, already, already_unit, size, size_unit, progress in
+                    zip(currently_downloading, first, first_units, second, second_units, progress_str)
+                ]
+
+                final_str += "\n".join(item[1] for item in sorted(final_middle, key=lambda x: x[0], reverse=True))
+
+                # Maybe pad to num_threads of rows
+                if len(skipped) / len(self.files) < ratio_to_skip_big_progress:
+                    final_str += "\n" * (args.num_threads - len(currently_downloading) + 1)
+                logging.debug(final_str)
 
             time.sleep(args.status_time)
 
@@ -243,49 +296,64 @@ class Status(Thread):
         self._running = False
 
 
-# Copied from https://stackoverflow.com/a/63839503
+# Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
-    METRIC_LABELS: List[str] = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
-    BINARY_LABELS: List[str] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
-    PRECISION_OFFSETS: List[float] = [0.5, 0.05, 0.005, 0.0005]  # PREDEFINED FOR SPEED.
-    PRECISION_FORMATS: List[str] = ["{}{:.0f} {}", "{}{:.1f} {}", "{}{:.2f} {}", "{}{:.3f} {}"]  # PREDEFINED FOR SPEED.
-
     @staticmethod
-    def format(num: Union[int, float, None], metric: bool = False, precision: int = 1) -> str:
+    def format(num: Union[int, float, None]) -> Tuple[Optional[float], str]:
         """
-        Human-readable formatting of bytes, using binary (powers of 1024)
-        or metric (powers of 1000) representation.
+        Human-readable formatting of bytes, using binary (powers of 1024) representation.
+
+        Note: num > 0
+        Will
+            return None <=> num == None
         """
 
         if num is None:
-            return "None"
+            return None, "None"
 
-        unit_labels = HumanBytes.METRIC_LABELS if metric else HumanBytes.BINARY_LABELS
+        unit_labels = ["  B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
         last_label = unit_labels[-1]
-        unit_step = 1000 if metric else 1024
-        unit_step_thresh = unit_step - HumanBytes.PRECISION_OFFSETS[precision]
+        unit_step = 1024
+        unit_step_thresh = unit_step - 0.5
 
-        is_negative = num < 0
-        if is_negative:  # Faster than ternary assignment or always running abs().
-            num = abs(num)
-
+        unit = None
         for unit in unit_labels:
             if num < unit_step_thresh:
-                # VERY IMPORTANT:
-                # Only accepts the CURRENT unit if we're BELOW the threshold where
-                # float rounding behavior would place us into the NEXT unit: F.ex.
-                # when rounding a float to 1 decimal, any number ">= 1023.95" will
-                # be rounded to "1024.0". Obviously we don't want ugly output such
-                # as "1024.0 KiB", since the proper term for that is "1.0 MiB".
+                # Only return when under the rounding threshhold
                 break
             if unit != last_label:
-                # We only shrink the number if we HAVEN'T reached the last unit.
-                # NOTE: These looped divisions accumulate floating point rounding
-                # errors, but each new division pushes the rounding errors further
-                # and further down in the decimals, so it doesn't matter at all.
                 num /= unit_step
 
-        return HumanBytes.PRECISION_FORMATS[precision].format("-" if is_negative else "", num, unit)
+        return num, unit
+
+
+def e_format(
+        nums: List[Union[int, float, str, None]],
+        precision=2,
+        ab: Optional[bool] = None,  # True = Remove - from output | False = Space others accordingly
+        direction: str = ">",
+
+        convert_func: Callable[[str], str] = lambda _: str(_)
+) -> List[str]:
+    if ab is True:
+        nums = [n if type(n) == str else abs(n) for n in nums]  # type: ignore
+
+    # Convert the nums → strings
+    final = []
+    for num in nums:
+        if num is None:
+            final.append("None")
+        if type(num) == str:
+            final.append(convert_func(num))
+        elif type(num) in {float, int}:
+            final.append(f"{num:.{precision}f}")
+
+    max_len = max([len(item) for item in final])
+
+    # Pad the strings
+    final = [f"{item:{' '}{direction}{max_len}}" for item in final]
+
+    return final
 
 
 @dataclass
@@ -376,6 +444,7 @@ class MediaContainer:
                     self.running_download = self.s.get(self.url, stream=True)
                     break
                 except requests.exceptions.ConnectionError:
+                    self.status = DownloadStatus.suspended
                     logging.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Maybe consider dropping the thread count. Sleeping for {sleep_time_for_isis}s.")
                     time.sleep(sleep_time_for_isis)
 
@@ -395,15 +464,19 @@ class MediaContainer:
 
         with open(self.parent_course.path(self.media_type.dir_name, self.name), "wb") as f:
             f.write(chunk)
-            remaining = self.size - len(chunk)
-            while remaining > 0:
+            remaining = self.size
+            if remaining is not None:
+                remaining -= len(chunk)
+
+            while remaining is None or remaining > 0:
                 new = self.running_download.raw.read(download_chunk_size)
                 if len(new) == 0:
                     # No file left
                     break
 
                 self.already_downloaded += len(new)
-                remaining -= len(new)
+                if remaining is not None:
+                    remaining -= len(new)
 
                 f.write(new)
 
@@ -413,16 +486,25 @@ class MediaContainer:
         self.parent_course.checksum_handler.add(self.hash)
 
     @property
-    def size(self) -> int:
+    def size(self) -> Optional[int]:
         if self.running_download is None:
-            return 0
+            return None
         try:
             return int(self.running_download.headers["content-length"])
         except KeyError:
-            return 0
+            return None
+
+    @property
+    def percent_done(self) -> Optional[float]:
+        if self.running_download is None or self.size is None:
+            return None
+        try:
+            return self.already_downloaded / self.size
+        except KeyError:
+            return None
 
     def __lt__(self, other):
-        return self.name < other.name
+        return self.percent_done < other.percent_done
 
     def __str__(self):
         return self.name

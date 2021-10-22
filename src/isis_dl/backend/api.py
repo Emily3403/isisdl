@@ -210,7 +210,8 @@ class CourseDownloader:
         courses = [Course(self.s, title, find_course_id(link)) for title, link in zip(titles, links)]
 
         # Debug feature such that I only have to deal with one course at a time
-        courses = courses[3:4]
+        # courses = courses[3:4]
+        courses = [courses[2], courses[3]]
 
         for course in courses:
             course.prepare_dirs()
@@ -238,12 +239,15 @@ class CourseDownloader:
         watcher = Status(to_download)
         watcher.start()
 
-        if enable_multithread:
-            with ThreadPoolExecutor(args.num_threads) as ex:
-                ex.map(lambda x: x.download(), to_download)  # type: ignore
-        else:
-            for item in to_download:
-                item.download()
+        try:
+            if enable_multithread:
+                with ThreadPoolExecutor(args.num_threads) as ex:
+                    ex.map(lambda x: x.download(), to_download)  # type: ignore
+            else:
+                for item in to_download:
+                    item.download()
+        except KeyboardInterrupt:
+            pass
 
         watcher.finish()
 
