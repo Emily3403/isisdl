@@ -11,12 +11,15 @@ from cryptography.hazmat.primitives import hashes
 
 working_dir = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")  # The directory where everything lives in
 download_dir = "Courses/"  # The directory where files get saved to
-temp_dir = ".temp/"  # The directory used to save temporary files e.g. .zip files
 
+temp_dir = ".temp/"  # The directory used to save temporary files e.g. .zip files
 intern_dir = ".intern/"  # The directory for intern stuff such as passwords
 
 # Will create a symlink in the working_dir.
 settings_file_location = "settings.py"
+
+whitelist_file_name = "whitelist.txt"
+blacklist_file_name = "blacklist.txt"
 
 # </ Directory options >
 

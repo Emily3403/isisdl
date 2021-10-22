@@ -17,7 +17,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.share.settings import download_dir, enable_multithread
+from isis_dl.share.settings import download_dir, enable_multithread, whitelist_file_name, blacklist_file_name
 from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir, Status
 
 
@@ -154,6 +154,18 @@ class Course:
     def __repr__(self):
         return self.__str__()
 
+    def __eq__(self, other):
+        if other is None:
+            return True
+
+        if other.__class__ == self.__class__:
+            return self.course_id == other.course_id
+
+        if isinstance(other, str):
+            return self.course_id == other
+
+        return int(self.course_id) == other
+
     def finish(self):
         self.checksum_handler.dump()
 
@@ -209,9 +221,22 @@ class CourseDownloader:
 
         courses = [Course(self.s, title, find_course_id(link)) for title, link in zip(titles, links)]
 
-        # Debug feature such that I only have to deal with one course at a time
-        # courses = courses[3:4]
-        courses = [courses[2], courses[3]]
+        # Filter courses based on white- / blacklist
+        def make_list_from_file(filename: str) -> List[int]:
+            try:
+                with open(path(filename)) as f:
+                    return [int(item.strip()) for item in f.readlines() if item]
+            except FileNotFoundError:
+                return []
+
+        whitelist = make_list_from_file(whitelist_file_name)
+        blacklist = make_list_from_file(blacklist_file_name)
+
+        whitelist.extend(args.whitelist or [])
+        blacklist.extend(args.blacklist or [])
+
+        # None matches any course
+        courses = [item for item in courses if item in (whitelist or [None]) and item not in blacklist]  # type: ignore
 
         for course in courses:
             course.prepare_dirs()
@@ -250,6 +275,8 @@ class CourseDownloader:
             pass
 
         watcher.finish()
+
+        # TODO: List the downloaded stuff
 
     def finish(self):
         for item in self.courses:

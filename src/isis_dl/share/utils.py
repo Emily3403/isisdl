@@ -33,13 +33,16 @@ def get_args():
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This programs downloads all courses from your ISIS page.""")
 
-    parser.add_argument("-l", "--logging", help="Set the debug level", choices=("debug", "info", "warning", "error"), default="info")
+    parser.add_argument("-v", "--verbose", help="Set the verbosity level", choices=("debug", "info", "warning", "error"), default="info")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
                         default=3)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")  # TODO
     parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=1)
+
+    parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", type=int, nargs="*")
+    parser.add_argument("-B", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", type=int, nargs="*")
 
     # Crypt options
     parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
@@ -73,7 +76,7 @@ def create_logger(debug_level: Optional[int] = None):
 
     logger = logging.getLogger()
 
-    debug_level = debug_level or getattr(logging, args.logging.upper())
+    debug_level = debug_level or getattr(logging, args.verbose.upper())
     logger.setLevel(debug_level)
 
     if platform.system() != "Windows":

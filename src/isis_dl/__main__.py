@@ -19,26 +19,39 @@ import warnings
 warnings.filterwarnings('ignore', category=GuessedAtParserWarning)
 
 
-def create_link_to_settings_file():
-    settings_file = os.path.abspath(settings.__file__)
-    try:
-        os.symlink(settings_file, path(settings.settings_file_location))
-    except FileExistsError:
-        pass
-
-
 def startup():
-    create_logger()
-
-    def make(p):
+    def prepare_dir(p):
         os.makedirs(path(p), exist_ok=True)
 
-    make(settings.download_dir)
-    make(settings.temp_dir)
-    make(settings.intern_dir)
-    make(settings.password_dir)
+    def prepare_file(p):
+        if not os.path.exists(path(p)):
+            with open(path(p), "w"):
+                pass
 
-    create_link_to_settings_file()
+    def create_link_to_settings_file(file: str):
+        fp = path(settings.settings_file_location)
+
+        def restore_link():
+            os.symlink(file, fp)
+
+        if os.path.exists(fp):
+            if os.path.realpath(fp) != file:
+                os.remove(fp)
+                restore_link()
+        else:
+            restore_link()
+
+    #
+    create_logger()
+
+    prepare_dir(settings.download_dir)
+    prepare_dir(settings.temp_dir)
+    prepare_dir(settings.intern_dir)
+    prepare_dir(settings.password_dir)
+
+    create_link_to_settings_file(os.path.abspath(settings.__file__))
+    prepare_file(settings.whitelist_file_name)
+    prepare_file(settings.blacklist_file_name)
 
 
 def find_files(course):
@@ -169,12 +182,14 @@ def main():
 # TODO:
 
 #   TL;DR of how password storing works
-#   Implement White- / Blacklist of courses
-#
 #
 #   Only unzip when prompted
 #
 #   Better checksum → include file size + other metadata?
+#
+#   More warnings
+#
+#   run.sh → -n 8 -s 0.2 -l debug etc.
 
 
 # Maybe todo
