@@ -68,7 +68,6 @@ def main():
 
 
 # TODO:
-
 #   TL;DR of how password storing works
 #
 #   Better checksum → include file size + other metadata?
