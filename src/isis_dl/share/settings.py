@@ -1,4 +1,6 @@
+import datetime
 import os
+import platform
 from hashlib import sha256
 
 from cryptography.hazmat.primitives import hashes
@@ -9,17 +11,33 @@ from cryptography.hazmat.primitives import hashes
 
 # < Directory options >
 
-working_dir = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")  # The directory where everything lives in
-download_dir = "Courses/"  # The directory where files get saved to
+# The directory where everything lives in
+working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
-temp_dir = ".temp/"  # The directory used to save temporary files e.g. .zip files
-intern_dir = ".intern/"  # The directory for intern stuff such as passwords
+# The directory where files get saved to
+download_dir_location = "Courses/"
+
+# Temporary directory. Currently not used.
+temp_dir_location = ".temp/"
+
+# The directory for intern stuff such as passwords
+intern_dir_location = ".intern/"
+
+# The directory for intern stuff such as passwords
+unpacked_archive_dir_location = "UnpackedArchives/"
+unpacked_archive_suffix = ".unzipped"
 
 # Will create a symlink in the working_dir.
-settings_file_location = "settings.py"
+settings_file_location = os.path.join(intern_dir_location, "settings.py")
 
-whitelist_file_name = "whitelist.txt"
-blacklist_file_name = "blacklist.txt"
+# Logs
+log_dir_location = os.path.join(intern_dir_location, "logs/")
+log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
+
+
+whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
+blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
+course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.json")
 
 # </ Directory options >
 
@@ -45,7 +63,7 @@ checksum_num_bytes = {
 
 # < Password / Cryptography options >
 
-password_dir = os.path.join(intern_dir, "Passwords/")
+password_dir = os.path.join(intern_dir_location, "Passwords/")
 clear_password_file = os.path.join(password_dir, "Pass.clean")
 encrypted_password_file = os.path.join(password_dir, "Pass.encrypted")
 
@@ -81,9 +99,11 @@ enable_multithread = True
 #   2 ** 12 → 51s
 #   2 ** 13 → 50s
 #   2 ** 14 → 51s
-
 download_chunk_size = 2 ** 12
 
 sleep_time_for_isis = 10  # in s
+sleep_time_for_download_interrupt = 0.1  # in s
+
+is_windows = platform.system() == "Windows"
 
 # </ Miscellaneous options >

@@ -4,13 +4,13 @@ This file handles all checksums
 from __future__ import annotations
 
 import json
-import logging
 import os
 from dataclasses import dataclass, field
 from typing import Set, BinaryIO, Tuple, Union, Optional, List
 
 import isis_dl.backend.api as api
 from isis_dl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm
+from isis_dl.share.utils import logger
 
 
 @dataclass
@@ -56,7 +56,7 @@ class CheckSumHandler:
         chunk = ensure_read(stop)
 
         if not chunk:
-            logging.error(f"The chunk is empty. This means too much of the {filename = } was ignored. I am using a hash of b\"\" and hoping there aren't any collisions!")
+            logger.error(f"The chunk is empty. This means too much of the {filename = } was ignored. I am using a hash of b\"\" and hoping there aren't any collisions!")
 
         hash_value = checksum_algorithm(chunk).hexdigest()
 

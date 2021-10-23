@@ -91,7 +91,6 @@ Note: I use the same mechanism of en-/ decryption my password manager.
 """
 
 import base64
-import logging
 import os
 import pickle
 from getpass import getpass
@@ -101,7 +100,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import isis_dl.share.settings as settings
-from isis_dl.share.utils import User, path, args
+from isis_dl.share.utils import User, path, args, logger
 import re
 
 
@@ -136,7 +135,7 @@ def decryptor(password: str) -> Optional[User]:
             content = f.read()
 
     except FileNotFoundError:
-        logging.debug(f"The encrypted file {settings.encrypted_password_file} was not found. It should have been checked! Please investigate!")
+        logger.debug(f"The encrypted file {settings.encrypted_password_file} was not found. It should have been checked! Please investigate!")
         return None
 
     key = generate_key(password)
@@ -164,25 +163,25 @@ def get_credentials(read_from_args: Optional[bool] = True) -> User:
             login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read()).groups()  # type: ignore
 
             if len(login_info) != 2:
-                logging.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(login_info)}.")
+                logger.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(login_info)}.")
                 raise ValueError
 
             return User(*login_info)
 
     # Now check encrypted file
     elif os.path.exists(path(settings.encrypted_password_file)):
-        logging.info("Found encrypted file.")
+        logger.info("Found encrypted file.")
         password = getpass("Please enter the password for the encrypted file: ")
 
         content = decryptor(password)
         if content is None:
-            logging.error("Supplied the wrong password. Please enter the info manually or restart me!")
+            logger.error("Supplied the wrong password. Please enter the info manually or restart me!")
         else:
-            logging.info("Password accepted!")
+            logger.info("Password accepted!")
             return content
 
     # If nothing is found prompt the user
-    logging.info("Please provide authentication for ISIS.")
+    logger.info("Please provide authentication for ISIS.")
     username = input("Username: ")
     password = getpass("Password: ")
 
@@ -193,11 +192,11 @@ def get_credentials(read_from_args: Optional[bool] = True) -> User:
             # Just create the file
             f.write("This could be your ad!")
 
-        logging.info("Would you like to store this information?")
+        logger.info("Would you like to store this information?")
         reply = input("[y]es / [n]o: ")
         if reply.lower() != "y":
             if reply.lower() != "n":
-                logging.info("I am going to interpret this as a no.")
+                logger.info("I am going to interpret this as a no.")
             return content
 
         if args.clear:
