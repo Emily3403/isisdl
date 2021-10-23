@@ -4,17 +4,30 @@
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
-Version 0.1
+Version 0.2
 
-## Features
+# Features
 
-### Downloads all Material from all courses of your ISIS page.
-
-- You can whitelist / blacklist courses with a given course ID. [TODO]
+- Downloads all Material from all courses of your ISIS page.
+- Efficient and dynamic checksum computing for a very good file recognition.
+- You can whitelist / blacklist courses with a given course ID.
 - Multithreaded: A fixed number of threads can be selected at start time.
 - Compatibility: This library will run with any python interpreter that is >= 3.8.
+
+Binary functionality:
+
+- Building of checksums from existing files.
 - Automatic unpacking of archives.
-- Efficient and dynamic checksum computing for a very good file recognition.
+
+## TL;DR
+
+1. Use this library instead of `isia-tub`. It provides a superset of features while having improved performance.
+2. Install using `pip install isis_dl`. For a manual installation clone this repository and `pip install .`
+3. For a detailed explanation of Command-Line flags please run `isisdl -h`.
+4. The first time you run the program you will be prompted if you want to save your password. Look at section encryption
+   for more details.
+
+[comment]: <> (TODO: Hyperref)
 
 # Installation
 
@@ -30,15 +43,16 @@ python3 -m ensurepip
 
 to bootstrap pip.
 
-## pip
+## pip (PyPi)
 
-Unfortunately this is not possible at the moment. Please refer to the manual installation.
+I have uploaded the repository to the Python Package index ([PyPi](https://pypi.org/)) where one can download it with
+the command
 
 ```shell
 pip install isis_dl
 ```
 
-This can be either done in a virtual environment or globally (even with root).
+Note that you are executing arbitrary code as user. **Do this at your own risk!**
 
 To run the downloader simply type
 
@@ -53,14 +67,13 @@ otherwise the executable `isisdl` will not be found.
 
 # Manual
 
-This method should only be used when developing as it does **not** provide any benefit otherwise.
+Please note that you have to be in a virtual environment in order for this to work as the installation fails otherwise.
 
-[comment]: <> (TODO: Enum)
 Steps:
 
 - Clone this repository
 - `cd isis_dl`
-- `pip install .`
+- `pip install -e .`
 
 ### Developing
 
@@ -68,38 +81,25 @@ If you want to actively contribute to this repository you will want to install t
 the development requirements:
 
 ```shell
-pip install -e .
 pip install -r requirements_dev.txt
 ```
 
 This creates a symlink to the source code in the `pip` package location. It will be treated as if it was installed there
 directly.
 
-Please note that you have to be in a virtual environment in order for this to work as the installation fails otherwise.
-
 There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
 package.
 
 # Benchmarks
 
-This is a comparison between `isis_dl` and `isis-tub`.
-
-[comment]: <> (In order to achieve a fair comparison both programs are limited to `50MiB/s` download rate and `10MiB/s` upload rate.)
-With my current setup I have a download rate of `66MiB/s` so that should be plenty of down- / upload left.
-
-All programs are executed once per category with the `time` command prepended. The result is in the table.
-
-#### isia
-
-Note all minute with a comma e.g. 1.2 min it means it in .base 10. Because of that `1.2 min =` 
+For a comparison between `isia-tub` and `isis_dl` please see the [Benchmark.md](./Benchmark.md) file.
 
 
-|                       | `isia-tub` | `isis_dl` v 0.1 | `isis_dl` v 0.2 |
-|-----------------------|------------|-----------------|-----------------|
-| Download all courses  | 16.20 mins 11.26 mins / 21,55 mins  (:O what)  | First run: 675,87 secs = 11.25  
-| Download all courses (existant checksums)  |            |                 |                 |
+# Documentation on features
 
-### File recognition
+I am planning on moving this part of the documentation to a dedicated doc site.
+
+## File recognition
 
 The file recognition is handled in `src/isis_dl/backend/checksums.py`.
 
@@ -133,7 +133,7 @@ Disadvantages
 
 Note that a default value of `64` suffices to
 
-### Can store your password securely
+## Can store your password securely
 
 The entire encryption is handled by the `src/isis_dl/backend/crypt.py`.
 
@@ -145,7 +145,7 @@ The key is generated based on a password you enter and then stored securely.
 
 TODO: This is currently untested. Please enter your password manually for the moment.
 
-#### Hash Settings
+### Hash Settings
 
 **Beware:** If you change these settings you will not be able to recover an encrypted file without restoring the
 settings. I would not recommend changing them.
@@ -153,12 +153,12 @@ settings. I would not recommend changing them.
 You may select any hashing algorithm which is supported. This is any `hashes.HashAlgorithm`. You may also change the
 number of iterations, which will increase / decrease the time it takes to encrypt / decrypt respectively.
 
-### A customizable settings file
+## A customizable settings file
 
 The file is located at `src/isis_dl/share/settings.py`. For the most part you will want to keep the default settings,
 but if they don't fit your needs, you may easily change them.
 
-#### Download Directory
+## Download Directory
 
 The default download directory is `~/isis_dl_downloads`. As the intended installation is via `pip`, there is no good
 "current working directory", so one cannot use that.
@@ -167,9 +167,11 @@ What can be done, however, is migrating this directory to e.g. the `Desktop/` or
 
 # Acknowledgements
 
+
+
 ### isia-tub
 
-Please check out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
+Consider checking out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
 
 This was the original inspiration for this library. At the time isia did not offer the functionality of uri-encoding the
 password which lead me to create this library. I have recently implemented this functionality into isia in order to

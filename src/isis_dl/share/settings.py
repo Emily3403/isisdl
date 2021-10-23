@@ -1,4 +1,6 @@
+import datetime
 import os
+import platform
 from hashlib import sha256
 
 from cryptography.hazmat.primitives import hashes
@@ -9,14 +11,32 @@ from cryptography.hazmat.primitives import hashes
 
 # < Directory options >
 
-working_dir = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")  # The directory where everything lives in
-download_dir = "Courses/"  # The directory where files get saved to
-temp_dir = ".temp/"  # The directory used to save temporary files e.g. .zip files
+# The directory where everything lives in
+working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
-intern_dir = ".intern/"  # The directory for intern stuff such as passwords
+# The directory where files get saved to
+download_dir_location = "Courses/"
+
+# Temporary directory. Currently not used.
+temp_dir_location = ".temp/"
+
+# The directory for intern stuff such as passwords
+intern_dir_location = ".intern/"
+
+# The directory for intern stuff such as passwords
+unpacked_archive_dir_location = "UnpackedArchives/"
+unpacked_archive_suffix = ".unzipped"
 
 # Will create a symlink in the working_dir.
-settings_file_location = "settings.py"
+settings_file_location = os.path.join(intern_dir_location, "settings.py")
+
+# Logs
+log_dir_location = os.path.join(intern_dir_location, "logs/")
+log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
+
+whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
+blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
+course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.json")
 
 # </ Directory options >
 
@@ -42,7 +62,7 @@ checksum_num_bytes = {
 
 # < Password / Cryptography options >
 
-password_dir = os.path.join(intern_dir, "Passwords/")
+password_dir = os.path.join(intern_dir_location, "Passwords/")
 clear_password_file = os.path.join(password_dir, "Pass.clean")
 encrypted_password_file = os.path.join(password_dir, "Pass.encrypted")
 
@@ -62,8 +82,32 @@ hash_length = 32
 
 # < Miscellaneous options >
 
+# The number of places the progress bar has. Feel free to change!
+progress_bar_resolution = 16
+
+# When this percentage is reached the progress is not buffered with \n's
+ratio_to_skip_big_progress = 0.7
+
 enable_multithread = True
 
-sleep_time_for_isis = 10  # in s
+# At least 2 ** 10 otherwise the f.write() operation is the bottleneck.
+# Tested with 1 Thread. Can achieve 30-40 MiB/s download
+# Times:
+#   2 ** 10 → 74s
+#   2 ** 11 → 59s
+#   2 ** 12 → 51s
+#   2 ** 13 → 50s
+#   2 ** 14 → 51s
+download_chunk_size = 2 ** 12
+
+sleep_time_for_isis = 3  # in s
+sleep_time_for_download_interrupt = 0.25  # in s
+
+is_windows = platform.system() == "Windows"
+
+log_clear_screen = True
+
+
+num_sessions = 4
 
 # </ Miscellaneous options >

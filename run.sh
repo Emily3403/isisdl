@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python3 -m src.isis_dl $@
+isisdl -v debug -n 16 -W 24337

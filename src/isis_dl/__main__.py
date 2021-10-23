@@ -1,166 +1,106 @@
 #!/usr/bin/env python3
-import logging
 import os
-import atexit
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Dict, List
+import warnings
 
-import requests
+from bs4 import GuessedAtParserWarning
 
-from isis_dl.backend.api import CourseDownloader, Course
-from isis_dl.backend.checksums import CheckSumHandler
+from isis_dl.backend.api import CourseDownloader
 from isis_dl.backend.crypt import get_credentials
-from isis_dl.share.utils import create_logger, args, path, MediaType
-import isis_dl.share.settings as settings
+from isis_dl.bin import call_all
+from isis_dl.share.settings import blacklist_file_name_location, download_dir_location, temp_dir_location, intern_dir_location, password_dir, whitelist_file_name_location, settings_file_location, \
+    course_name_to_id_file_location, log_dir_location
+from isis_dl.share.utils import path, on_kill, logger
 
-
-def create_link_to_settings_file():
-    settings_file = os.path.abspath(settings.__file__)
-    try:
-        os.symlink(settings_file, path(settings.settings_file_location))
-    except FileExistsError:
-        pass
+warnings.filterwarnings('ignore', category=GuessedAtParserWarning)
 
 
 def startup():
-    create_logger()
-
-    def make(p):
+    def prepare_dir(p):
         os.makedirs(path(p), exist_ok=True)
 
-    make(settings.download_dir)
-    make(settings.temp_dir)
-    make(settings.intern_dir)
-    make(settings.password_dir)
+    def prepare_file(p):
+        if not os.path.exists(path(p)):
+            with open(path(p), "w"):
+                pass
 
-    create_link_to_settings_file()
+    def create_link_to_settings_file(file: str):
+        fp = path(settings_file_location)
 
+        def restore_link():
+            os.symlink(file, fp)
 
-def find_files(course):
-    paths = [Path(path(settings.download_dir, course, item)) for item in MediaType.list_dirs()]
+        if os.path.exists(fp):
+            if os.path.realpath(fp) != file:
+                os.remove(fp)
+                restore_link()
+        else:
+            restore_link()
 
-    for directory in map(lambda x: x.iterdir(), paths):
-        for file in directory:
-            if file.name.startswith("."):
-                continue
+    prepare_dir(download_dir_location)
+    prepare_dir(temp_dir_location)
+    prepare_dir(intern_dir_location)
+    prepare_dir(password_dir)
+    prepare_dir(log_dir_location)
 
-            if file.is_dir():
-                # This is an archive. It cannot be restored.
-                continue
+    prepare_file(course_name_to_id_file_location)
 
-            yield file
-
-
-def _maybe_build_checksums_and_exit():
-    for course in os.listdir(path(settings.download_dir)):
-        the_course = Course(requests.Session(), course, "")
-
-        csh = CheckSumHandler(the_course, autoload_checksums=False)
-
-        for file in find_files(course):
-            with file.open("rb") as f:
-                checksum, _ = csh.maybe_get_chunk(f, f.name)
-
-        csh.dump()
-
-
-def maybe_build_checksums_and_exit():
-    if not args.build_checksums:
-        return
-
-    _maybe_build_checksums_and_exit()
-
-    exit(0)
-
-
-def maybe_test_checksums_and_exit():
-    if not args.test_checksums:
-        return
-
-    # Keep the checksums up to date.
-    _maybe_build_checksums_and_exit()
-
-    lf = "\n"
-
-    def print_percent(num: int, max_num: int):
-        return f"{num} / {max_num} = {num / (max_num or 1) * 100}%"
-
-    for course in os.listdir(path(settings.download_dir)):
-        logging.info(f"Analyzing course {course}")
-        the_course = Course(requests.Session(), course, "")
-
-        checksum_mapping = {}
-        csh = CheckSumHandler(the_course, autoload_checksums=False)
-
-        for file in find_files(course):
-            with file.open("rb") as f:
-                checksum, _ = csh.calculate_checksum(f, f.name)
-                checksum_mapping.update({file.as_posix(): checksum})
-
-        checksums: Dict[str, int] = {}
-        for key, value in checksum_mapping.items():
-            checksums.setdefault(value, 0)
-            checksums[value] += 1
-
-        # checksums = {item for item in checksum_mapping.values()}
-
-        logging.info(f"Number of files with the same checksum: {print_percent(sum(item for item in checksums.values() if item > 1), len(checksum_mapping))}")
-        if len(checksum_mapping) == len(checksums):
-            continue
-
-        rev_checksums: Dict[str, List[str]] = {}
-        for key, value in checksum_mapping.items():
-            rev_checksums.setdefault(value, list()).append(key)
-
-        same_checksums = {k: v for k, v in rev_checksums.items() if len(v) > 1 and any(os.path.basename(v[0]) != os.path.basename(item) for item in v)}
-        logging.info(f"Number of files with different filenames and same checksum: {print_percent(sum(len(item) for item in same_checksums.values()), len(checksum_mapping))}")
-
-        for key, value in same_checksums.items():  # type: ignore
-            if len(value) > 1:
-                logging.debug(f"The following have the checksum {key}:\n{lf.join(value)}\n")
-
-    # TODO
-
-    exit(0)
+    create_link_to_settings_file(os.path.abspath(__file__))
+    prepare_file(whitelist_file_name_location)
+    prepare_file(blacklist_file_name_location)
 
 
 def main():
     startup()
 
-    maybe_build_checksums_and_exit()
-    maybe_test_checksums_and_exit()
+    call_all()
 
     user = get_credentials()
 
-    dl = CourseDownloader.from_user(user)
+    dl = CourseDownloader(user)
 
-    @atexit.register
+    @on_kill(2)
     def goodbye():
-        logging.info("Storing checksums…")
+        logger.info("Storing checksums…")
         dl.finish()
-        logging.info("Done! Bye Bye ^.^")
+        logger.info("Done! Bye Bye ^.^")
 
     dl.start()
 
 
 # TODO:
 #   TL;DR of how password storing works
-#   Implement White- / Blacklist of courses
-#   What happens with corrupted files?  → Done
 #
-#   Idea for "Better file downloading":
-#       First download the entire filelists as MediaContainer.
-#       Then make methods from the filelist → is done in MediaContainer itself.
-#       Lastly create the ThreadPoolExecutor(max_workers=args.num_thread) and submit the functions
+#   Better checksum → include file size + other metadata?
+#   Really dynamic calculation of checksum based on the first 64, 512, … bytes → is this too much overhead?
 #
-#       Note: This is *way* better
-#       → This is the basis for Version 0.2
-#
+
 
 # Maybe todo
 
 #   Add rate limiter
+#
+#   Change instantiation of MediaContainer into web-requests + multiprocessing. Should be more efficient - but is fast enough already
+
+
+# Changelog:
+#
+# Version 0.2
+#   Changed downloading mechanism from
+#       Have a ThreadPoolExecutor for each course which downloads with args.num_threads
+#   to
+#       Have a ThreadPoolExecutor which goes over instantiated objects
+#
+#   `random.shuffle(…)`-s the input data → better download efficiency
+#
+#   When interrupted → Robustly finish current downloads (Intercepts everything except SIGKILL)
+#       When prompted again will exit with `os._exit(1)` and skip all cleanup
+#
+#   Better status indicator
+#
+#   Moved auto-unzip to manual-unzip
+#
+#   Faster instantiation of MediaContainer's
+#
 
 
 if __name__ == '__main__':
