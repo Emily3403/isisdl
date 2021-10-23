@@ -23,4 +23,5 @@ jobs:
         python -m pip install --upgrade pip
         pip install tox tox-gh-actions
     - name: Test with tox
-      run: python -m tox -- --login-info ${{ secrets.USERNAME }} ${{ secrets.PASSWORD }}
+      run: |
+        bash "python3 -m tox -- --login-info ${{ secrets.USERNAME }} ${{ secrets.PASSWORD }}" > outputTox.log
