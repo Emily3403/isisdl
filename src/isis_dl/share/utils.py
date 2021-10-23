@@ -199,11 +199,16 @@ class OnKill:
     _already_killed = False
 
     def __init__(self):
-        signal.signal(signal.SIGHUP, OnKill.exit)
         signal.signal(signal.SIGINT, OnKill.exit)
         signal.signal(signal.SIGQUIT, OnKill.exit)
         signal.signal(signal.SIGABRT, OnKill.exit)
         signal.signal(signal.SIGTERM, OnKill.exit)
+
+        if is_windows:
+            pass
+        else:
+            signal.signal(signal.SIGHUP, OnKill.exit)
+
 
     @staticmethod
     def add(func, priority: Optional[int] = None):
