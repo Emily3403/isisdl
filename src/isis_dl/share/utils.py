@@ -41,8 +41,8 @@ def get_args():
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
                         default=8)
 
-    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
-    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")  # TODO
+    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
+    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
     parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=1)
     parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
 
@@ -59,7 +59,7 @@ def get_args():
     parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files and exits. Then checks if any collisions occurred.\nThis is meant as a debug feature.",
                         action="store_true")
     parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files and exits", action="store_true")
-    parser.add_argument("-u", "--unzip", help="Unzips existing zipfiles and exists.", action="store_true")  # TODO: Does this work?
+    parser.add_argument("-u", "--unzip", help="Unzips existing zipfiles and exists.", action="store_true")
 
     the_args = parser.parse_known_args()[0]
 
@@ -230,8 +230,8 @@ class OnKill:
             sig = signal.Signals(sig_)
             logger.warning(f"Noticed signal {sig.name} ({sig.value}). Cleaning up…")
             logger.debug("If you *really* need to exit please send another signal!")
+            OnKill._already_killed = True
 
-        OnKill._already_killed = True
         for _ in range(OnKill._funcs.qsize()):
             priority, func = OnKill._funcs.get_nowait()
             func()
@@ -375,7 +375,6 @@ class Video:
         return other.created > self.created
 
 
-# TODO: No update when nothing can be displayed
 class Status(Thread):
     _instance = None
     _running = True

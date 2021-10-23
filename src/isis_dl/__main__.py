@@ -72,6 +72,7 @@ def main():
 #   TL;DR of how password storing works
 #
 #   Better checksum → include file size + other metadata?
+#   Really dynamic calculation of checksum based on the first 64, 512, … bytes → is this too much overhead?
 #
 
 

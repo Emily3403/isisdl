@@ -11,7 +11,7 @@ from typing import Set, BinaryIO, Tuple, Union, Optional, List
 
 import isis_dl.backend.api as api
 from isis_dl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm
-from isis_dl.share.utils import logger
+from isis_dl.share.utils import logger, args
 
 
 @dataclass
@@ -25,12 +25,11 @@ class CheckSumHandler:
 
     def maybe_get_chunk(self, f: BinaryIO, filename: str) -> Tuple[str, Optional[bytes]]:
         checksum, chunk = self.calculate_checksum(f, filename)
-        if checksum in self.checksums:
+        if not args.overwrite and checksum in self.checksums:
             return checksum, None
 
         return checksum, chunk
 
-    # TODO: Really dynamic calculation of checksum based on the first 64, 512, … bytes → is this too much overhead?
     def calculate_checksum(self, f: BinaryIO, filename: str) -> Tuple[str, bytes]:
         skip, stop = self._generate_size_from_file(filename)
 

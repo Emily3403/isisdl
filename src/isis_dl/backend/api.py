@@ -248,7 +248,7 @@ class CourseDownloader:
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
         if enable_multithread:
-            with ThreadPoolExecutor(len(files) // num_sessions) as ex:
+            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64)) as ex:  # Each thread has a lifespan of ~4 files
                 return list(filter(None, ex.map(_inst_obj, files)))
 
         else:
