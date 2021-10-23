@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 import isis_dl.backend.api as api
 from isis_dl.share.settings import working_dir_location, checksum_algorithm, sleep_time_for_isis, download_chunk_size, progress_bar_resolution, ratio_to_skip_big_progress, \
     whitelist_file_name_location, \
-    blacklist_file_name_location, log_file_location, is_windows
+    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen
 
 
 def get_args():
@@ -39,7 +39,7 @@ def get_args():
 
     parser.add_argument("-v", "--verbose", help="Set the verbosity level", choices=("debug", "info", "warning", "error"), default="info")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
-                        default=3)
+                        default=8)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")  # TODO
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")  # TODO
@@ -87,6 +87,14 @@ def create_logger(debug_level: Optional[int] = None):
     """
     Creates the logger
     """
+    # disable DEBUG messages from various modules
+    logging.getLogger("urllib3").propagate = False
+    logging.getLogger("selenium").propagate = False
+    logging.getLogger("matplotlib").propagate = False
+    logging.getLogger("PIL").propagate = False
+    logging.getLogger("oauthlib").propagate = False
+    logging.getLogger("requests_oauthlib.oauth1_auth").propagate = False
+
     logger = logging.getLogger(__name__)
     logger.propagate = False
 
@@ -137,28 +145,31 @@ def sanitize_name_for_dir(name: str) -> str:
 
 
 def clear_screen():
+    if not log_clear_screen:
+        return
+
     os.system("cls") if is_windows else os.system("clear")
 
 
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
-def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level=logging.debug):
+def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level: int = logging.DEBUG):
     def decorator(function):
         @wraps(function)
         def _self_impl(self, *method_args, **method_kwargs):
-            debug_level(f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
+            logger.log(debug_level, f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
             s = time.time()
 
             method_output = function(self, *method_args, **method_kwargs)
-            debug_level(f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.time() - s:.3f}s")  # type: ignore
+            logger.log(debug_level, f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.time() - s:.3f}s")
 
             return method_output
 
         def _impl(*method_args, **method_kwargs):
-            debug_level(f"Starting: {str_to_put}")
+            logger.log(debug_level, f"Starting: {str_to_put}")
             s = time.time()
 
             method_output = function(*method_args, **method_kwargs)
-            debug_level(f"Finished: {str_to_put} in {time.time() - s:.3f}s")
+            logger.log(debug_level, f"Finished: {str_to_put} in {time.time() - s:.3f}s")
 
             return method_output
 
@@ -168,6 +179,18 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
         return _impl
 
     return decorator
+
+
+class MySession(requests.Session):
+    def __init__(self, key: str):
+        super().__init__()
+        self.key = key
+
+    def __str__(self):
+        return f"Session with {self.key}"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class OnKill:
@@ -197,7 +220,7 @@ class OnKill:
     def exit(sig_=None, frame=None):
         if OnKill._already_killed:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting! This *will* lead to corrupted files!")
-            os._exit(1)  # type: ignore
+            os._exit(1)
 
         if sig_ is not None:
             sig = signal.Signals(sig_)
@@ -404,7 +427,7 @@ class Status(Thread):
                 return format_int(len(lst)) + " " * (len(format_int(len(self.files))) + 3)
 
             logger.info(
-                " -- Status --\n" +
+                "\n -- Status --\n" +
                 f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
                 f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
                 f"Skipped:  {format_lst(exited)} files (Exit)\n" +
@@ -439,6 +462,7 @@ class Status(Thread):
                     final_str += "\n" * (args.num_threads - len(currently_downloading) + 1)
 
                 if exited:
+                    logger.info("Please wait for shutdown…")
                     logger.info(final_str)
                 else:
                     logger.debug(final_str)
@@ -539,7 +563,7 @@ class MediaContainer:
         return cls(MediaType.video, parent_course, s, video["url"], video["title"] + video["fileext"], date=timestamp)
 
     @classmethod
-    def from_url(cls, s: requests.Session, url: str, parent_course, session_key: Optional[str] = None):
+    def from_url(cls, s: MySession, url: str, parent_course, session_key: Optional[str] = None):
         if "isis" not in url:
             # Don't go downloading other stuff.
             return
@@ -555,7 +579,7 @@ class MediaContainer:
             # Use the POST form
             running_dl = s.get("https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": session_key}, stream=True)
             if not running_dl.ok:
-                logger.debug(f"The folder {folder_id} from {url = } could not be downloaded.\nReason: {running_dl.reason}")
+                logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {running_dl.reason}")
                 return
 
             filename = running_dl.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
@@ -567,23 +591,21 @@ class MediaContainer:
 
             if req.status_code != 303:
                 # TODO: Still download the content
-                logger.debug(f"The {url = } does not redirect. I am going to ignore it!")
+                logger.warning(f"The {url = } (Course = {parent_course}) does not redirect.  I am going to ignore it!")
                 return
 
             redirect = BeautifulSoup(req.text)
 
             links = redirect.find_all("a")
             if len(links) > 1:
-                logger.debug(f"I've found {len(links) = } many links. This should be debugged!")
+                logger.warning(f"I've found {len(links) = } (Course = {parent_course}) many links. This should be debugged!")
 
             url = links[0].attrs["href"]
             filename = MediaContainer.name_from_url(url)
 
         if filename is None:
-            logger.warning(f"The filename is None. This is probably a bug. Please investigate!\n{url = }")
+            logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
             filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
-
-        # assert filename is not None
 
         return cls(media_type, parent_course, s, url, filename, running_download=running_dl)
 

@@ -34,7 +34,6 @@ settings_file_location = os.path.join(intern_dir_location, "settings.py")
 log_dir_location = os.path.join(intern_dir_location, "logs/")
 log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
 
-
 whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
 blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
 course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.json")
@@ -101,9 +100,14 @@ enable_multithread = True
 #   2 ** 14 → 51s
 download_chunk_size = 2 ** 12
 
-sleep_time_for_isis = 10  # in s
-sleep_time_for_download_interrupt = 0.1  # in s
+sleep_time_for_isis = 3  # in s
+sleep_time_for_download_interrupt = 0.25  # in s
 
 is_windows = platform.system() == "Windows"
+
+log_clear_screen = True
+
+
+num_sessions = 4
 
 # </ Miscellaneous options >

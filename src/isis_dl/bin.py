@@ -72,10 +72,10 @@ def maybe_test_checksums_and_exit():
         same_checksums = {k: v for k, v in rev_checksums.items() if len(v) > 1 and any(os.path.basename(v[0]) != os.path.basename(item) for item in v)}
         logger.info(f"Number of files with different filenames and same checksum: {print_percent(sum(len(item) for item in same_checksums.values()), len(checksum_mapping))}")
 
-        for key, value in same_checksums.items():  # type: ignore
-            if len(value) > 1:
-                same = "\n".join(value)
-                logger.debug(f"The following have the checksum {key}:\n{same}\n")
+        for key_, value_ in same_checksums.items():
+            if len(value_) > 1:
+                same = "\n".join(value_)
+                logger.debug(f"The following have the checksum {key_}:\n{same}\n")
 
     exit(0)
 

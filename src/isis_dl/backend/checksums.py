@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from json import JSONDecodeError
 from typing import Set, BinaryIO, Tuple, Union, Optional, List
 
 import isis_dl.backend.api as api
@@ -81,5 +82,5 @@ class CheckSumHandler:
         try:
             with open(self.parent_course.path(checksum_file)) as f:
                 self.checksums.update(json.load(f))
-        except FileNotFoundError:
+        except (FileNotFoundError, JSONDecodeError):
             pass

@@ -56,7 +56,7 @@ def main():
 
     user = get_credentials()
 
-    dl = CourseDownloader.from_user(user)
+    dl = CourseDownloader(user)
 
     @on_kill(2)
     def goodbye():
@@ -71,20 +71,17 @@ def main():
 
 #   TL;DR of how password storing works
 #
-#   Only unzip when prompted
-#
 #   Better checksum → include file size + other metadata?
 #
-#   More warnings
-#
-#   What is wrong with zip files?
-#
 #   run.sh → -n 8 -s 0.2 -l debug etc.
+#
 
 
 # Maybe todo
 
 #   Add rate limiter
+#
+#   Change instantiation of MediaContainer into web-requests + multiprocessing. Should be more efficient - but is fast enough already
 
 
 # Changelog:
@@ -103,6 +100,8 @@ def main():
 #   Better status indicator
 #
 #   Moved auto-unzip to manual-unzip
+#
+#   Faster instantiation of MediaContainer's
 #
 #
 #

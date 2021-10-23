@@ -160,13 +160,13 @@ def get_credentials(read_from_args: Optional[bool] = True) -> User:
         # Expected to be \n-seperated: `Username\nPassword\n`.
         # May have \n's around it
         with open(path(settings.clear_password_file)) as f:
-            login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read()).groups()  # type: ignore
+            login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read())
 
-            if len(login_info) != 2:
-                logger.error(f"I had a problem reading {settings.clear_password_file}: Malformed file, Expected 2 groups - found {len(login_info)}.")
+            if login_info is None:
+                logger.error(f"Malformed file: {settings.clear_password_file}")
                 raise ValueError
 
-            return User(*login_info)
+            return User(*login_info.groups())
 
     # Now check encrypted file
     elif os.path.exists(path(settings.encrypted_password_file)):
