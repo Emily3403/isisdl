@@ -209,7 +209,6 @@ class OnKill:
             signal.signal(signal.SIGQUIT, OnKill.exit)  # type: ignore
             signal.signal(signal.SIGHUP, OnKill.exit)  # type: ignore
 
-
     @staticmethod
     def add(func, priority: Optional[int] = None):
         if priority is None:
