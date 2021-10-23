@@ -110,7 +110,7 @@ def get_logger(debug_level: Optional[int] = None):
 
         logger.addHandler(fh)
 
-    if not is_windows and False:
+    if not is_windows:
         # Add a colored console handler. This only works on UNIX, however I use that. If you don't maybe reconsider using windows :P
         import coloredlogs
 
