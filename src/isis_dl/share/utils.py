@@ -206,8 +206,8 @@ class OnKill:
         if is_windows:
             pass
         else:
-            signal.signal(signal.SIGQUIT, OnKill.exit)
-            signal.signal(signal.SIGHUP, OnKill.exit)
+            signal.signal(signal.SIGQUIT, OnKill.exit)  # type: ignore
+            signal.signal(signal.SIGHUP, OnKill.exit)  # type: ignore
 
 
     @staticmethod
