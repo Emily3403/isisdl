@@ -83,7 +83,7 @@ def get_args():
     return the_args
 
 
-def create_logger(debug_level: Optional[int] = None):
+def get_logger(debug_level: Optional[int] = None):
     """
     Creates the logger
     """
@@ -110,7 +110,7 @@ def create_logger(debug_level: Optional[int] = None):
 
         logger.addHandler(fh)
 
-    if not is_windows:
+    if not is_windows and False:
         # Add a colored console handler. This only works on UNIX, however I use that. If you don't maybe reconsider using windows :P
         import coloredlogs
 
@@ -218,6 +218,7 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig_=None, frame=None):
+        logger = get_logger()  # Get a new logger since, on windows, @atexit does (apparently) not maintain the global variables
         if OnKill._already_killed:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting! This *will* lead to corrupted files!")
             os._exit(1)
@@ -707,5 +708,5 @@ class MediaContainer:
 
 
 args = get_args()
-logger = create_logger()
+logger = get_logger()
 status = Status()
