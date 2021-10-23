@@ -218,7 +218,6 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig_=None, frame=None):
-        logger = get_logger()  # Get a new logger since, on windows, @atexit does (apparently) not maintain the global variables
         if OnKill._already_killed:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting! This *will* lead to corrupted files!")
             os._exit(1)
@@ -227,9 +226,6 @@ class OnKill:
             sig = signal.Signals(sig_)
             logger.warning(f"Noticed signal {sig.name} ({sig.value}). Cleaning up…")
             logger.debug("If you *really* need to exit please send another signal!")
-
-        else:
-            logger.info("Shutting down…")
 
         OnKill._already_killed = True
         for _ in range(OnKill._funcs.qsize()):
