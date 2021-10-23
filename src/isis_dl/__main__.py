@@ -73,8 +73,6 @@ def main():
 #
 #   Better checksum → include file size + other metadata?
 #
-#   run.sh → -n 8 -s 0.2 -l debug etc.
-#
 
 
 # Maybe todo
@@ -102,10 +100,6 @@ def main():
 #   Moved auto-unzip to manual-unzip
 #
 #   Faster instantiation of MediaContainer's
-#
-#
-#
-#
 #
 
 

@@ -6,27 +6,26 @@ A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berl
 
 Version 0.2
 
-**This is Version 0.2! Currently it is *not* stable but improves downloading**
-
 # Features
 
 - Downloads all Material from all courses of your ISIS page.
-- You can whitelist / blacklist courses with a given course ID. [TODO]
+- Efficient and dynamic checksum computing for a very good file recognition.
+- You can whitelist / blacklist courses with a given course ID.
 - Multithreaded: A fixed number of threads can be selected at start time.
 - Compatibility: This library will run with any python interpreter that is >= 3.8.
+
+Binary functionality:
+
+- Building of checksums from existing files.
 - Automatic unpacking of archives.
-- Efficient and dynamic checksum computing for a very good file recognition.
 
 ## TL;DR
 
-Use this library instead of `isia-tub`. It provides a superset of features while having improved performance.
-
-Install using `pip install isis_dl`. For a manual installation clone this repository and `pip install .`
-
-The first time you run the program you will be prompted if you want to save your password. Look at section encryption
-for more details.
-
-I am planning  on moving a big portion of the documentation to a dedicated doc site.
+1. Use this library instead of `isia-tub`. It provides a superset of features while having improved performance.
+2. Install using `pip install isis_dl`. For a manual installation clone this repository and `pip install .`
+3. For a detailed explanation of Command-Line flags please run `isisdl -h`.
+4. The first time you run the program you will be prompted if you want to save your password. Look at section encryption
+   for more details.
 
 [comment]: <> (TODO: Hyperref)
 
@@ -45,8 +44,6 @@ python3 -m ensurepip
 to bootstrap pip.
 
 ## pip (PyPi)
-
-This portion is **not** true but written as if it were. This method is currently unavailable.
 
 I have uploaded the repository to the Python Package index ([PyPi](https://pypi.org/)) where one can download it with
 the command
@@ -70,11 +67,13 @@ otherwise the executable `isisdl` will not be found.
 
 # Manual
 
+Please note that you have to be in a virtual environment in order for this to work as the installation fails otherwise.
+
 Steps:
 
 - Clone this repository
 - `cd isis_dl`
-- `pip install .`
+- `pip install -e .`
 
 ### Developing
 
@@ -82,75 +81,23 @@ If you want to actively contribute to this repository you will want to install t
 the development requirements:
 
 ```shell
-pip install -e .
 pip install -r requirements_dev.txt
 ```
 
 This creates a symlink to the source code in the `pip` package location. It will be treated as if it was installed there
 directly.
 
-Please note that you have to be in a virtual environment in order for this to work as the installation fails otherwise.
-
 There is no method of installation without `pip` - as the source code expects the module `isis_dl` to be installed as a
 package.
 
-
 # Benchmarks
 
-
-
-These benchmarks were conducted on a dedicated V-Server with Gigabit internet. Only two courses we downloaded for a
-total of 2.8 GiB.
-
-A total of 207 files were downloaded with 73 `.mp4` files. For each category 3 tests were conducted with the strategy
-round-robin i.e. 
-```
-Threads 1 (Test 1) → Threads 3 (Test 1) → … → Threads 1 (Test 2) → …
-```
-
-### isia-tub
-This is currently untested aside from my local machine (V-Server is lacking storage). 
-
-The result was ~11min for `isis_dl` and ~15min for `isia-tub`
-
-### isis_dl version 0.1
-
-```
-~ No previous downloads ~
-
-#Threads = 1
-44s | 52s | 58s ≈ 51.33s
-
-#Threads = 3
-29s | 25s | 26s ≈ 26.67s
-
-#Threads = 5
-21s | 21s | 21s ≈ 21.00s
-
-#Threads = 10
-22s | 21s | 20s ≈ 21.00s
-
-
-~ Randomly deleted 50% of files ~
-
-
-~ All files existant ~
-
-#Threads = 1
-34s | 33s | 33s ≈ 33.33s
-
-#Threads = 3
-17s | 18s | 19s ≈ 18.00s
-
-#Threads = 5
-15s | 15s | 16s ≈ 15.33s
-
-#Threads = 10
-14s | 13s | 13s ≈ 13.33s
-```
+For a comparison between `isia-tub` and `isis_dl` please see the [Benchmark.md](./Benchmark.md) file.
 
 
 # Documentation on features
+
+I am planning on moving this part of the documentation to a dedicated doc site.
 
 ## File recognition
 
@@ -220,9 +167,11 @@ What can be done, however, is migrating this directory to e.g. the `Desktop/` or
 
 # Acknowledgements
 
+
+
 ### isia-tub
 
-Please check out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
+Consider checking out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
 
 This was the original inspiration for this library. At the time isia did not offer the functionality of uri-encoding the
 password which lead me to create this library. I have recently implemented this functionality into isia in order to
