@@ -102,10 +102,12 @@ def maybe_print_version_and_exit():
     if not args.version:
         return
 
-    print("0.2.1")  # TODO
+    print("0.3.1")  # TODO
+    exit(0)
 
 
 def call_all():
     maybe_build_checksums_and_exit()
     maybe_test_checksums_and_exit()
     maybe_unpack_archive_and_exit()
+    maybe_print_version_and_exit()

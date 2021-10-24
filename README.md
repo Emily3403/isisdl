@@ -4,7 +4,7 @@
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
-Version 0.2
+Version 0.3.1
 
 # Features
 
