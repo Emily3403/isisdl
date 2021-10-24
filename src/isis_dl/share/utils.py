@@ -27,6 +27,8 @@ from isis_dl.share.settings import working_dir_location, checksum_algorithm, sle
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, temp_dir_location, password_dir, intern_dir_location, \
     log_dir_location, course_name_to_id_file_location
 
+import isis_dl.share.settings as settings
+
 
 def get_args():
     def check_positive(value):
@@ -115,7 +117,7 @@ def startup():
 
     prepare_file(course_name_to_id_file_location)
 
-    create_link_to_settings_file(os.path.abspath(__file__))
+    create_link_to_settings_file(os.path.abspath(settings.__file__))
     prepare_file(whitelist_file_name_location)
     prepare_file(blacklist_file_name_location)
 
