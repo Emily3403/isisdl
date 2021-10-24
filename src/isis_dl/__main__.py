@@ -44,7 +44,8 @@ def main():
 #   Add rate limiter
 #
 #   Change instantiation of MediaContainer into web-requests + multiprocessing. Should be more efficient - but is fast enough already
-
+#
+#   List course names
 
 # Changelog:
 #

@@ -98,6 +98,8 @@ ratio_to_skip_big_progress = 0.7
 
 enable_multithread = True
 
+default_download_max_speed = 50  # in MiB/s
+
 download_chunk_size = 2 ** 14
 
 sleep_time_for_isis = 3  # in s

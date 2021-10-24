@@ -36,7 +36,7 @@ def get_args():
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
-    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=20)
+    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=settings.default_download_max_speed)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
