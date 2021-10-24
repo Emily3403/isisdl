@@ -107,6 +107,7 @@ is_windows = platform.system() == "Windows"
 
 log_clear_screen = True
 
+
 token_queue_refresh_rate = 0.01  # in s
 token_queue_num_times_threads_to_put = 2
 
