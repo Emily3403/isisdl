@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import hashes
 
 # The directory where everything lives in.
 # Note that if you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory
-working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl")
+working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 # The directory where files get saved to
 download_dir_location = "Courses/"

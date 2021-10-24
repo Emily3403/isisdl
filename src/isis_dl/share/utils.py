@@ -17,6 +17,7 @@ from functools import wraps
 from queue import PriorityQueue
 from threading import Thread
 from typing import Union, Dict, Callable, Optional, cast, List, Tuple, Iterable, Any
+from urllib.parse import unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -178,6 +179,7 @@ def path(*args) -> str:
 
 
 def sanitize_name_for_dir(name: str) -> str:
+    name = unquote(name)
     return name.replace("/", "-")
 
 
