@@ -17,35 +17,26 @@ The result was ~11min for `isis_dl` and ~15min for `isia-tub`
 ### isis_dl version 0.1
 
 ```
+
+```
+
+
+### isis_dl version 0.2
+```
 ~ No previous downloads ~
-
 #Threads = 1
-44s | 52s | 58s ≈ 51.33s
+49s | 52s | 
+
+#Threads = 2
+33s | 32s | 
 
 #Threads = 3
-29s | 25s | 26s ≈ 26.67s
+28s | 26s | 
 
 #Threads = 5
-21s | 21s | 21s ≈ 21.00s
+27s | 25s | 
 
 #Threads = 10
-22s | 21s | 20s ≈ 21.00s
+27s |  | 
 
-
-~ Randomly deleted 50% of files ~
-
-
-~ All files existant ~
-
-#Threads = 1
-34s | 33s | 33s ≈ 33.33s
-
-#Threads = 3
-17s | 18s | 19s ≈ 18.00s
-
-#Threads = 5
-15s | 15s | 16s ≈ 15.33s
-
-#Threads = 10
-14s | 13s | 13s ≈ 13.33s
 ```

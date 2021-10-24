@@ -11,7 +11,8 @@ from cryptography.hazmat.primitives import hashes
 
 # < Directory options >
 
-# The directory where everything lives in
+# The directory where everything lives in.
+# Note that if you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory
 working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 # The directory where files get saved to
@@ -82,6 +83,13 @@ hash_length = 32
 
 # < Miscellaneous options >
 
+try:
+    with open("VERSION") as f:
+        version = f.read().strip()
+
+except FileNotFoundError:
+    version = "0.0.0"
+
 # The number of places the progress bar has. Feel free to change!
 progress_bar_resolution = 16
 
@@ -106,7 +114,6 @@ sleep_time_for_download_interrupt = 0.25  # in s
 is_windows = platform.system() == "Windows"
 
 log_clear_screen = True
-
 
 num_sessions = 4
 

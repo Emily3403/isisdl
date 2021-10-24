@@ -24,7 +24,10 @@ from bs4 import BeautifulSoup
 import isis_dl.backend.api as api
 from isis_dl.share.settings import working_dir_location, checksum_algorithm, sleep_time_for_isis, download_chunk_size, progress_bar_resolution, ratio_to_skip_big_progress, \
     whitelist_file_name_location, \
-    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen
+    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, temp_dir_location, password_dir, intern_dir_location, \
+    log_dir_location, course_name_to_id_file_location
+
+import isis_dl.share.settings as settings
 
 
 def get_args():
@@ -37,7 +40,8 @@ def get_args():
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This programs downloads all courses from your ISIS page.""")
 
-    parser.add_argument("-v", "--verbose", help="Set the verbosity level", choices=("debug", "info", "warning", "error"), default="info")
+    parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course. (This is multiplied by the number of courses)", type=check_positive,
                         default=8)
 
@@ -83,6 +87,41 @@ def get_args():
     return the_args
 
 
+def startup():
+    def prepare_dir(p):
+        os.makedirs(path(p), exist_ok=True)
+
+    def prepare_file(p):
+        if not os.path.exists(path(p)):
+            with open(path(p), "w"):
+                pass
+
+    def create_link_to_settings_file(file: str):
+        fp = path(settings_file_location)
+
+        def restore_link():
+            os.symlink(file, fp)
+
+        if os.path.exists(fp):
+            if os.path.realpath(fp) != file:
+                os.remove(fp)
+                restore_link()
+        else:
+            restore_link()
+
+    prepare_dir(download_dir_location)
+    prepare_dir(temp_dir_location)
+    prepare_dir(intern_dir_location)
+    prepare_dir(password_dir)
+    prepare_dir(log_dir_location)
+
+    prepare_file(course_name_to_id_file_location)
+
+    create_link_to_settings_file(os.path.abspath(settings.__file__))
+    prepare_file(whitelist_file_name_location)
+    prepare_file(blacklist_file_name_location)
+
+
 def get_logger(debug_level: Optional[int] = None):
     """
     Creates the logger
@@ -98,7 +137,7 @@ def get_logger(debug_level: Optional[int] = None):
     logger = logging.getLogger(__name__)
     logger.propagate = False
 
-    debug_level = debug_level or getattr(logging, args.verbose.upper())
+    debug_level = debug_level or logging.DEBUG if args.verbose else logging.INFO
     logger.setLevel(debug_level)
 
     # File handling
@@ -706,6 +745,7 @@ class MediaContainer:
         return f"[{HumanBytes.format(self.already_downloaded)} / {HumanBytes.format(self.size)}] \t {self}"
 
 
+startup()
 args = get_args()
 logger = get_logger()
 status = Status()
