@@ -102,7 +102,7 @@ def maybe_print_version_and_exit():
     if not args.version:
         return
 
-    print("0.3.1")  # TODO
+    print("0.3.2")  # TODO
     exit(0)
 
 
