@@ -24,4 +24,4 @@ jobs:
         pip install tox tox-gh-actions
     - name: Test with tox
       run: |
-        echo `tox`
+        tox -- --login-info ${{ secrets.USERNAME }} ${{ secrets.PASSWORD }}
