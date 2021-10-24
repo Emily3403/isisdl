@@ -98,15 +98,7 @@ ratio_to_skip_big_progress = 0.7
 
 enable_multithread = True
 
-# At least 2 ** 10 otherwise the f.write() operation is the bottleneck.
-# Tested with 1 Thread. Can achieve 30-40 MiB/s download
-# Times:
-#   2 ** 10 → 74s
-#   2 ** 11 → 59s
-#   2 ** 12 → 51s
-#   2 ** 13 → 50s
-#   2 ** 14 → 51s
-download_chunk_size = 2 ** 12
+download_chunk_size = 2 ** 14
 
 sleep_time_for_isis = 3  # in s
 sleep_time_for_download_interrupt = 0.25  # in s
@@ -114,6 +106,10 @@ sleep_time_for_download_interrupt = 0.25  # in s
 is_windows = platform.system() == "Windows"
 
 log_clear_screen = True
+
+
+token_queue_refresh_rate = 0.01  # in s
+token_queue_num_times_threads_to_put = 2
 
 num_sessions = 4
 

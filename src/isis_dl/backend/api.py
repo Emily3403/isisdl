@@ -21,9 +21,10 @@ import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
+from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status
 from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, MediaType, debug_time, MediaContainer, sanitize_name_for_dir, on_kill, status, DownloadStatus, logger, MySession
+from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger
 
 
 @dataclass
@@ -66,7 +67,7 @@ class Course:
 
         """
 
-        def get_url(s: MySession, queue: Queue[requests.Response], url: str, **kwargs):
+        def get_url(s: SessionWithKey, queue: Queue[requests.Response], url: str, **kwargs):
             queue.put(s.get(url, **kwargs))
 
         doc_queue: Queue[requests.Response] = Queue()
@@ -161,13 +162,13 @@ class CourseDownloader:
     _tried_shutdown: bool = False
 
     def __init__(self, user: User):
-        self.sessions: List[MySession] = [MySession("") for _ in range(num_sessions)]
+        self.sessions: List[SessionWithKey] = [SessionWithKey("") for _ in range(num_sessions)]
         self.user = user
 
         self.courses: List[Course] = []
 
     @debug_time("Authentication with Shibboleth")
-    def _authenticate(self, num: int, session: MySession) -> None:
+    def _authenticate(self, num: int, session: SessionWithKey) -> None:
         session.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
         session.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
@@ -311,7 +312,7 @@ class CourseDownloader:
             item.finish()
 
     @property
-    def s(self) -> MySession:
+    def s(self) -> SessionWithKey:
         return random.choice(self.sessions)
 
 

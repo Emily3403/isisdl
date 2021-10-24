@@ -1,5 +1,11 @@
+import os
+
 from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, ratio_to_skip_big_progress, download_chunk_size, enable_multithread, sleep_time_for_isis, \
-    sleep_time_for_download_interrupt, log_clear_screen, num_sessions
+    sleep_time_for_download_interrupt, log_clear_screen, num_sessions, working_dir_location
+
+
+def test_working_dir_location():
+    assert working_dir_location == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 
 def test_checksum_num_bytes():
@@ -20,7 +26,7 @@ def test_enable_multithread():
 
 
 def test_download_chunk_size():
-    assert 2 ** 11 <= download_chunk_size <= 2 ** 16
+    assert 2 ** 13 <= download_chunk_size <= 2 ** 17
 
 
 def test_sleep_time_for_isis():

@@ -90,27 +90,19 @@ def maybe_unpack_archive_and_exit():
         for file in course.list_files():
             try:
                 new_path = course.path(unpacked_archive_dir_location, file.name + unpacked_archive_suffix)
-                # os.makedirs(new_path, exist_ok=True)
                 shutil.unpack_archive(file.as_posix(), new_path)
 
             except shutil.ReadError:
                 pass
 
-        # unpack = args.unzip and self.media_type == MediaType.archive
-        # if unpack:
-        #     _fn = os.path.splitext(filename)[0]
-        #     filename = path(temp_dir, self.name)
-
-        # if unpack:
-        #     try:
-        #         shutil.unpack_archive(filename, _fn)
-        #     except (EOFError, zipfile.BadZipFile, shutil.ReadError):
-        #         logger.warning(f"Bad zip file: {self.name}")
-        #         x = zipfile.ZipFile(filename)
-        #         x.extractall(path=_fn)
-        #         print()
-
     exit(0)
+
+
+def maybe_print_version_and_exit():
+    if not args.version:
+        return
+
+    print("0.2.1")  # TODO
 
 
 def call_all():
