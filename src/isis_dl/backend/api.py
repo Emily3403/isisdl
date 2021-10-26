@@ -4,7 +4,6 @@ This file manages all interaction with the Shibboleth service and ISIS in genera
 from __future__ import annotations
 
 import json
-import logging
 import os
 import random
 import time
@@ -211,11 +210,15 @@ class CourseDownloader:
 
         courses = [Course(title, find_course_id(link)) for title, link in zip(titles, links)]
 
+        logger.debug("Found the following courses:\n" + "\n".join(repr(item) for item in courses))
+
         courses = list(filter(lambda x: x.ok, courses))
 
         if len(courses) == 0:
             logger.warning(f"The {len(courses) = }. I am not downloading anything!")
-            exit(0)
+            exit(1)
+        else:
+            logger.info("I am downloading the following courses:\n" + "\n".join(repr(item) for item in courses))
 
         for course in courses:
             course.prepare_dirs()
@@ -257,7 +260,7 @@ class CourseDownloader:
 
     def download_runner(self):
         if self.downloading is None:
-            logging.error("No files to download! Exiting!")
+            logger.error("No files to download! Exiting!")
             return
 
         if enable_multithread:
