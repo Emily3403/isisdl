@@ -1,95 +1,3 @@
-"""
-This repository provides a native python way to store your passwords securely.
-This is handled by this file.
-
-# How is this achieved?
-For the most part the encryption is handled by the `cryptography.fernet` module.
-
-→ "Fernet guarantees that a message encrypted using it cannot be manipulated or read without the key."
-
-Read the docs:
-https://cryptography.io/en/latest/fernet/
-
-
-1. Encrypting passwords
-We assume that the user has provided some sort of string, which resembles a password.
-This method of gaining this password is discussed below.
-
-In order to encrypt your athentication you must enable the `-s, --store` argument.
-Otherwise nothing will be stored.
-
-    a) Generating a key
-        In order to encrypt anything we first need to generate a key. This is done in the `generate_key(…)` function.
-        It is a lightweight wrapper for the `PBKDF2HMAC` function from cryptography with all the default settings applied.
-
-        Note: The salt, which is hashed with the password is empty - read the according documentation in the function for more information.
-
-    b) Encrypting
-        With a generated key, we can now start encrypting.
-        `cryptography.fernet.Fernet` operates on bytes - so we need to encode the object first.
-
-        This is done by involving `pickle`.
-        This module can generate bytes which, when executed with `pickle.load(…)`, will instantiate and import all necessary
-        dependencies to load the given object.
-
-        e.g. If you pickle an object that uses the `random.randint` function, the `random` module will be imported transparently.
-
-
-        The function `pickle.dumps(…)` will dump the object into bytes. These are then encrypted with `cryptography.fernet.Fernet.encrypt`.
-        The data, which we now obtain, is not decryptable without a password.
-
-        Docs of the function `encrypt(data)`:
-    \"""
-        Encrypts data passed.
-        The result of this encryption is known as a “Fernet token” and has strong privacy and authenticity guarantees.
-    \"""
-
-    c) Decrypting
-        Decrypting is about as easy as encrypting.
-
-        First, generate another key with a password.
-        Then, use the `cryptography.fernet.Fernet.decrypt` function is called.
-
-        Docs of the function `decrypt(token)`:
-    \"""
-        Decrypts a Fernet token.
-        If successfully decrypted you will receive the original plaintext as the result, otherwise an exception will be raised.
-        It is safe to use this data immediately as Fernet verifies that the data has not been tampered with prior to returning it.
-    \"""
-
-
-2. Gaining a password from the user.
-    This is handled in the function `get_credentials()`.
-
-    See the `src/isis_dl/share/py` file for `clear_password_file` and `encrypted_password_file`.
-
-    First it checks if a file with plaintext passwords is found. If so, it uses that for authentication
-    Second it checks if a encrypted file is found. If so, it prompts the user for the password of the encrypted file.
-    If none of these checks succeeded, it will prompt you "regularly" for you ISIS-password.
-
-
-3. Using Clean-Text Passwords
-    Sometimes, e.g. in debugging, you don't want to supply your password every time but you also don't want to leave any traces that you *could* forget.
-    So, I implemented this.
-
-    This is a newline-split file in the following form:
-    ---< Start of file >---
-    [\n]*
-    < Username >  \n
-    < Password > [\n]*
-    ---< End of file>---
-
-    This means the accepted language is:
-    "\n*(.+)?\n+(.+)?\n*"
-    https://regex101.com/r/lSKGIM/1
-
-    If the `clean_password_file` exists and is malformed an error is raised.
-
-
-Note: I use the same mechanism of en-/ decryption my password manager.
-      Thus, I can say with confidence that this will be secure enough for this usecase.
-"""
-
 import base64
 import os
 import pickle
@@ -102,7 +10,6 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from isis_dl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, already_prompted_file, \
     env_var_name_username, env_var_name_password, env_var_name_encrypted_password
 from isis_dl.share.utils import User, path, args, logger
-import re
 
 
 def generate_key(password):
@@ -162,13 +69,12 @@ def get_credentials() -> User:
         logger.info("Found clean file.")
 
         with open(path(clear_password_file)) as f:
-            login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read())
+            lines = f.read().splitlines()
 
-            if login_info is None:
-                logger.error(f"Malformed file: {clear_password_file}")
-                raise ValueError
-
-            return User(*login_info.groups())
+            if len(lines) != 2:
+                logger.error(f"Malformed file: {path(clear_password_file)}. Expected 2 lines, found {len(lines)}.")
+            else:
+                return User(*lines)
 
     # Now check encrypted file
     elif os.path.exists(path(encrypted_password_file)):

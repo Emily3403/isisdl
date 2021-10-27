@@ -2,8 +2,7 @@ import datetime
 import os
 import platform
 from hashlib import sha256
-
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.hashes import SHA3_512
 
 # In this file you will find various constants that dictate how isis_dl works.
 # First up there are things that you may want to change.
@@ -13,6 +12,8 @@ from cryptography.hazmat.primitives import hashes
 
 # The directory where everything lives in.
 # Note that if you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory
+
+
 working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 # The directory where files get saved to
@@ -70,8 +71,8 @@ encrypted_password_file = os.path.join(password_dir, "Pass.encrypted")
 already_prompted_file = os.path.join(password_dir, "Pass.prompted")
 
 # Beware: Changing any of these options means loosing compatibility with the old password file.
-hash_iterations = 10 ** 1
-hash_algorithm = hashes.SHA3_512()
+hash_iterations = 320_000  # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py)
+hash_algorithm = SHA3_512()
 hash_length = 32
 # < Password / Cryptography options >
 
