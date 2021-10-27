@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import hashes
 
 # The directory where everything lives in.
 # Note that if you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory
-working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
+working_dir_location = os.path.join(os.path.expanduser("~"), "Isis")
 
 # The directory where files get saved to
 download_dir_location = "Courses/"
@@ -50,13 +50,13 @@ checksum_algorithm = sha256
 # Format:
 # <extension>: (<#bytes to ignore>, <#bytes to read>)
 checksum_num_bytes = {
-    ".pdf": (0, None),
-    ".tex": (0, None),
+        ".pdf": (0, None),
+        ".tex": (0, None),
 
-    ".zip": (512, 512),
+        ".zip": (512, 512),
 
-    None: (0, 512),
-}
+        None: (0, 512),
+        }
 
 # </ Checksums >
 
@@ -73,7 +73,6 @@ already_prompted_file = os.path.join(password_dir, "Pass.prompted")
 hash_iterations = 10 ** 1
 hash_algorithm = hashes.SHA3_512()
 hash_length = 32
-
 # < Password / Cryptography options >
 
 #
@@ -114,5 +113,11 @@ token_queue_refresh_rate = 0.01  # in s
 token_queue_num_times_threads_to_put = 2
 
 num_sessions = 4
+
+# If you don't want to type your password every time, set `dont_ask_for_password` to True
+# Then, specify the name of the environment variable which contains the password
+# with which you encrypted the isis login password file, i.e. set `env_var_name` 
+dont_ask_for_password = True
+env_var_name = "ISIS_DL_PW"
 
 # </ Miscellaneous options >

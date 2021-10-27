@@ -171,7 +171,11 @@ def get_credentials(read_from_args: Optional[bool] = True) -> User:
     # Now check encrypted file
     elif os.path.exists(path(settings.encrypted_password_file)):
         logger.info("Found encrypted file.")
-        password = getpass("Please enter the password for the encrypted file: ")
+
+        if settings.dont_ask_for_password:
+            password = os.getenv(settings.env_var_name)
+        else:
+            password = getpass("Please enter the password for the encrypted file: ")
 
         content = decryptor(password)
         if content is None:
