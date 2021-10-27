@@ -38,6 +38,8 @@ def main():
 #   Automatic upload to PyPi: https://www.caktusgroup.com/blog/2021/02/11/automating-pypi-releases/
 #
 #   Check for corrupted files
+#
+#   Github actions → environment variables
 
 # Maybe todo
 

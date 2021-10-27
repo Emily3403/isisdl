@@ -17,9 +17,7 @@ from urllib.parse import unquote
 
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, temp_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location
-
-import isis_dl.share.settings as settings
+    log_dir_location, course_name_to_id_file_location, default_download_max_speed, clear_password_file
 
 
 def get_args():
@@ -36,7 +34,7 @@ def get_args():
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
-    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=settings.default_download_max_speed)
+    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=default_download_max_speed)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
@@ -95,6 +93,7 @@ def startup():
         def restore_link():
             os.symlink(file, fp)
 
+        # TODO: What if link is invalid
         if os.path.exists(fp):
             if os.path.realpath(fp) != file:
                 os.remove(fp)
@@ -109,8 +108,10 @@ def startup():
     prepare_dir(log_dir_location)
 
     prepare_file(course_name_to_id_file_location)
+    prepare_file(clear_password_file)
 
-    create_link_to_settings_file(os.path.abspath(settings.__file__))
+    import isis_dl
+    create_link_to_settings_file(os.path.abspath(isis_dl.share.settings.__file__))
     prepare_file(whitelist_file_name_location)
     prepare_file(blacklist_file_name_location)
 

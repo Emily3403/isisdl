@@ -61,7 +61,7 @@ Otherwise nothing will be stored.
 2. Gaining a password from the user.
     This is handled in the function `get_credentials()`.
 
-    See the `src/isis_dl/share/settings.py` file for `clear_password_file` and `encrypted_password_file`.
+    See the `src/isis_dl/share/py` file for `clear_password_file` and `encrypted_password_file`.
 
     First it checks if a file with plaintext passwords is found. If so, it uses that for authentication
     Second it checks if a encrypted file is found. If so, it prompts the user for the password of the encrypted file.
@@ -99,7 +99,8 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-import isis_dl.share.settings as settings
+from isis_dl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, already_prompted_file, \
+    env_var_name_username, env_var_name_password, env_var_name_encrypted_password
 from isis_dl.share.utils import User, path, args, logger
 import re
 
@@ -113,29 +114,29 @@ def generate_key(password):
     # A hacker might only ever gain access to a single encrypted file.
     salt = b""
 
-    kdf = PBKDF2HMAC(algorithm=settings.hash_algorithm, length=settings.hash_length, salt=salt, iterations=settings.hash_iterations)
+    kdf = PBKDF2HMAC(algorithm=hash_algorithm, length=hash_length, salt=salt, iterations=hash_iterations)
 
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
 
 def store_clear(user: User) -> None:
-    with open(path(settings.clear_password_file), "w") as f:
+    with open(path(clear_password_file), "w") as f:
         f.write(user.dump())
 
 
 def encryptor(password: str, obj: object) -> None:
     key = generate_key(password)
-    with open(path(settings.encrypted_password_file), "wb") as f:
+    with open(path(encrypted_password_file), "wb") as f:
         f.write(Fernet(key).encrypt(pickle.dumps(obj)))
 
 
 def decryptor(password: str) -> Optional[User]:
     try:
-        with open(path(settings.encrypted_password_file), "rb") as f:
+        with open(path(encrypted_password_file), "rb") as f:
             content = f.read()
 
     except FileNotFoundError:
-        logger.debug(f"The encrypted file {settings.encrypted_password_file} was not found. It should have been checked! Please investigate!")
+        logger.debug(f"The encrypted file {encrypted_password_file} was not found. It should have been checked! Please investigate!")
         return None
 
     key = generate_key(password)
@@ -147,33 +148,34 @@ def decryptor(password: str) -> Optional[User]:
         return None
 
 
-def get_credentials(read_from_args: Optional[bool] = True) -> User:
+def get_credentials() -> User:
     """
-    Prioritizes: Args > Clean > Encrypted > Input
+    Prioritizes: Environment variable > Clean > Encrypted > Input
     """
-    # First check args
-    if read_from_args and args.login_info is not None:
-        return User(*args.login_info)
+    # First check the environment variables for username *and* password
+    if (username := os.getenv(env_var_name_username)) and (password := os.getenv(env_var_name_password)):
+        logger.info("Found environment variables: Username and Password.")
+        return User(username, password)
 
     # Now check the clean file
-    if os.path.exists(path(settings.clear_password_file)):
-        # Expected to be \n-seperated: `Username\nPassword\n`.
-        # May have \n's around it
-        with open(path(settings.clear_password_file)) as f:
+    if os.path.exists(path(clear_password_file)):
+        logger.info("Found clean file.")
+
+        with open(path(clear_password_file)) as f:
             login_info = re.match("\n*(.+)?\n+(.+)?\n*", f.read())
 
             if login_info is None:
-                logger.error(f"Malformed file: {settings.clear_password_file}")
+                logger.error(f"Malformed file: {clear_password_file}")
                 raise ValueError
 
             return User(*login_info.groups())
 
     # Now check encrypted file
-    elif os.path.exists(path(settings.encrypted_password_file)):
+    elif os.path.exists(path(encrypted_password_file)):
         logger.info("Found encrypted file.")
 
-        if settings.dont_ask_for_password:
-            password = os.getenv(settings.env_var_name)
+        if password := os.getenv(env_var_name_encrypted_password):
+            pass
         else:
             password = getpass("Please enter the password for the encrypted file: ")
 
@@ -191,8 +193,8 @@ def get_credentials(read_from_args: Optional[bool] = True) -> User:
 
     content = User(username, password)
 
-    if args.prompt or not os.path.exists(path(settings.already_prompted_file)):
-        with open(path(settings.already_prompted_file), "w") as f:
+    if args.prompt or not os.path.exists(path(already_prompted_file)):
+        with open(path(already_prompted_file), "w") as f:
             # Just create the file
             f.write("This could be your ad!")
 
