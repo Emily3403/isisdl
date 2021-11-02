@@ -1,6 +1,6 @@
 import os
 
-from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, ratio_to_skip_big_progress, download_chunk_size, enable_multithread, sleep_time_for_isis, \
+from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, download_chunk_size, enable_multithread, sleep_time_for_isis, \
     sleep_time_for_download_interrupt, log_clear_screen, num_sessions, working_dir_location, default_download_max_speed
 
 
@@ -15,10 +15,6 @@ def test_checksum_num_bytes():
 
 def test_progress_bar_resolution():
     assert 8 <= progress_bar_resolution <= 128
-
-
-def test_ratio_to_skip_big_progress():
-    assert 0 <= ratio_to_skip_big_progress <= 1
 
 
 def test_enable_multithread():

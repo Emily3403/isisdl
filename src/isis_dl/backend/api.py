@@ -158,10 +158,10 @@ class Course:
 
 class CourseDownloader:
     downloading: Optional[List[MediaContainer]] = None
-    _tried_shutdown: bool = False
+    sessions: List[SessionWithKey] = None
 
     def __init__(self, user: User):
-        self.sessions: List[SessionWithKey] = [SessionWithKey("") for _ in range(num_sessions)]
+        CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
         self.user = user
 
         self.courses: List[Course] = []
@@ -233,7 +233,8 @@ class CourseDownloader:
         CourseDownloader.downloading = to_download
         status.add_files(to_download)
 
-        self.download_runner()
+        # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
+        Thread(target=self.download_runner).start()
 
     @debug_time("Building file list")
     def instantiate_files(self) -> List[MediaContainer]:
@@ -252,7 +253,7 @@ class CourseDownloader:
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
         if enable_multithread:
-            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64)) as ex:  # Each thread has a lifespan of ~4 files
+            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64) or 1) as ex:  # Each thread has a lifespan of ~4 files
                 return list(filter(None, ex.map(_inst_obj, files)))
 
         else:
@@ -263,6 +264,7 @@ class CourseDownloader:
             logger.error("No files to download! Exiting!")
             return
 
+        s = time.time()
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads) as ex:
                 ex.map(lambda x: x.download(), self.downloading)  # type: ignore
@@ -270,6 +272,7 @@ class CourseDownloader:
             for item in self.downloading:
                 item.download()
 
+        logger.info(f"Took {time.time() - s:.3f}s")
         new_files = [item for item in self.downloading if item.status == DownloadStatus.succeeded]
         if args.file_list:
             if new_files:
@@ -285,12 +288,10 @@ class CourseDownloader:
             return
 
         for item in to_download:
-            item.stop_download(CourseDownloader._tried_shutdown)
-
-        CourseDownloader._tried_shutdown = True
+            item.stop_download()
 
         # Now wait for the downloads to finish
-        while not all(item.status.done_or_stopped for item in to_download):
+        while not all(item.status.done for item in to_download):
             time.sleep(sleep_time_for_download_interrupt)
 
     def finish(self):

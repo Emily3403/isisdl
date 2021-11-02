@@ -1,7 +1,10 @@
 import datetime
 import os
 import platform
+from dataclasses import dataclass
 from hashlib import sha256
+from typing import NamedTuple, Optional
+
 from cryptography.hazmat.primitives.hashes import SHA3_512
 
 # In this file you will find various constants that dictate how isis_dl works.
@@ -48,16 +51,31 @@ course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.jso
 checksum_file = ".checksums.json"
 checksum_algorithm = sha256
 
+
 # Format:
 # <extension>: (<#bytes to ignore>, <#bytes to read>)
+
+@dataclass
+class ExtensionNumBytes:
+    """a docstring"""
+    num_bytes_per_point: int = 64
+
+    skip_header: int = 0
+    skip_footer: int = 0
+    num_data_points: int = 3
+
+
 checksum_num_bytes = {
-    ".pdf": (0, None),
-    ".tex": (0, None),
+    # ".pdf": ExtensionNumBytes(num_bytes_per_point=None),
+    # ".tex": ExtensionNumBytes(num_bytes_per_point=None),
 
-    ".zip": (512, 512),
+    ".zip": ExtensionNumBytes(skip_header=512),
 
-    None: (0, 512),
+    None: ExtensionNumBytes(),
 }
+
+# A special case: The server is ignoring the Range parameter that is given. In that case read the first ↓ bytes and calculate the checksum based on that.
+checksum_range_parameter_ignored = 512
 
 # </ Checksums >
 
@@ -93,10 +111,9 @@ except FileNotFoundError:
 # The number of places the progress bar has. Feel free to change!
 progress_bar_resolution = 16
 
-# When this percentage is reached the progress is not buffered with \n's
-ratio_to_skip_big_progress = 0.7
-
 enable_multithread = True
+
+print_status = False
 
 default_download_max_speed = 50  # in MiB/s
 
@@ -112,7 +129,7 @@ log_clear_screen = True
 token_queue_refresh_rate = 0.01  # in s
 token_queue_num_times_threads_to_put = 2
 
-num_sessions = 4
+num_sessions = 6
 
 # It is possible to specify credentials using environment variables.
 # Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`

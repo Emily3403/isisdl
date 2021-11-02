@@ -38,7 +38,7 @@ def get_args():
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
     parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
-    parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=1)
+    parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=0.3)
     parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
 
     parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", type=int, nargs="*")
@@ -243,20 +243,24 @@ class OnKill:
 
     @staticmethod
     @atexit.register
-    def exit(sig_=None, frame=None):
-        if OnKill._already_killed:
+    def exit(sig=None, frame=None):
+        if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting! This *will* lead to corrupted files!")
             os._exit(1)
 
-        if sig_ is not None:
-            sig = signal.Signals(sig_)
+        if sig is not None:
+            sig = signal.Signals(sig)
             logger.warning(f"Noticed signal {sig.name} ({sig.value}). Cleaning up…")
             logger.debug("If you *really* need to exit please send another signal!")
             OnKill._already_killed = True
 
         for _ in range(OnKill._funcs.qsize()):
-            priority, func = OnKill._funcs.get_nowait()
+            func: Callable[[], None]
+            _, func = OnKill._funcs.get_nowait()
+            # try:
             func()
+            # except:  # type: ignore
+            # logger.error(f"The function {func.__name__} did not succeed.")
 
 
 def on_kill(priority: Optional[int] = None):
@@ -270,9 +274,6 @@ def on_kill(priority: Optional[int] = None):
         return _impl
 
     return decorator
-
-
-OnKill()
 
 
 # Shared between modules.
@@ -387,5 +388,6 @@ def e_format(
 
 
 startup()
+OnKill()
 args = get_args()
 logger = get_logger()

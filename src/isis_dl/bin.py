@@ -7,6 +7,7 @@ from typing import Dict, List
 
 from isis_dl.backend.api import Course
 from isis_dl.backend.checksums import CheckSumHandler
+from isis_dl.backend.downloads import MediaContainer
 from isis_dl.share.settings import download_dir_location, unpacked_archive_dir_location, unpacked_archive_suffix
 from isis_dl.share.utils import path, args, logger
 
@@ -19,7 +20,7 @@ def _maybe_build_checksums_and_exit():
 
         for file in course.list_files():
             with file.open("rb") as f:
-                checksum, _ = csh.calculate_checksum(f, f.name)
+                checksum = csh.calculate_checksum(f)
                 csh.add(checksum)
 
         csh.dump()

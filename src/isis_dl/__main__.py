@@ -48,6 +48,9 @@ def main():
 #   Change instantiation of MediaContainer into web-requests + multiprocessing. Should be more efficient - but is fast enough already
 #
 #   List course names
+#
+#   When calculating a hash the server does not always respect the Range parameter.
+#       → Store the 512 Byte hash as an identifier and associate the hash algorithm based on that.
 
 # Changelog:
 #
