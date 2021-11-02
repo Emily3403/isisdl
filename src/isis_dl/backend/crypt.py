@@ -71,7 +71,7 @@ def get_credentials() -> User:
         with open(path(clear_password_file)) as f:
             lines = f.read().splitlines()
 
-            if len(lines) != 2:
+            if len(lines) not in {0, 2}:
                 logger.error(f"Malformed file: {path(clear_password_file)}. Expected 2 lines, found {len(lines)}.")
             else:
                 return User(*lines)
