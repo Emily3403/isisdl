@@ -73,7 +73,7 @@ def get_credentials() -> User:
 
             if len(lines) not in {0, 2}:
                 logger.error(f"Malformed file: {path(clear_password_file)}. Expected 2 lines, found {len(lines)}.")
-            else:
+            elif lines:
                 return User(*lines)
 
     # Now check encrypted file
