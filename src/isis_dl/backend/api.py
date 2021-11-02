@@ -23,7 +23,7 @@ from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status
 from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger
+from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session
 
 
 @dataclass
@@ -67,7 +67,7 @@ class Course:
         """
 
         def get_url(s: SessionWithKey, queue: Queue[requests.Response], url: str, **kwargs):
-            queue.put(s.get(url, **kwargs))
+            queue.put(get_url_from_session(s, url, **kwargs))
 
         doc_queue: Queue[requests.Response] = Queue()
         vid_queue: Queue[requests.Response] = Queue()
@@ -196,7 +196,7 @@ class CourseDownloader:
 
     # @debug_time("Find Courses")
     def _find_courses(self):
-        soup = BeautifulSoup(self.s.get("https://isis.tu-berlin.de/user/profile.php?lang=en").text)
+        soup = BeautifulSoup(get_text_from_session(self.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"))
 
         links = []
         titles = []

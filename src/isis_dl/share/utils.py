@@ -15,9 +15,11 @@ from queue import PriorityQueue
 from typing import Union, Dict, Callable, Optional, List, Tuple
 from urllib.parse import unquote
 
+import requests
+
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, temp_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, default_download_max_speed, clear_password_file
+    log_dir_location, course_name_to_id_file_location, default_download_max_speed, clear_password_file, sleep_time_for_isis
 
 
 def get_args():
@@ -183,6 +185,25 @@ def clear_screen():
         return
 
     os.system("cls") if is_windows else os.system("clear")
+
+
+def get_url_from_session(sess: requests.Session, *args, **kwargs):
+    while True:
+        try:
+            s = sess.get(*args, **kwargs)
+            return s
+
+        except requests.exceptions.ConnectionError:
+            logger.warning(f"ISIS is complaining about the number of downloads. I am ignoring it. Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s ")
+            pass
+
+
+def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[str]:
+    if (s := get_url_from_session(sess, *args, **kwargs)).ok:
+        return s.text
+
+    return
+
 
 
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992

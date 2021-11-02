@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 
 from isis_dl.backend import api
 from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status
-from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir
+from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session
 
 
 class SessionWithKey(requests.Session):
@@ -200,7 +200,7 @@ class MediaContainer:
 
         elif "mod/resource" in url:
             # Follow the link and get the file
-            req = s.get(url, allow_redirects=False)
+            req = get_url_from_session(s, url, allow_redirects=False)
 
             if req.status_code != 303:
                 # TODO: Still download the content
@@ -236,7 +236,8 @@ class MediaContainer:
                 logger.warning(f"You have prompted a download of an already started / finished file ({self.status = }). This could be a bug! {self.status = }")
             return
 
-        running_download = self.s.get(self.url, stream=True, params=self.additional_params_for_request)
+        running_download = get_url_from_session(self.s, self.url, stream=True, params=self.additional_params_for_request)
+
         try:
             self.size = int(running_download.headers["content-length"])
         except KeyError:

@@ -20,7 +20,7 @@ import requests
 import isis_dl.backend.api as api
 from isis_dl.backend.downloads import MediaContainer, SessionWithKey
 from isis_dl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
-from isis_dl.share.utils import logger, args
+from isis_dl.share.utils import logger, args, get_url_from_session
 
 
 @dataclass
@@ -51,7 +51,7 @@ class CheckSumHandler:
 
         chunks = []
         # The isis video server is *really* fast (0.01s latency) and it is the one accepting the range parameter. Thus, it is okay if we discard that request.
-        req = file.s.get(file.url, headers={"Range": "bytes=0-1"}, params=file.additional_params_for_request, stream=True)
+        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=0-1"}, params=file.additional_params_for_request, stream=True)
 
         if req.status_code == 200 or file.size is None:
             # Fallback for .zip's
@@ -158,9 +158,3 @@ class CheckSumHandler:
             pass
 
 
-def _download_chunk_with_offset(file: MediaContainer, size: ExtensionNumBytes, offset):
-    req = file.s.get(file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
-    # bts = self.ensure_read(req.raw, size.num_bytes_per_point)
-    bts = req.raw.read(size.num_bytes_per_point)
-    req.close()
-    return bts

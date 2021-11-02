@@ -113,7 +113,7 @@ progress_bar_resolution = 16
 
 enable_multithread = True
 
-print_status = False
+print_status = True
 
 default_download_max_speed = 50  # in MiB/s
 
