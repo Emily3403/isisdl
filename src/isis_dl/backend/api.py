@@ -7,6 +7,7 @@ import json
 import os
 import random
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import count
@@ -132,6 +133,9 @@ class Course:
 
     @property
     def ok(self):
+        if args.whitelist != [True] and self in args.whitelist:
+            return True
+
         return self in args.whitelist and self not in args.blacklist
 
     def __str__(self):
@@ -158,7 +162,7 @@ class Course:
 
 class CourseDownloader:
     downloading: Optional[List[MediaContainer]] = None
-    sessions: List[SessionWithKey] = None
+    sessions: List[SessionWithKey] = []
 
     def __init__(self, user: User):
         CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
@@ -167,16 +171,16 @@ class CourseDownloader:
         self.courses: List[Course] = []
 
     @debug_time("Authentication with Shibboleth")
-    def _authenticate(self, num: int, session: SessionWithKey) -> None:
-        session.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+    def _authenticate(self, num: int, s: SessionWithKey) -> None:
+        s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
-        session.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-                     data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
-                           "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                           "shib_idp_ls_supported": "", "_eventId_proceed": "", })
+        s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+               data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
+                     "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                     "shib_idp_ls_supported": "", "_eventId_proceed": "", })
 
-        response = session.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
-                                params={"j_username": self.user.username, "j_password": self.user.password, "_eventId_proceed": ""})
+        response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                          params={"j_username": self.user.username, "j_password": self.user.password, "_eventId_proceed": ""})
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -188,7 +192,7 @@ class CourseDownloader:
 
         # Extract the session key
         soup = BeautifulSoup(response.text)
-        session.key = soup.find("input", {"name": "sesskey"})["value"]
+        s.key = soup.find("input", {"name": "sesskey"})["value"]
 
     def _authenticate_all(self) -> None:
         with ThreadPoolExecutor(num_sessions) as ex:
@@ -230,6 +234,8 @@ class CourseDownloader:
         self.courses = self._find_courses()
         to_download = self.instantiate_files()
 
+        self.check_for_conflicts_in_files(to_download)
+
         CourseDownloader.downloading = to_download
         status.add_files(to_download)
 
@@ -259,6 +265,18 @@ class CourseDownloader:
         else:
             return list(filter(None, [_[0](*_[1:]) for _ in files]))
 
+    @staticmethod
+    def check_for_conflicts_in_files(files: List[MediaContainer]):
+        conflicts = defaultdict(list)
+        for item in files:
+            conflicts[item.name].append(item)
+
+        items = [sorted(item, key=lambda x: x.date) for item in conflicts.values() if len(item) != 1]  # type: ignore
+        for row in items:
+            for i, item in enumerate(row):
+                basename, ext = os.path.splitext(item.name)
+                item.name = basename + f"({i}-{len(row) - 1})" + ext
+
     def download_runner(self):
         if self.downloading is None:
             logger.error("No files to download! Exiting!")
@@ -274,11 +292,10 @@ class CourseDownloader:
 
         logger.info(f"Took {time.time() - s:.3f}s")
         new_files = [item for item in self.downloading if item.status == DownloadStatus.succeeded]
-        if args.file_list:
-            if new_files:
-                logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
-            else:
-                logger.info("No newly downloaded files.")
+        if new_files:
+            logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
+        else:
+            logger.info("No newly downloaded files.")
 
     @staticmethod
     @on_kill(-2)

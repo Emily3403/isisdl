@@ -6,21 +6,15 @@ from __future__ import annotations
 import json
 import os
 import random
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from itertools import repeat
 from json import JSONDecodeError
-from multiprocessing import Pool
-from threading import Thread
-from typing import Set, BinaryIO, Tuple, Union, Optional, List, Iterable
-
-import requests
+from typing import Set, BinaryIO, Union, Optional, List, Iterable
 
 import isis_dl.backend.api as api
 from isis_dl.backend.downloads import MediaContainer, SessionWithKey
 from isis_dl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
-from isis_dl.share.utils import logger, args, get_url_from_session
+from isis_dl.share.utils import args, get_url_from_session
 
 
 @dataclass
@@ -61,8 +55,8 @@ class CheckSumHandler:
         else:
             req.close()
 
-            def download_chunk_with_offset(session: SessionWithKey, offset: int):
-                req = session.get(file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
+            def download_chunk_with_offset(s: SessionWithKey, offset: int):
+                req = get_url_from_session(s, file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
                 # bts = self.ensure_read(req.raw, size.num_bytes_per_point)
                 bts = req.raw.read(size.num_bytes_per_point)
                 req.close()
@@ -88,14 +82,9 @@ class CheckSumHandler:
                 for session, offset in zip(sessions, range(size.skip_header, file.size - size.skip_footer, base_skip)):
                     chunks.append(download_chunk_with_offset(session, offset))
 
-        if file.name == "online-tutorium-3.pdf":
-            for row in chunks:
-                print(" ".join(str(item) for item in row))
-                print()
-
         return self.calculate_hash(chunks)
 
-    def _calculate_checksum_file(self, file: BinaryIO):
+    def _calculate_checksum_file(self, file: BinaryIO) -> str:
         size = self._generate_size_from_file(file.name)
 
         chunks = []
@@ -116,7 +105,7 @@ class CheckSumHandler:
         return checksum_algorithm(b"".join(chunks)).hexdigest()
 
     @staticmethod
-    def ensure_read(f, size: Optional[int] = None) -> bytes:
+    def ensure_read(f: BinaryIO, size: Optional[int] = None) -> bytes:
         # God this reminds me of c-networking…
         buf: List[bytes] = []  # Avoid copying the string again and again with +=
 
@@ -156,5 +145,3 @@ class CheckSumHandler:
                 self.checksums.update(json.load(f))
         except (FileNotFoundError, JSONDecodeError):
             pass
-
-

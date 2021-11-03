@@ -9,16 +9,17 @@ import math
 import os
 import time
 from dataclasses import dataclass, field
+from email.utils import parsedate_to_datetime
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union, BinaryIO
+from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
 
 import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend import api
-from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status
-from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session
+from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time
+from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
 class SessionWithKey(requests.Session):
@@ -49,9 +50,13 @@ class DownloadThrottler(Thread):
         super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
+        self.times_get = 0
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
+
+        # Dummy token used to maybe return it all the time.
+        self.token = Token()
 
         self.start()
 
@@ -71,6 +76,11 @@ class DownloadThrottler(Thread):
             time.sleep(max(token_queue_refresh_rate - (time.time() - start), 0))
 
     def get(self):
+        self.times_get += 1
+        if args.download_rate is None:
+            self.used_tokens.put(self.token)
+            return self.token
+
         token = self.active_tokens.get()
         self.used_tokens.put(token)
 
@@ -78,6 +88,9 @@ class DownloadThrottler(Thread):
 
     @staticmethod
     def max_tokens() -> int:
+        if args.download_rate is None:
+            return 1
+
         return int(args.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
 
 
@@ -160,9 +173,6 @@ class MediaContainer:
     def __post_init__(self):
         self.name = sanitize_name_for_dir(self.name)
 
-        if self.date is None:
-            self.date = datetime.datetime.now()
-
     @staticmethod
     def name_from_url(name: str) -> str:
         return name.split("/")[-1].split("?")[0]
@@ -173,7 +183,7 @@ class MediaContainer:
         return cls(MediaType.video, parent_course, s, video["url"], video["title"] + video["fileext"], date=timestamp)
 
     @classmethod
-    def from_url(cls, s: SessionWithKey, url: str, parent_course, session_key: Optional[str] = None):
+    def from_url(cls, s: SessionWithKey, url: str, parent_course):
         if "isis" not in url:
             # Don't go downloading other stuff.
             return
@@ -187,7 +197,7 @@ class MediaContainer:
         if "mod/folder" in url:
             folder_id = url.split("id=")[-1]
             # Use the POST form
-            req = s.head("https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": session_key})
+            req = get_head_from_session(s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
             if not req.ok:
                 logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {req.reason}")
                 return
@@ -195,8 +205,7 @@ class MediaContainer:
             filename = req.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
             media_type = MediaType.archive
             url = "https://isis.tu-berlin.de/mod/folder/download_folder.php"
-            additional_kwargs = {"id": folder_id, "sesskey": session_key}
-
+            additional_kwargs = {"id": folder_id, "sesskey": s.key}
 
         elif "mod/resource" in url:
             # Follow the link and get the file
@@ -221,12 +230,18 @@ class MediaContainer:
             filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
 
         # Read the size from url
+        headers = get_head_from_session(s, url).headers
         try:
-            size = int(s.head(url).headers["content-length"])
+            size: Optional[int] = int(headers["content-length"])
         except KeyError:
             size = None
 
-        return cls(media_type, parent_course, s, url, filename, size, additional_params_for_request=additional_kwargs)
+        try:
+            date: Optional[datetime.datetime] = parsedate_to_datetime(headers["last-modified"])
+        except KeyError:
+            date = None
+
+        return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
     def download(self) -> None:
         if self.status != DownloadStatus.not_started:
@@ -284,10 +299,10 @@ class MediaContainer:
 
     @property
     def percent_done(self) -> Optional[float]:
-        try:
-            return self.already_downloaded / self.size
-        except TypeError:
+        if self.size is None:
             return None
+
+        return self.already_downloaded / self.size
 
     def __lt__(self, other):
         try:
@@ -295,6 +310,9 @@ class MediaContainer:
         except TypeError:
             # If they aren't comparable by percent do it by name
             return self.name < other.name
+
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and self.name == other.name
 
     def __str__(self):
         return self.name
@@ -325,7 +343,7 @@ class Status(Thread):
 
     def run(self) -> None:
         while Status._running:
-            time.sleep(args.status_time)
+            time.sleep(status_time)
             if not self.files:
                 continue
             clear_screen()
@@ -355,13 +373,21 @@ class Status(Thread):
             def format_lst(lst: List[Any]):
                 return format_int(len(lst)) + " " * (len(format_int(len(self.files))) + 3)
 
-            logger.info(
-                "\n -- Status --\n" +
-                f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
-                f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
-                f"Skipped:  {format_lst(exited)} files (Exit)\n" +
-                f"Failed:   {format_lst(failed)} files"
-            )
+            if args.download_rate is None:
+                band_usage = ""
+            else:
+                usage, unit = HumanBytes.format(throttler.used_tokens.qsize() * download_chunk_size / token_queue_refresh_rate)
+                band_usage = f"Current bandwidth usage: {usage:.2f} {unit}\n\n"
+
+            if Status._running:
+                logger.info(
+                    "\n -- Status --\n\n" +
+                    band_usage +
+                    f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
+                    f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
+                    f"Skipped:  {format_lst(exited)} files (Exit)\n" +
+                    f"Failed:   {format_lst(failed)} files"
+                )
 
             # Now determine the the already downloaded amount and display it
             if currently_downloading:

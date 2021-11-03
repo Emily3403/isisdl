@@ -18,8 +18,8 @@ from urllib.parse import unquote
 import requests
 
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, temp_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, default_download_max_speed, clear_password_file, sleep_time_for_isis
+    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
+    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode
 
 
 def get_args():
@@ -36,29 +36,27 @@ def get_args():
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
-    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=default_download_max_speed)
+    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
-    parser.add_argument("-f", "--file-list", help="The the downloaded files in a summary at the end.\nThis is meant as a debug feature.", action="store_true")
-    parser.add_argument("-s", "--status-time", help="Set the time (in s) for the status to be updated.", type=float, default=0.3)
-    parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
-
     parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", type=int, nargs="*")
     parser.add_argument("-B", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", type=int, nargs="*")
 
+    parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
+
     # Crypt options
     parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
-    parser.add_argument("-c", "--clear", help="Stores the password in clear text (pickle bytes).\nIf you want to live dangerously, enable this option.\n"
-                                              "If the -s / --store flag is not set, this option will be ignored silently.", action="store_true")
-    parser.add_argument("-L", "--login-info", help="Provide two arguments <[username], [password]>. Uses these as authentication", nargs=2, default=None)
 
-    # Checksum options
-    parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files and exits. Then checks if any collisions occurred.\nThis is meant as a debug feature.",
-                        action="store_true")
     parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files and exits", action="store_true")
-    parser.add_argument("-u", "--unzip", help="Unzips existing zipfiles and exists.", action="store_true")
 
-    the_args = parser.parse_known_args()[0]
+    if debug_mode:
+        parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files and exits. Then checks if any collisions occurred.\nThis is meant as a debug feature.",
+                            action="store_true")
+
+    the_args, unknown = parser.parse_known_args()
+
+    if unknown:
+        print("I did not recognize the following arguments:\n" + "\n".join(unknown) + "\nI am going to ignore them.")
 
     # Store the white- / blacklist in args such that it only has to be evaluated once
     def make_list_from_file(filename: str) -> List[int]:
@@ -104,7 +102,6 @@ def startup():
             restore_link()
 
     prepare_dir(download_dir_location)
-    prepare_dir(temp_dir_location)
     prepare_dir(intern_dir_location)
     prepare_dir(password_dir)
     prepare_dir(log_dir_location)
@@ -187,23 +184,29 @@ def clear_screen():
     os.system("cls") if is_windows else os.system("clear")
 
 
-def get_url_from_session(sess: requests.Session, *args, **kwargs):
+def _get_func_session(func, *args, **kwargs) -> requests.Response:
     while True:
         try:
-            s = sess.get(*args, **kwargs)
-            return s
+            return func(*args, **kwargs)  # type: ignore
 
         except requests.exceptions.ConnectionError:
-            logger.warning(f"ISIS is complaining about the number of downloads. I am ignoring it. Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s ")
+            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s ")
             pass
+
+
+def get_url_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+    return _get_func_session(sess.get, *args, **kwargs)
+
+
+def get_head_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+    return _get_func_session(sess.head, *args, **kwargs)
 
 
 def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[str]:
     if (s := get_url_from_session(sess, *args, **kwargs)).ok:
         return s.text
 
-    return
-
+    return None
 
 
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
