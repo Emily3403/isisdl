@@ -346,7 +346,9 @@ class Status(Thread):
             time.sleep(status_time)
             if not self.files:
                 continue
-            clear_screen()
+
+            if Status._running:
+                clear_screen()
             # Gather information
             skipped, failed, exited, currently_downloading, finished = [], [], [], [], []
 
