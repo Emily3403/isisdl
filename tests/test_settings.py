@@ -38,7 +38,7 @@ def test_log_dir_location():
 
 
 def test_log_file_location():
-    assert log_file_location.startswith("log") and ".log" in log_file_location
+    assert ".log" in log_file_location
 
 
 def test_whitelist_file_name_location():
