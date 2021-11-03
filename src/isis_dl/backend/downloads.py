@@ -8,7 +8,8 @@ import enum
 import math
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from email.utils import parsedate_to_datetime
 from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
@@ -17,8 +18,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend import api
-from isis_dl.share.settings import ratio_to_skip_big_progress, progress_bar_resolution, checksum_algorithm, sleep_time_for_isis, download_chunk_size, token_queue_refresh_rate
-from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir
+from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time
+from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
 class SessionWithKey(requests.Session):
@@ -49,9 +50,15 @@ class DownloadThrottler(Thread):
         super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
+        self.times_get = 0
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
+
+        # Dummy token used to maybe return it all the time.
+        self.token = Token()
+
+        self.start()
 
     def run(self) -> None:
         # num has to be distributed over `token_queue_refresh_rate` seconds
@@ -69,6 +76,11 @@ class DownloadThrottler(Thread):
             time.sleep(max(token_queue_refresh_rate - (time.time() - start), 0))
 
     def get(self):
+        self.times_get += 1
+        if args.download_rate is None:
+            self.used_tokens.put(self.token)
+            return self.token
+
         token = self.active_tokens.get()
         self.used_tokens.put(token)
 
@@ -76,34 +88,27 @@ class DownloadThrottler(Thread):
 
     @staticmethod
     def max_tokens() -> int:
+        if args.download_rate is None:
+            return 1
+
         return int(args.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
 
 
 class DownloadStatus(enum.Enum):
     not_started = enum.auto()
-    started = enum.auto()
-    succeeded = enum.auto()
-
-    found_by_checksum = enum.auto()
+    downloading = enum.auto()
     suspended = enum.auto()
+    succeeded = enum.auto()
     failed = enum.auto()
 
+    # Special states
+    found_by_checksum = enum.auto()
+    stopped = enum.auto()
     stopped_done = enum.auto()
-    force_stopped = enum.auto()
 
     @property
     def done(self):
-        # Canonically done → not forced
-        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed}
-
-    @property
-    def done_or_stopped(self):
-        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed, DownloadStatus.force_stopped, DownloadStatus.stopped_done}  # O(1) lookup time goes brr
-
-    @property
-    def downloading(self):
-        # Will eventually download
-        return self in {DownloadStatus.not_started, DownloadStatus.started, DownloadStatus.suspended}
+        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed, DownloadStatus.stopped_done}  # O(1) lookup time goes brr
 
     @staticmethod
     def make_progress_bar(item: MediaContainer):
@@ -156,32 +161,29 @@ class MediaType(enum.Enum):
 class MediaContainer:
     media_type: MediaType
     parent_course: api.Course
-    s: requests.Session
+    s: SessionWithKey
     url: str
     name: str
+    size: Optional[int] = None
     date: Optional[datetime.datetime] = None
-    running_download: Optional[requests.Response] = None
-    hash: Optional[str] = None
+    additional_params_for_request: Dict[str, str] = field(default_factory=lambda: {})
     status: DownloadStatus = DownloadStatus.not_started
     already_downloaded: int = 0
 
     def __post_init__(self):
         self.name = sanitize_name_for_dir(self.name)
 
-        if self.date is None:
-            self.date = datetime.datetime.now()
-
     @staticmethod
     def name_from_url(name: str) -> str:
         return name.split("/")[-1].split("?")[0]
 
     @classmethod
-    def from_video(cls, s: requests.Session, video: Dict[str, str], parent_course):
+    def from_video(cls, s: SessionWithKey, video: Dict[str, str], parent_course):
         timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
         return cls(MediaType.video, parent_course, s, video["url"], video["title"] + video["fileext"], date=timestamp)
 
     @classmethod
-    def from_url(cls, s: SessionWithKey, url: str, parent_course, session_key: Optional[str] = None):
+    def from_url(cls, s: SessionWithKey, url: str, parent_course):
         if "isis" not in url:
             # Don't go downloading other stuff.
             return
@@ -190,22 +192,24 @@ class MediaContainer:
             # These links dont lead to actual files. Ignore them
             return
 
-        filename, media_type, running_dl = None, MediaType.document, None
+        filename, media_type, additional_kwargs = None, MediaType.document, {}
 
         if "mod/folder" in url:
             folder_id = url.split("id=")[-1]
             # Use the POST form
-            running_dl = s.get("https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": session_key}, stream=True)
-            if not running_dl.ok:
-                logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {running_dl.reason}")
+            req = get_head_from_session(s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
+            if not req.ok:
+                logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {req.reason}")
                 return
 
-            filename = running_dl.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
+            filename = req.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
             media_type = MediaType.archive
+            url = "https://isis.tu-berlin.de/mod/folder/download_folder.php"
+            additional_kwargs = {"id": folder_id, "sesskey": s.key}
 
         elif "mod/resource" in url:
             # Follow the link and get the file
-            req = s.get(url, allow_redirects=False)
+            req = get_url_from_session(s, url, allow_redirects=False)
 
             if req.status_code != 303:
                 # TODO: Still download the content
@@ -225,91 +229,80 @@ class MediaContainer:
             logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
             filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
 
-        return cls(media_type, parent_course, s, url, filename, running_download=running_dl)
+        # Read the size from url
+        headers = get_head_from_session(s, url).headers
+        try:
+            size: Optional[int] = int(headers["content-length"])
+        except KeyError:
+            size = None
+
+        try:
+            date: Optional[datetime.datetime] = parsedate_to_datetime(headers["last-modified"])
+        except KeyError:
+            date = None
+
+        return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
     def download(self) -> None:
-        if self.status == DownloadStatus.stopped_done:
+        if self.status != DownloadStatus.not_started:
+            if self.status == DownloadStatus.stopped:
+                self.status = DownloadStatus.stopped_done
+            else:
+                logger.warning(f"You have prompted a download of an already started / finished file ({self.status = }). This could be a bug! {self.status = }")
             return
 
-        if not self.status.not_started:
-            logger.warning(f"You have prompted a download of a already started / finished file. This could be a bug! {self.status = }")
-            return
+        running_download = get_url_from_session(self.s, self.url, stream=True, params=self.additional_params_for_request)
 
-        self.status = DownloadStatus.suspended
-        if self.running_download is None:
-            while True:
-                try:
-                    self.running_download = self.s.get(self.url, stream=True)
-                    break
-                except requests.exceptions.ConnectionError:
-                    logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Maybe consider dropping the thread count. Sleeping for {sleep_time_for_isis}s.")
-                    time.sleep(sleep_time_for_isis)
+        try:
+            self.size = int(running_download.headers["content-length"])
+        except KeyError:
+            # Some downloads don't define a content-length. That is bad for checksums but nothing I can do…
+            pass
 
-        self.status = DownloadStatus.started
-
-        if not self.running_download.ok:
-            logger.error(f"The running download ({self}) is not okay: Status: {self.running_download.status_code} - {self.running_download.reason} "
+        if not running_download.ok:
+            logger.error(f"The running download ({self}) is not okay: Status: {running_download.status_code} - {running_download.reason} "
                          f"(Course: {self.parent_course.name}). Aborting!")
             self.status = DownloadStatus.failed
             return
 
-        self.hash, chunk = self.parent_course.checksum_handler.maybe_get_chunk(self.running_download.raw, self.name)
-
-        if chunk is None:
+        if (checksum := self.parent_course.checksum_handler.already_downloaded(self)) is None:
             self.status = DownloadStatus.found_by_checksum
+            running_download.close()
             return
 
+        self.status = DownloadStatus.downloading
+
         with open(self.parent_course.path(self.media_type.dir_name, self.name), "wb") as f:
-            f.write(chunk)
-            remaining = self.size
-            if remaining is not None:
-                remaining -= len(chunk)
+            # TODO: If nothing is downloading, start downloading regardless of checksum
 
-            while remaining is None or remaining > 0:
-                if self.status == DownloadStatus.force_stopped:
-                    self.status = DownloadStatus.stopped_done
-                    return
-
+            # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
+            while True:
                 token = throttler.get()
 
-                new = self.running_download.raw.read(token.num_bytes)
+                new = running_download.raw.read(token.num_bytes)
                 if len(new) == 0:
                     # No file left
                     break
 
-                self.already_downloaded += len(new)
-                if remaining is not None:
-                    remaining -= len(new)
-
                 f.write(new)
+                self.already_downloaded += len(new)
 
         self.status = DownloadStatus.succeeded
-        self.running_download = None
 
         # Only register the hash after successfully downloading the file
-        self.parent_course.checksum_handler.add(self.hash)
+        self.parent_course.checksum_handler.add(checksum)
+        running_download.close()
 
-    def stop_download(self, tried_previously: bool = False):
+    def stop_download(self):
         if self.status == DownloadStatus.not_started:
-            self.status = DownloadStatus.force_stopped if tried_previously else DownloadStatus.stopped_done
-
-    @property
-    def size(self) -> Optional[int]:
-        if self.running_download is None:
-            return None
-        try:
-            return int(self.running_download.headers["content-length"])
-        except KeyError:
-            return None
+            self.status = DownloadStatus.stopped
 
     @property
     def percent_done(self) -> Optional[float]:
-        if self.running_download is None or self.size is None:
+        if self.size is None:
             return None
-        try:
-            return self.already_downloaded / self.size
-        except KeyError:
-            return None
+
+        return self.already_downloaded / self.size
 
     def __lt__(self, other):
         try:
@@ -317,6 +310,9 @@ class MediaContainer:
         except TypeError:
             # If they aren't comparable by percent do it by name
             return self.name < other.name
+
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and self.name == other.name
 
     def __str__(self):
         return self.name
@@ -337,24 +333,27 @@ class Status(Thread):
 
     def __init__(self, files: Optional[List[MediaContainer]] = None):
         self.files = files or []
-        super().__init__()
-        self.daemon = True
-        self.start()
+        super().__init__(daemon=True)
+
+        if print_status:
+            self.start()
 
     def add_files(self, files: List[MediaContainer]):
         self.files.extend(files)
 
     def run(self) -> None:
         while Status._running:
-            time.sleep(args.status_time)
+            time.sleep(status_time)
             if not self.files:
                 continue
-            clear_screen()
+
+            if Status._running:
+                clear_screen()
             # Gather information
             skipped, failed, exited, currently_downloading, finished = [], [], [], [], []
 
             for item in self.files:
-                if item.status.done_or_stopped:
+                if item.status.done:
                     finished.append(item)
 
                 if item.status == DownloadStatus.found_by_checksum:
@@ -366,7 +365,7 @@ class Status(Thread):
                 if item.status == DownloadStatus.failed:
                     failed.append(item)
 
-                if item.status == DownloadStatus.started:
+                if item.status == DownloadStatus.downloading:
                     currently_downloading.append(item)
 
             def format_int(num: int):
@@ -376,13 +375,21 @@ class Status(Thread):
             def format_lst(lst: List[Any]):
                 return format_int(len(lst)) + " " * (len(format_int(len(self.files))) + 3)
 
-            logger.info(
-                "\n -- Status --\n" +
-                f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
-                f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
-                f"Skipped:  {format_lst(exited)} files (Exit)\n" +
-                f"Failed:   {format_lst(failed)} files"
-            )
+            if args.download_rate is None:
+                band_usage = ""
+            else:
+                usage, unit = HumanBytes.format(throttler.used_tokens.qsize() * download_chunk_size / token_queue_refresh_rate)
+                band_usage = f"Current bandwidth usage: {usage:.2f} {unit}\n\n"
+
+            if Status._running:
+                logger.info(
+                    "\n -- Status --\n\n" +
+                    band_usage +
+                    f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
+                    f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
+                    f"Skipped:  {format_lst(exited)} files (Exit)\n" +
+                    f"Failed:   {format_lst(failed)} files"
+                )
 
             # Now determine the the already downloaded amount and display it
             if currently_downloading:
@@ -407,10 +414,6 @@ class Status(Thread):
 
                 final_str += "\n".join(item[1] for item in sorted(final_middle, key=lambda x: x[0], reverse=True))
 
-                # Maybe pad to num_threads of rows
-                if len(skipped) / len(self.files) < ratio_to_skip_big_progress:
-                    final_str += "\n" * (args.num_threads - len(currently_downloading) + 1)
-
                 if exited:
                     logger.info("Please wait for shutdown…")
                     logger.info(final_str)
@@ -424,6 +427,4 @@ class Status(Thread):
 
 
 status = Status()
-
 throttler = DownloadThrottler()
-throttler.start()

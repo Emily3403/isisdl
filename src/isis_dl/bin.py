@@ -19,7 +19,7 @@ def _maybe_build_checksums_and_exit():
 
         for file in course.list_files():
             with file.open("rb") as f:
-                checksum, _ = csh.calculate_checksum(f, f.name)
+                checksum = csh.calculate_checksum(f)
                 csh.add(checksum)
 
         csh.dump()
@@ -35,7 +35,7 @@ def maybe_build_checksums_and_exit():
 
 
 def maybe_test_checksums_and_exit():
-    if not args.test_checksums:
+    if not getattr(args, "test_checksums", None):
         return
 
     # Keep the checksums up to date.
@@ -53,7 +53,7 @@ def maybe_test_checksums_and_exit():
 
         for file in course.list_files():
             with file.open("rb") as f:
-                checksum, _ = csh.calculate_checksum(f, f.name)
+                checksum = csh.calculate_checksum(f)
                 checksum_mapping.update({file.as_posix(): checksum})
 
         checksums: Dict[str, int] = {}
@@ -80,10 +80,7 @@ def maybe_test_checksums_and_exit():
     exit(0)
 
 
-def maybe_unpack_archive_and_exit():
-    if not args.unzip:
-        return
-
+def unpack_archive_and_exit():
     for _course in os.listdir(path(download_dir_location)):
         course = Course.from_name(_course)
 
@@ -95,19 +92,17 @@ def maybe_unpack_archive_and_exit():
             except shutil.ReadError:
                 pass
 
-    exit(0)
-
 
 def maybe_print_version_and_exit():
     if not args.version:
         return
 
-    print("0.3.2")  # TODO
+    print("0.4")  # TODO
     exit(0)
 
 
 def call_all():
     maybe_build_checksums_and_exit()
     maybe_test_checksums_and_exit()
-    maybe_unpack_archive_and_exit()
+    unpack_archive_and_exit()
     maybe_print_version_and_exit()

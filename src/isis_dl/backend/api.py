@@ -7,6 +7,7 @@ import json
 import os
 import random
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import count
@@ -23,7 +24,7 @@ from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status
 from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger
+from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session
 
 
 @dataclass
@@ -67,7 +68,7 @@ class Course:
         """
 
         def get_url(s: SessionWithKey, queue: Queue[requests.Response], url: str, **kwargs):
-            queue.put(s.get(url, **kwargs))
+            queue.put(get_url_from_session(s, url, **kwargs))
 
         doc_queue: Queue[requests.Response] = Queue()
         vid_queue: Queue[requests.Response] = Queue()
@@ -132,6 +133,9 @@ class Course:
 
     @property
     def ok(self):
+        if args.whitelist != [True] and self in args.whitelist:
+            return True
+
         return self in args.whitelist and self not in args.blacklist
 
     def __str__(self):
@@ -158,25 +162,25 @@ class Course:
 
 class CourseDownloader:
     downloading: Optional[List[MediaContainer]] = None
-    _tried_shutdown: bool = False
+    sessions: List[SessionWithKey] = []
 
     def __init__(self, user: User):
-        self.sessions: List[SessionWithKey] = [SessionWithKey("") for _ in range(num_sessions)]
+        CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
         self.user = user
 
         self.courses: List[Course] = []
 
     @debug_time("Authentication with Shibboleth")
-    def _authenticate(self, num: int, session: SessionWithKey) -> None:
-        session.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+    def _authenticate(self, num: int, s: SessionWithKey) -> None:
+        s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
-        session.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-                     data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
-                           "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                           "shib_idp_ls_supported": "", "_eventId_proceed": "", })
+        s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+               data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
+                     "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                     "shib_idp_ls_supported": "", "_eventId_proceed": "", })
 
-        response = session.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
-                                params={"j_username": self.user.username, "j_password": self.user.password, "_eventId_proceed": ""})
+        response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                          params={"j_username": self.user.username, "j_password": self.user.password, "_eventId_proceed": ""})
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -188,7 +192,7 @@ class CourseDownloader:
 
         # Extract the session key
         soup = BeautifulSoup(response.text)
-        session.key = soup.find("input", {"name": "sesskey"})["value"]
+        s.key = soup.find("input", {"name": "sesskey"})["value"]
 
     def _authenticate_all(self) -> None:
         with ThreadPoolExecutor(num_sessions) as ex:
@@ -196,7 +200,7 @@ class CourseDownloader:
 
     # @debug_time("Find Courses")
     def _find_courses(self):
-        soup = BeautifulSoup(self.s.get("https://isis.tu-berlin.de/user/profile.php?lang=en").text)
+        soup = BeautifulSoup(get_text_from_session(self.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"))
 
         links = []
         titles = []
@@ -230,10 +234,13 @@ class CourseDownloader:
         self.courses = self._find_courses()
         to_download = self.instantiate_files()
 
+        self.check_for_conflicts_in_files(to_download)
+
         CourseDownloader.downloading = to_download
         status.add_files(to_download)
 
-        self.download_runner()
+        # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
+        Thread(target=self.download_runner).start()
 
     @debug_time("Building file list")
     def instantiate_files(self) -> List[MediaContainer]:
@@ -252,17 +259,30 @@ class CourseDownloader:
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
         if enable_multithread:
-            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64)) as ex:  # Each thread has a lifespan of ~4 files
+            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64) or 1) as ex:  # Each thread has a lifespan of ~4 files
                 return list(filter(None, ex.map(_inst_obj, files)))
 
         else:
             return list(filter(None, [_[0](*_[1:]) for _ in files]))
+
+    @staticmethod
+    def check_for_conflicts_in_files(files: List[MediaContainer]):
+        conflicts = defaultdict(list)
+        for item in files:
+            conflicts[item.name].append(item)
+
+        items = [sorted(item, key=lambda x: x.date) for item in conflicts.values() if len(item) != 1]  # type: ignore
+        for row in items:
+            for i, item in enumerate(row):
+                basename, ext = os.path.splitext(item.name)
+                item.name = basename + f"({i}-{len(row) - 1})" + ext
 
     def download_runner(self):
         if self.downloading is None:
             logger.error("No files to download! Exiting!")
             return
 
+        s = time.time()
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads) as ex:
                 ex.map(lambda x: x.download(), self.downloading)  # type: ignore
@@ -270,12 +290,12 @@ class CourseDownloader:
             for item in self.downloading:
                 item.download()
 
+        logger.info(f"Took {time.time() - s:.3f}s")
         new_files = [item for item in self.downloading if item.status == DownloadStatus.succeeded]
-        if args.file_list:
-            if new_files:
-                logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
-            else:
-                logger.info("No newly downloaded files.")
+        if new_files:
+            logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
+        else:
+            logger.info("No newly downloaded files.")
 
     @staticmethod
     @on_kill(-2)
@@ -285,12 +305,10 @@ class CourseDownloader:
             return
 
         for item in to_download:
-            item.stop_download(CourseDownloader._tried_shutdown)
-
-        CourseDownloader._tried_shutdown = True
+            item.stop_download()
 
         # Now wait for the downloads to finish
-        while not all(item.status.done_or_stopped for item in to_download):
+        while not all(item.status.done for item in to_download):
             time.sleep(sleep_time_for_download_interrupt)
 
     def finish(self):
