@@ -1,4 +1,3 @@
-import datetime
 import os
 from hashlib import sha256
 
