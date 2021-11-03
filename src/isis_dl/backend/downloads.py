@@ -351,6 +351,8 @@ class Status(Thread):
                 clear_screen()
             # Gather information
             skipped, failed, exited, currently_downloading, finished = [], [], [], [], []
+            not_started = []
+            not_started.append("a")
 
             for item in self.files:
                 if item.status.done:
@@ -416,9 +418,10 @@ class Status(Thread):
 
                 if exited:
                     logger.info("Please wait for shutdown…")
-                    logger.info(final_str)
-                else:
-                    logger.debug(final_str)
+
+                logger.info(final_str)
+
+            # logger.debug("Files to download:\n" + "\n".join([f"{item.name}, Course: {item.parent_course.name}" for item in self.files if not item.status.done]))
 
     @staticmethod
     @on_kill(-1)

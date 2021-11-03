@@ -26,7 +26,7 @@ def main():
         logger.info("Storing checksums…")
         dl.finish()
         usage, unit = HumanBytes.format(throttler.times_get * download_chunk_size)
-        logger.info(f"Downloaded {usage} {unit} of Data.")
+        logger.info(f"Downloaded {usage:.2f} {unit} of Data.")
 
         logger.info("Unzipping archives…")
         unpack_archive_and_exit()
