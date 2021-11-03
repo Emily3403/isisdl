@@ -271,7 +271,7 @@ class CourseDownloader:
         for item in files:
             conflicts[item.name].append(item)
 
-        items = [sorted(item, key=lambda x: x.date) for item in conflicts.values() if len(item) != 1]  # type: ignore
+        items = [sorted(item, key=lambda x: x.date if x.date is not None else -1) for item in conflicts.values() if len(item) != 1]  # type: ignore
         for row in items:
             for i, item in enumerate(row):
                 basename, ext = os.path.splitext(item.name)
