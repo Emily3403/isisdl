@@ -9,7 +9,12 @@ from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, 
 
 
 def test_working_dir_location():
-    assert working_dir_location == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
+    cwd = working_dir_location
+    if working_dir_location == os.path.join(os.path.expanduser("~"), "test_isis_dl"):
+        from isis_dl.share.settings import _working_dir_location
+        cwd = _working_dir_location
+
+    assert cwd == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 
 def test_download_dir_location():

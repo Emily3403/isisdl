@@ -16,10 +16,11 @@ from typing import Union, Dict, Callable, Optional, List, Tuple
 from urllib.parse import unquote
 
 import requests
+from func_timeout import FunctionTimedOut, func_timeout
 
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode
+    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode, num_tries_download, download_timeout
 
 
 def get_args():
@@ -91,6 +92,10 @@ def startup():
         fp = path(settings_file_location)
 
         def restore_link():
+            try:
+                os.remove(fp)
+            except FileNotFoundError:
+                pass
             os.symlink(file, fp)
 
         # TODO: What if link is invalid
@@ -168,6 +173,10 @@ def get_logger(debug_level: Optional[int] = None):
     return logger
 
 
+class CriticalError(Exception):
+    pass
+
+
 def path(*args) -> str:
     return os.path.join(working_dir_location, *args)
 
@@ -184,26 +193,40 @@ def clear_screen():
     os.system("cls") if is_windows else os.system("clear")
 
 
-def _get_func_session(func, *args, **kwargs) -> requests.Response:
-    while True:
+def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
+    import isis_dl.backend.api as api
+    i = 0
+    while i < num_tries_download:
         try:
-            return func(*args, **kwargs)  # type: ignore
+            return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
+
+        except FunctionTimedOut:
+            logger.warning(f"Timed out getting url ({i} / {num_tries_download - 1}). Sleeping for {sleep_time_for_isis}s")
+            api.CourseDownloader.had_error = True
+            i += 1
 
         except requests.exceptions.ConnectionError:
-            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s ")
-            pass
+            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
+            api.CourseDownloader.had_error = True
+            i += 1
+
+    return None
 
 
-def get_url_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+def get_url_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
     return _get_func_session(sess.get, *args, **kwargs)
 
 
-def get_head_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+def get_head_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
     return _get_func_session(sess.head, *args, **kwargs)
 
 
 def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[str]:
-    if (s := get_url_from_session(sess, *args, **kwargs)).ok:
+    s = get_url_from_session(sess, *args, **kwargs)
+    if s is None:
+        return None
+
+    if s.ok:
         return s.text
 
     return None

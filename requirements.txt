@@ -2,3 +2,4 @@ cryptography
 requests
 beautifulsoup4
 coloredlogs
+func_timeout

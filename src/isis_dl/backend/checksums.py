@@ -9,7 +9,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from json import JSONDecodeError
-from typing import Set, BinaryIO, Union, Optional, List, Iterable
+from typing import Set, BinaryIO, Union, Optional, List
 
 import isis_dl.backend.api as api
 from isis_dl.backend.downloads import MediaContainer, SessionWithKey
@@ -26,26 +26,29 @@ class CheckSumHandler:
     def add(self, checksum: str):
         self.checksums.add(checksum)
 
-    def already_downloaded(self, file: MediaContainer) -> Optional[str]:
+    def already_downloaded(self, file: MediaContainer) -> Union[str, bool, None]:
         checksum = self.calculate_checksum(file)
         if not args.overwrite and checksum in self.checksums:
-            return None
+            return False
 
         return checksum
 
-    def calculate_checksum(self, file: Union[MediaContainer, BinaryIO]) -> str:
+    def calculate_checksum(self, file: Union[MediaContainer, BinaryIO]) -> Union[str, None]:
         if isinstance(file, MediaContainer):
             return self._calculate_checksum_media_container(file)
 
         else:
             return self._calculate_checksum_file(file)
 
-    def _calculate_checksum_media_container(self, file: MediaContainer) -> str:
+    def _calculate_checksum_media_container(self, file: MediaContainer) -> Union[str, None]:
         size = self._generate_size_from_file(file.name)
 
-        chunks = []
+        chunks: List[Optional[bytes]] = []
         # The isis video server is *really* fast (0.01s latency) and it is the one accepting the range parameter. Thus, it is okay if we discard that request.
-        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=0-1"}, params=file.additional_params_for_request, stream=True)
+        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=100-1000"}, params=file.additional_params_for_request, stream=True)
+
+        if req is None:
+            return None
 
         if req.status_code == 200 or file.size is None:
             # Fallback for .zip's
@@ -55,10 +58,14 @@ class CheckSumHandler:
         else:
             req.close()
 
-            def download_chunk_with_offset(s: SessionWithKey, offset: int):
+            def download_chunk_with_offset(s: SessionWithKey, offset: int) -> Optional[bytes]:
+
                 req = get_url_from_session(s, file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
                 # bts = self.ensure_read(req.raw, size.num_bytes_per_point)
-                bts = req.raw.read(size.num_bytes_per_point)
+                if req is None:
+                    return None
+
+                bts: bytes = req.raw.read(size.num_bytes_per_point)
                 req.close()
                 return bts
 
@@ -72,7 +79,7 @@ class CheckSumHandler:
 
             base_skip = file.size // (size.num_data_points - 1)
 
-            sessions = random.sample(api.CourseDownloader.sessions, size.num_data_points)
+            sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
 
             if enable_multithread:
                 with ThreadPoolExecutor(num_sessions) as ex:
@@ -84,25 +91,24 @@ class CheckSumHandler:
 
         return self.calculate_hash(chunks)
 
-    def _calculate_checksum_file(self, file: BinaryIO) -> str:
+    def _calculate_checksum_file(self, file: BinaryIO) -> Optional[str]:
         size = self._generate_size_from_file(file.name)
 
-        chunks = []
+        chunks: List[Optional[bytes]] = []
         file_size = os.path.getsize(file.name)
         base_skip = file_size // (size.num_data_points - 1)
         for offset in range(size.skip_header, file_size - size.skip_footer, base_skip):
             file.seek(offset)
             chunks.append(self.ensure_read(file, size.num_bytes_per_point))
 
-        if "online-tutorium-3.pdf" in file.name:
-            for row in chunks:
-                print(" ".join(str(item) for item in row))
-
         return self.calculate_hash(chunks)
 
     @staticmethod
-    def calculate_hash(chunks: Iterable[bytes]) -> str:
-        return checksum_algorithm(b"".join(chunks)).hexdigest()
+    def calculate_hash(chunks: List[Optional[bytes]]) -> Optional[str]:
+        if any(item is None for item in chunks):
+            return None
+
+        return checksum_algorithm(b"".join(chunks)).hexdigest()  # type: ignore
 
     @staticmethod
     def ensure_read(f: BinaryIO, size: Optional[int] = None) -> bytes:

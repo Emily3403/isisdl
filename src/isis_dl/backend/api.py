@@ -4,6 +4,7 @@ This file manages all interaction with the Shibboleth service and ISIS in genera
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import time
@@ -15,16 +16,16 @@ from json import JSONDecodeError
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import List, Optional, Iterable, Callable, Tuple, Any
+from typing import List, Optional, Iterable, Callable, Tuple, Any, Dict
 
 import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status
+from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
 from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session
+from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session, CriticalError
 
 
 @dataclass
@@ -38,7 +39,7 @@ class Course:
             with open(path(course_name_to_id_file_location)) as f:
                 the_id = json.load(f)[name]
 
-        except (FileNotFoundError, KeyError, JSONDecodeError) as ex:
+        except (FileNotFoundError, KeyError, json.decoder.JSONDecodeError) as ex:
             logger.error(f"Malformed file {path(course_name_to_id_file_location)!r}.")
             raise ex
 
@@ -67,11 +68,11 @@ class Course:
 
         """
 
-        def get_url(s: SessionWithKey, queue: Queue[requests.Response], url: str, **kwargs):
+        def get_url(s: SessionWithKey, queue: Queue[Optional[requests.Response]], url: str, **kwargs):
             queue.put(get_url_from_session(s, url, **kwargs))
 
-        doc_queue: Queue[requests.Response] = Queue()
-        vid_queue: Queue[requests.Response] = Queue()
+        doc_queue: Queue[Optional[requests.Response]] = Queue()
+        vid_queue: Queue[Optional[requests.Response]] = Queue()
 
         def build_file_list():
             # First handle documents → This takes the majority of time
@@ -96,10 +97,19 @@ class Course:
         #
         build_file_list()
 
-        res_soup = BeautifulSoup(doc_queue.get().text)
+        resource_req = doc_queue.get()
+        video_req = vid_queue.get()
+
+        if resource_req is None:
+            raise CriticalError("I could not get the url for the resources! Please restart me and hope it will work this time.")
+
+        if video_req is None:
+            raise CriticalError("I could not get the url for the videos! Please restart me and hope it will work this time.")
+
+        res_soup = BeautifulSoup(resource_req.text)
         resources = [item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")]
 
-        videos_json = vid_queue.get().json()[0]
+        videos_json = video_req.json()[0]
 
         if videos_json["error"]:
             log_level = logger.error
@@ -129,7 +139,8 @@ class Course:
         for directory in Path(path(download_dir_location, self.name)).glob("*"):
             if not directory.stem.startswith(".") and directory.stem not in MediaType.list_excluded_dirs():
                 for file in directory.rglob("*"):
-                    yield file
+                    if not file.is_dir():
+                        yield file
 
     @property
     def ok(self):
@@ -163,6 +174,13 @@ class Course:
 class CourseDownloader:
     downloading: Optional[List[MediaContainer]] = None
     sessions: List[SessionWithKey] = []
+    timings: Dict[str, Optional[float]] = {
+        "auth": None,
+        "course": None,
+        "build": None,
+        "download": None,
+    }
+    had_error: bool = False
 
     def __init__(self, user: User):
         CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
@@ -230,9 +248,17 @@ class CourseDownloader:
         return courses
 
     def start(self):
+        s = time.time()
         self._authenticate_all()
+        CourseDownloader.timings["auth"] = time.time() - s
+
+        s = time.time()
         self.courses = self._find_courses()
+        CourseDownloader.timings["course"] = time.time() - s
+
+        s = time.time()
         to_download = self.instantiate_files()
+        CourseDownloader.timings["build"] = time.time() - s
 
         self.check_for_conflicts_in_files(to_download)
 
@@ -242,7 +268,7 @@ class CourseDownloader:
         # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
         Thread(target=self.download_runner).start()
 
-    @debug_time("Building file list")
+    @debug_time("Building file list", debug_level=logging.INFO)
     def instantiate_files(self) -> List[MediaContainer]:
         # First we get all the possible files
         if enable_multithread:
@@ -290,10 +316,31 @@ class CourseDownloader:
             for item in self.downloading:
                 item.download()
 
-        logger.info(f"Took {time.time() - s:.3f}s")
-        new_files = [item for item in self.downloading if item.status == DownloadStatus.succeeded]
+        CourseDownloader.timings["download"] = time.time() - s
+
+        new_files, failed_files = defaultdict(list), defaultdict(list)
+        for item in self.downloading:
+            if item.status == DownloadStatus.succeeded:
+                new_files[item.parent_course.name].append(item)
+
+            if isinstance(item.status, FailedDownload):
+                failed_files[item.parent_course.name].append(item)
+
+        def format_files(files: Dict[str, List[MediaContainer]]):
+            format_list = []
+            for course, items in files.items():
+                items.sort()
+                format_list.append(course + ":\n  " + "\n  ".join(item.error_format() for item in items))
+
+            return "\n\n".join(format_list)
+
+        if failed_files:
+            logger.info("Failed files:\n" + format_files(failed_files))
+        else:
+            logger.info("No failed files.")
+
         if new_files:
-            logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
+            logger.info("Newly downloaded files:\n" + format_files(new_files))
         else:
             logger.info("No newly downloaded files.")
 

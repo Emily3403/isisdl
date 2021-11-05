@@ -7,6 +7,8 @@ import datetime
 import enum
 import math
 import os
+import random
+import string
 import time
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
@@ -18,7 +20,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend import api
-from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time
+from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
 from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
@@ -94,50 +96,92 @@ class DownloadThrottler(Thread):
         return int(args.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
 
 
+class FailedDownload(enum.Enum):
+    link_did_not_redirect = enum.auto()
+    empty_folder = enum.auto()
+    timeout = enum.auto()
+    stopped = enum.auto()
+
+    @property
+    def done(self):
+        return True
+
+    @property
+    def reason(self) -> str:
+        if self == FailedDownload.link_did_not_redirect:
+            return "The link did not redirect."
+
+        if self == FailedDownload.empty_folder:
+            return "The folder was empty."
+
+        if self == FailedDownload.timeout:
+            return f"The request timed out ({num_tries_download} tried)."
+
+        if self == FailedDownload.stopped:
+            return "The download was stopped by the user."
+
+        return ""
+
+    @property
+    def fix(self) -> str:
+        if self == FailedDownload.link_did_not_redirect:
+            return "None. This can only be fixed by a programmer."
+
+        if self == FailedDownload.empty_folder:
+            return "None. This cannot be fixed."
+
+        if self == FailedDownload.timeout:
+            return "Try to restart me and hope for the best."
+
+        if self == FailedDownload.stopped:
+            return "Don't cancel the download"
+
+        return ""
+
+
 class DownloadStatus(enum.Enum):
     not_started = enum.auto()
     downloading = enum.auto()
-    suspended = enum.auto()
+    waiting_for_checksum = enum.auto()
     succeeded = enum.auto()
-    failed = enum.auto()
 
     # Special states
     found_by_checksum = enum.auto()
     stopped = enum.auto()
-    stopped_done = enum.auto()
 
     @property
     def done(self):
-        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum, DownloadStatus.failed, DownloadStatus.stopped_done}  # O(1) lookup time goes brr
+        return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum}  # O(1) lookup time goes brr
 
-    @staticmethod
-    def make_progress_bar(item: MediaContainer):
-        start, end = "╶", "╴"
 
-        def chop_to_last_10(num: Optional[float]) -> Optional[int]:
-            if num is None:
-                return None
+def make_progress_bar(item: MediaContainer):
+    start, end = "╶", "╴"
 
-            return int(num * progress_bar_resolution)
+    def chop_to_last_10(num: Optional[float]) -> Optional[int]:
+        if num is None:
+            return None
 
-        progress = chop_to_last_10(item.percent_done)
+        return int(num * progress_bar_resolution)
 
-        string = start
-        if progress is None:
-            string += "~" * progress_bar_resolution
+    progress = chop_to_last_10(item.percent_done)
 
-        else:
-            string += "█" * progress + " " * (progress_bar_resolution - progress)
+    string = start
+    if progress is None:
+        string += "~" * progress_bar_resolution
 
-        string += end
+    else:
+        string += "█" * progress + " " * (progress_bar_resolution - progress)
 
-        return string
+    string += end
+
+    return string
 
 
 class MediaType(enum.Enum):
     video = enum.auto()
     archive = enum.auto()
     document = enum.auto()
+    not_found = enum.auto()
 
     @property
     def dir_name(self):
@@ -167,20 +211,61 @@ class MediaContainer:
     size: Optional[int] = None
     date: Optional[datetime.datetime] = None
     additional_params_for_request: Dict[str, str] = field(default_factory=lambda: {})
-    status: DownloadStatus = DownloadStatus.not_started
+    status: Union[DownloadStatus, FailedDownload] = DownloadStatus.not_started
     already_downloaded: int = 0
+    checksum: Union[str, bool, None] = None
 
     def __post_init__(self):
         self.name = sanitize_name_for_dir(self.name)
+
+        self.checksum = self.parent_course.checksum_handler.already_downloaded(self)
+
+        if self.checksum is None:
+            self.status = FailedDownload.timeout
+
+        elif self.checksum is False:
+            self.status = DownloadStatus.found_by_checksum
+            self.already_downloaded = self.size or 0
 
     @staticmethod
     def name_from_url(name: str) -> str:
         return name.split("/")[-1].split("?")[0]
 
+    @staticmethod
+    def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, Tuple[Optional[int], Optional[datetime.datetime]]]:
+        additional_params = additional_params or {}
+        # Read the size from url
+        req = get_url_from_session(s, url, stream=True, params=additional_params)
+        if req is None:
+            return None
+
+        headers = req.headers
+        req.close()
+
+        try:
+            size: Optional[int] = int(headers["content-length"])
+        except KeyError:
+            size = None
+
+        try:
+            date: Optional[datetime.datetime] = parsedate_to_datetime(headers["last-modified"])
+        except KeyError:
+            date = None
+
+        return size, date
+
     @classmethod
     def from_video(cls, s: SessionWithKey, video: Dict[str, str], parent_course):
         timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
-        return cls(MediaType.video, parent_course, s, video["url"], video["title"] + video["fileext"], date=timestamp)
+        url = video["url"]
+        info = MediaContainer.extract_info_from_header(s, url)
+        if info is None:
+            cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.timeout)
+            return
+
+        size, _ = info
+
+        return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
 
     @classmethod
     def from_url(cls, s: SessionWithKey, url: str, parent_course):
@@ -198,11 +283,18 @@ class MediaContainer:
             folder_id = url.split("id=")[-1]
             # Use the POST form
             req = get_head_from_session(s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
+            name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+            if req is None:
+                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.timeout)
+
             if not req.ok:
                 logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {req.reason}")
-                return
+                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
 
             filename = req.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
+            name, ext = os.path.splitext(filename)
+
+            filename = name[:-9] + ext
             media_type = MediaType.archive
             url = "https://isis.tu-berlin.de/mod/folder/download_folder.php"
             additional_kwargs = {"id": folder_id, "sesskey": s.key}
@@ -210,11 +302,14 @@ class MediaContainer:
         elif "mod/resource" in url:
             # Follow the link and get the file
             req = get_url_from_session(s, url, allow_redirects=False)
+            name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+            if req is None:
+                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
 
             if req.status_code != 303:
                 # TODO: Still download the content
                 logger.warning(f"The {url = } (Course = {parent_course}) does not redirect.  I am going to ignore it!")
-                return
+                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
 
             redirect = BeautifulSoup(req.text)
 
@@ -230,28 +325,25 @@ class MediaContainer:
             filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
 
         # Read the size from url
-        headers = get_head_from_session(s, url).headers
-        try:
-            size: Optional[int] = int(headers["content-length"])
-        except KeyError:
-            size = None
+        info = MediaContainer.extract_info_from_header(s, url, additional_kwargs)
+        if info is None:
+            cls(media_type, parent_course, s, url, filename, status=FailedDownload.timeout)
+            return
 
-        try:
-            date: Optional[datetime.datetime] = parsedate_to_datetime(headers["last-modified"])
-        except KeyError:
-            date = None
+        size, date = info
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
     def download(self) -> None:
         if self.status != DownloadStatus.not_started:
             if self.status == DownloadStatus.stopped:
-                self.status = DownloadStatus.stopped_done
-            else:
-                logger.warning(f"You have prompted a download of an already started / finished file ({self.status = }). This could be a bug! {self.status = }")
+                self.status = FailedDownload.stopped
             return
 
         running_download = get_url_from_session(self.s, self.url, stream=True, params=self.additional_params_for_request)
+        if running_download is None:
+            self.status = FailedDownload.timeout
+            return
 
         try:
             self.size = int(running_download.headers["content-length"])
@@ -262,13 +354,10 @@ class MediaContainer:
         if not running_download.ok:
             logger.error(f"The running download ({self}) is not okay: Status: {running_download.status_code} - {running_download.reason} "
                          f"(Course: {self.parent_course.name}). Aborting!")
-            self.status = DownloadStatus.failed
+            self.status = FailedDownload.timeout
             return
 
-        if (checksum := self.parent_course.checksum_handler.already_downloaded(self)) is None:
-            self.status = DownloadStatus.found_by_checksum
-            running_download.close()
-            return
+        self.status = DownloadStatus.waiting_for_checksum
 
         self.status = DownloadStatus.downloading
 
@@ -290,7 +379,8 @@ class MediaContainer:
         self.status = DownloadStatus.succeeded
 
         # Only register the hash after successfully downloading the file
-        self.parent_course.checksum_handler.add(checksum)
+        if self.checksum is not None and not isinstance(self.checksum, bool):
+            self.parent_course.checksum_handler.add(self.checksum)
         running_download.close()
 
     def stop_download(self):
@@ -320,10 +410,17 @@ class MediaContainer:
     def __repr__(self):
         return f"[{HumanBytes.format(self.already_downloaded)} / {HumanBytes.format(self.size)}] \t {self}"
 
+    def error_format(self):
+        if not isinstance(self.status, FailedDownload):
+            return self.name
+
+        return self.name + "\n    Reason: " + self.status.reason + "\n    Possible fix: " + self.status.fix + "\n"
+
 
 class Status(Thread):
     _instance = None
     _running = True
+    sum_file_sizes = 0
 
     def __new__(cls):
         # Singleton
@@ -340,6 +437,7 @@ class Status(Thread):
 
     def add_files(self, files: List[MediaContainer]):
         self.files.extend(files)
+        Status.sum_file_sizes += sum(item.size if item.size is not None else 0 for item in files)
 
     def run(self) -> None:
         while Status._running:
@@ -351,8 +449,6 @@ class Status(Thread):
                 clear_screen()
             # Gather information
             skipped, failed, exited, currently_downloading, finished = [], [], [], [], []
-            not_started = []
-            not_started.append("a")
 
             for item in self.files:
                 if item.status.done:
@@ -361,10 +457,10 @@ class Status(Thread):
                 if item.status == DownloadStatus.found_by_checksum:
                     skipped.append(item)
 
-                if item.status == DownloadStatus.stopped_done:
+                if item.status == FailedDownload.stopped:
                     exited.append(item)
 
-                if item.status == DownloadStatus.failed:
+                elif isinstance(item.status, FailedDownload):
                     failed.append(item)
 
                 if item.status == DownloadStatus.downloading:
@@ -378,15 +474,19 @@ class Status(Thread):
                 return format_int(len(lst)) + " " * (len(format_int(len(self.files))) + 3)
 
             if args.download_rate is None:
-                band_usage = ""
+                bandwidth_usage = "\n"
             else:
-                usage, unit = HumanBytes.format(throttler.used_tokens.qsize() * download_chunk_size / token_queue_refresh_rate)
-                band_usage = f"Current bandwidth usage: {usage:.2f} {unit}\n\n"
+                curr_download_usage, curr_download_unit = HumanBytes.format(throttler.used_tokens.qsize() * download_chunk_size / token_queue_refresh_rate)
+                bandwidth_usage = f"Current bandwidth usage: {curr_download_usage:.2f} {curr_download_unit}\n\n"
+
+            amount_downloaded, amount_downloaded_unit = HumanBytes.format(sum(item.already_downloaded for item in self.files))
+            amount_downloaded_max, amount_downloaded_max_unit = HumanBytes.format(Status.sum_file_sizes)
 
             if Status._running:
                 logger.info(
                     "\n -- Status --\n\n" +
-                    band_usage +
+                    f"Downloaded {amount_downloaded:.3f} {amount_downloaded_unit} / {amount_downloaded_max:.3f} {amount_downloaded_max_unit}\n" +
+                    bandwidth_usage +
                     f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
                     f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +
                     f"Skipped:  {format_lst(exited)} files (Exit)\n" +
@@ -403,7 +503,7 @@ class Status(Thread):
                 second = e_format([num[0] for num in max_values])
                 second_units = [item[1] if item[0] is not None else '   ' for item in max_values]
 
-                progress_str = [item.status.make_progress_bar(item) for item in currently_downloading]
+                progress_str = [make_progress_bar(item) for item in currently_downloading]
 
                 final_str = f"Currently downloading: {len(currently_downloading)} files\n\n"
 
@@ -420,8 +520,6 @@ class Status(Thread):
                     logger.info("Please wait for shutdown…")
 
                 logger.info(final_str)
-
-            # logger.debug("Files to download:\n" + "\n".join([f"{item.name}, Course: {item.parent_course.name}" for item in self.files if not item.status.done]))
 
     @staticmethod
     @on_kill(-1)
