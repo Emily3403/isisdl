@@ -187,15 +187,15 @@ class MediaType(enum.Enum):
     @property
     def dir_name(self):
         if self == MediaType.video:
-            return "Videos/"
+            return "Videos"
         elif self == MediaType.archive:
-            return "Archives/"
+            return "Archives"
         else:
-            return "Material/"
+            return "Material"
 
     @staticmethod
     def list_dirs() -> Iterable[str]:
-        return "Videos/", "Material/", "Archives/"
+        return "Videos", "Material", "Archives"
 
     @staticmethod
     def list_excluded_dirs() -> Iterable[str]:

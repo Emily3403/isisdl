@@ -183,7 +183,7 @@ def path(*args) -> str:
 
 def sanitize_name_for_dir(name: str) -> str:
     name = unquote(name)
-    return name.replace("/", "-")
+    return name.replace("/", "-").replace("\\", "-")
 
 
 def clear_screen():

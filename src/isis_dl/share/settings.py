@@ -18,20 +18,20 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 # The directory where files get saved to
-download_dir_location = "Courses/"
+download_dir_location = "Courses"
 
 # The directory for intern stuff such as passwords
-intern_dir_location = ".intern/"
+intern_dir_location = ".intern"
 
 # The directory for unpacked archives such as .zip and .tar.gz
-unpacked_archive_dir_location = "UnpackedArchives/"
+unpacked_archive_dir_location = "UnpackedArchives"
 unpacked_archive_suffix = ".unpacked"
 
 # Will create a symlink in the working_dir.
 settings_file_location = os.path.join(intern_dir_location, "settings.py")
 
 # Logs
-log_dir_location = os.path.join(intern_dir_location, "logs/")
+log_dir_location = os.path.join(intern_dir_location, "logs")
 log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
 
 whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
@@ -72,7 +72,7 @@ checksum_range_parameter_ignored = 512
 
 # < Password / Cryptography options >
 
-password_dir = os.path.join(intern_dir_location, "Passwords/")
+password_dir = os.path.join(intern_dir_location, "Passwords")
 clear_password_file = os.path.join(password_dir, ".pass.clean")
 encrypted_password_file = os.path.join(password_dir, ".pass.encrypted")
 
