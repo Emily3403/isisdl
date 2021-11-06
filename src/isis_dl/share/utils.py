@@ -186,7 +186,14 @@ def path(*args) -> str:
 
 def sanitize_name_for_dir(name: str) -> str:
     name = unquote(name)
-    return name.replace("/", "-").replace("\\", "-")
+
+    not_found_char = "-"
+    if is_windows:
+        name = name.replace("/", not_found_char).replace("\\", not_found_char).replace("*", not_found_char)
+        name = name.replace("<", not_found_char).replace(">", not_found_char).replace("|", not_found_char)
+        return name.strip()
+
+    return name.replace("/", "-").replace("\\", "-").strip()
 
 
 def clear_screen():
