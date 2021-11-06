@@ -4,6 +4,7 @@ This file manages all interaction with the Shibboleth service and ISIS in genera
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import time
@@ -15,16 +16,32 @@ from json import JSONDecodeError
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import List, Optional, Iterable, Callable, Tuple, Any
+from typing import List, Optional, Iterable, Callable, Dict, Union
 
 import requests
 from bs4 import BeautifulSoup
 
 from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status
+from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
 from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session
+from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session, CriticalError, classproperty
+
+
+@dataclass
+class AlmostMediaContainer:
+    func: Callable[[SessionWithKey, Course, Union[str, Dict[str, str]]], MediaContainer]
+    s: SessionWithKey
+    parent_course: Course
+    arg: Union[str, Dict[str, str]]
+    is_video: bool
+    size: int = 0
+
+    def instantiate(self):
+        return self.func(self.s, self.parent_course, self.arg)
+
+    def __str__(self):
+        return self.arg
 
 
 @dataclass
@@ -38,7 +55,7 @@ class Course:
             with open(path(course_name_to_id_file_location)) as f:
                 the_id = json.load(f)[name]
 
-        except (FileNotFoundError, KeyError, JSONDecodeError) as ex:
+        except (FileNotFoundError, KeyError, json.decoder.JSONDecodeError) as ex:
             logger.error(f"Malformed file {path(course_name_to_id_file_location)!r}.")
             raise ex
 
@@ -62,16 +79,16 @@ class Course:
     def url(self) -> str:
         return "https://isis.tu-berlin.de/course/view.php?id=" + self.course_id
 
-    def download(self, parent: CourseDownloader) -> List[Tuple[Callable[[Any, ...], MediaContainer]]]:  # type: ignore
+    def download(self, parent: CourseDownloader) -> List[AlmostMediaContainer]:
         """
 
         """
 
-        def get_url(s: SessionWithKey, queue: Queue[requests.Response], url: str, **kwargs):
+        def get_url(s: SessionWithKey, queue: Queue[Optional[requests.Response]], url: str, **kwargs):
             queue.put(get_url_from_session(s, url, **kwargs))
 
-        doc_queue: Queue[requests.Response] = Queue()
-        vid_queue: Queue[requests.Response] = Queue()
+        doc_queue: Queue[Optional[requests.Response]] = Queue()
+        vid_queue: Queue[Optional[requests.Response]] = Queue()
 
         def build_file_list():
             # First handle documents → This takes the majority of time
@@ -96,10 +113,19 @@ class Course:
         #
         build_file_list()
 
-        res_soup = BeautifulSoup(doc_queue.get().text)
+        resource_req = doc_queue.get()
+        video_req = vid_queue.get()
+
+        if resource_req is None:
+            raise CriticalError("I could not get the url for the resources! Please restart me and hope it will work this time.")
+
+        if video_req is None:
+            raise CriticalError("I could not get the url for the videos! Please restart me and hope it will work this time.")
+
+        res_soup = BeautifulSoup(resource_req.text, features="html.parser")
         resources = [item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")]
 
-        videos_json = vid_queue.get().json()[0]
+        videos_json = video_req.json()[0]
 
         if videos_json["error"]:
             log_level = logger.error
@@ -114,10 +140,10 @@ class Course:
         else:
             videos = [item for item in videos_json["data"]["videos"]]
 
-        x = [(MediaContainer.from_url, parent.s, resource, self) for resource in resources]
-        y = [(MediaContainer.from_video, parent.s, video, self) for video in videos]
+        x = [AlmostMediaContainer(MediaContainer.from_url, parent.s, self, resource, False) for resource in resources]  # type: ignore
+        y = [AlmostMediaContainer(MediaContainer.from_video, parent.s, self, video, True) for video in videos]  # type: ignore
 
-        return x + y  # type: ignore
+        return x + y
 
     def path(self, *args) -> str:
         """
@@ -129,7 +155,8 @@ class Course:
         for directory in Path(path(download_dir_location, self.name)).glob("*"):
             if not directory.stem.startswith(".") and directory.stem not in MediaType.list_excluded_dirs():
                 for file in directory.rglob("*"):
-                    yield file
+                    if not file.is_dir():
+                        yield file
 
     @property
     def ok(self):
@@ -144,6 +171,7 @@ class Course:
     def __repr__(self):
         return f"{self.name} ({self.course_id})"
 
+    # TODO: Is this ever used?
     def __eq__(self, other):
         if other is True:
             return True
@@ -161,14 +189,24 @@ class Course:
 
 
 class CourseDownloader:
-    downloading: Optional[List[MediaContainer]] = None
     sessions: List[SessionWithKey] = []
+    courses: List[Course] = []
+    not_inst_files: List[AlmostMediaContainer] = []
+    files: List[MediaContainer] = []
+
+    timings: Dict[str, Optional[float]] = {
+        "auth": None,
+        "course": None,
+        "build": None,
+        "inst": None,
+        "conflict": None,
+        "download": None,
+    }
+    had_error: bool = False
 
     def __init__(self, user: User):
         CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
         self.user = user
-
-        self.courses: List[Course] = []
 
     @debug_time("Authentication with Shibboleth")
     def _authenticate(self, num: int, s: SessionWithKey) -> None:
@@ -185,13 +223,13 @@ class CourseDownloader:
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
             logger.error(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
-            exit(69)
+            os._exit(69)
 
         if num == 0:
             logger.info(f"Credentials for {self.user} accepted!")
 
         # Extract the session key
-        soup = BeautifulSoup(response.text)
+        soup = BeautifulSoup(response.text, features="html.parser")
         s.key = soup.find("input", {"name": "sesskey"})["value"]
 
     def _authenticate_all(self) -> None:
@@ -200,7 +238,7 @@ class CourseDownloader:
 
     # @debug_time("Find Courses")
     def _find_courses(self):
-        soup = BeautifulSoup(get_text_from_session(self.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"))
+        soup = BeautifulSoup(get_text_from_session(CourseDownloader.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"), features="html.parser")
 
         links = []
         titles = []
@@ -220,36 +258,40 @@ class CourseDownloader:
 
         if len(courses) == 0:
             logger.warning(f"The {len(courses) = }. I am not downloading anything!")
-            exit(1)
+            os._exit(1)
         else:
             logger.info("I am downloading the following courses:\n" + "\n".join(repr(item) for item in courses))
 
         for course in courses:
             course.prepare_dirs()
 
-        return courses
+        CourseDownloader.courses = courses
 
     def start(self):
-        self._authenticate_all()
-        self.courses = self._find_courses()
-        to_download = self.instantiate_files()
+        def time_func(func: Callable[[], None], entry: str) -> None:
+            s = time.time()
+            func()
+            CourseDownloader.timings[entry] = time.time() - s
 
-        self.check_for_conflicts_in_files(to_download)
+        time_func(self._authenticate_all, "auth")
+        time_func(self._find_courses, "course")
+        time_func(self.build_file_list, "build")
+        time_func(self.instantiate_files, "inst")
+        time_func(self.check_for_conflicts_in_files, "conflict")
 
-        CourseDownloader.downloading = to_download
-        status.add_files(to_download)
+        status.add_files(CourseDownloader.files)
 
         # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
         Thread(target=self.download_runner).start()
 
-    @debug_time("Building file list")
-    def instantiate_files(self) -> List[MediaContainer]:
+    @debug_time("Building file list", debug_level=logging.INFO)
+    def build_file_list(self) -> None:
         # First we get all the possible files
         if enable_multithread:
-            with ThreadPoolExecutor(len(self.courses)) as ex:
-                _files = list(ex.map(lambda x: x.download(self), self.courses))  # type: ignore
+            with ThreadPoolExecutor(len(CourseDownloader.courses)) as ex:
+                _files = list(ex.map(lambda x: x.download(self), CourseDownloader.courses))  # type: ignore
         else:
-            _files = [item.download(self) for item in self.courses]
+            _files = [item.download(self) for item in CourseDownloader.courses]
 
         files = [item for row in _files for item in row if item is not None]
 
@@ -257,18 +299,28 @@ class CourseDownloader:
         # If they are downloaded at the "same" time the utilization maximizes.
         random.shuffle(files)
 
+        CourseDownloader.not_inst_files = files
+
+    @debug_time("Instantiating file list", debug_level=logging.INFO)
+    def instantiate_files(self):
+        files = CourseDownloader.not_inst_files
+
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
+        # TODO: Remove filter
+        to_download: List[MediaContainer]
         if enable_multithread:
             with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64) or 1) as ex:  # Each thread has a lifespan of ~4 files
-                return list(filter(None, ex.map(_inst_obj, files)))
+                to_download = list(filter(None, ex.map(lambda x: x.instantiate(), files)))  # type: ignore
 
         else:
-            return list(filter(None, [_[0](*_[1:]) for _ in files]))
+            to_download = list(filter(None, [file.instantiate() for file in files]))
+
+        CourseDownloader.files = to_download
 
     @staticmethod
-    def check_for_conflicts_in_files(files: List[MediaContainer]):
+    def check_for_conflicts_in_files():
         conflicts = defaultdict(list)
-        for item in files:
+        for item in CourseDownloader.files:
             conflicts[item.name].append(item)
 
         items = [sorted(item, key=lambda x: x.date if x.date is not None else -1) for item in conflicts.values() if len(item) != 1]  # type: ignore
@@ -278,31 +330,50 @@ class CourseDownloader:
                 item.name = basename + f"({i}-{len(row) - 1})" + ext
 
     def download_runner(self):
-        if self.downloading is None:
+        if not self.files:
             logger.error("No files to download! Exiting!")
             return
 
         s = time.time()
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads) as ex:
-                ex.map(lambda x: x.download(), self.downloading)  # type: ignore
+                ex.map(lambda x: x.download(), self.files)  # type: ignore
         else:
-            for item in self.downloading:
+            for item in self.files:
                 item.download()
 
-        logger.info(f"Took {time.time() - s:.3f}s")
-        new_files = [item for item in self.downloading if item.status == DownloadStatus.succeeded]
+        CourseDownloader.timings["download"] = time.time() - s
+
+        new_files, failed_files = defaultdict(list), defaultdict(list)
+        for item in self.files:
+            if item.status == DownloadStatus.succeeded:
+                new_files[item.parent_course.name].append(item)
+
+            if isinstance(item.status, FailedDownload):
+                failed_files[item.parent_course.name].append(item)
+
+        def format_files(files: Dict[str, List[MediaContainer]]):
+            format_list = []
+            for course, items in files.items():
+                items.sort()
+                format_list.append(course + ":\n    " + "\n    ".join(item.error_format() for item in items))
+
+            return "\n\n".join(format_list)
+
+        if failed_files:
+            logger.info("Failed files:\n" + format_files(failed_files))
+        else:
+            logger.info("No failed files.")
+
         if new_files:
-            logger.info("Newly downloaded files:\n" + "\n".join(item.name for item in sorted(new_files)))
+            logger.info("Newly downloaded files:\n" + format_files(new_files))
         else:
             logger.info("No newly downloaded files.")
 
     @staticmethod
     @on_kill(-2)
     def shutdown_running_downloads(*_):
-        to_download = CourseDownloader.downloading
-        if to_download is None:
-            return
+        to_download = CourseDownloader.files
 
         for item in to_download:
             item.stop_download()
@@ -320,7 +391,7 @@ class CourseDownloader:
         except (FileNotFoundError, JSONDecodeError):
             pass
 
-        current_mapping = {item.name: item.course_id for item in self.courses}
+        current_mapping = {item.name: item.course_id for item in CourseDownloader.courses}
 
         # Only write changes if they are necessary
         if current_mapping != previous_mapping:
@@ -329,13 +400,9 @@ class CourseDownloader:
             with open(path(course_name_to_id_file_location), "w") as f:
                 json.dump(previous_mapping, f, indent=4, sort_keys=True)
 
-        for item in self.courses:
+        for item in CourseDownloader.courses:
             item.finish()
 
-    @property
-    def s(self) -> SessionWithKey:
-        return random.choice(self.sessions)
-
-
-def _inst_obj(x):
-    return x[0](*x[1:])
+    @classproperty
+    def s(cls) -> SessionWithKey:
+        return random.choice(cls.sessions)

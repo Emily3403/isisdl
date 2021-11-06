@@ -1,51 +1,25 @@
-"""
-This file provides binary-like functions and will exit if any of those are triggered.
-"""
+#!/usr/bin/env python3
+
 import os
-import shutil
 from typing import Dict, List
 
+import isis_dl.bin.build_checksums as build_checksums
 from isis_dl.backend.api import Course
 from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.share.settings import download_dir_location, unpacked_archive_dir_location, unpacked_archive_suffix
-from isis_dl.share.utils import path, args, logger
+from isis_dl.share.settings import download_dir_location
+from isis_dl.share.utils import path, logger, CriticalError
 
 
-def _maybe_build_checksums_and_exit():
-    for _course in os.listdir(path(download_dir_location)):
-        course = Course.from_name(_course)
-
-        csh = CheckSumHandler(course, autoload_checksums=False)
-
-        for file in course.list_files():
-            with file.open("rb") as f:
-                checksum = csh.calculate_checksum(f)
-                csh.add(checksum)
-
-        csh.dump()
-
-
-def maybe_build_checksums_and_exit():
-    if not args.build_checksums:
-        return
-
-    _maybe_build_checksums_and_exit()
-
-    exit(0)
-
-
-def maybe_test_checksums_and_exit():
-    if not getattr(args, "test_checksums", None):
-        return
-
-    # Keep the checksums up to date.
-    _maybe_build_checksums_and_exit()
+def main():
+    # Re-build the checksums
+    build_checksums.main()
 
     def print_percent(num: int, max_num: int):
         return f"{num} / {max_num} = {num / (max_num or 1) * 100}%"
 
     for _course in os.listdir(path(download_dir_location)):
         course = Course.from_name(_course)
+        logger.info("")
         logger.info(f"Analyzing course {course}")
 
         checksum_mapping = {}
@@ -54,6 +28,10 @@ def maybe_test_checksums_and_exit():
         for file in course.list_files():
             with file.open("rb") as f:
                 checksum = csh.calculate_checksum(f)
+                if checksum is None:
+                    # This is just a dummy placeholder. Mypy doesn't (and can't) know that checksum will never be None.
+                    raise CriticalError
+
                 checksum_mapping.update({file.as_posix(): checksum})
 
         checksums: Dict[str, int] = {}
@@ -77,32 +55,6 @@ def maybe_test_checksums_and_exit():
                 same = "\n".join(value_)
                 logger.debug(f"The following have the checksum {key_}:\n{same}\n")
 
-    exit(0)
 
-
-def unpack_archive_and_exit():
-    for _course in os.listdir(path(download_dir_location)):
-        course = Course.from_name(_course)
-
-        for file in course.list_files():
-            try:
-                new_path = course.path(unpacked_archive_dir_location, file.name + unpacked_archive_suffix)
-                shutil.unpack_archive(file.as_posix(), new_path)
-
-            except shutil.ReadError:
-                pass
-
-
-def maybe_print_version_and_exit():
-    if not args.version:
-        return
-
-    print("0.4")  # TODO
-    exit(0)
-
-
-def call_all():
-    maybe_build_checksums_and_exit()
-    maybe_test_checksums_and_exit()
-    unpack_archive_and_exit()
-    maybe_print_version_and_exit()
+if __name__ == '__main__':
+    main()

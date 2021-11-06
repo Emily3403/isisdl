@@ -1,6 +1,7 @@
 import datetime
 import os
 import platform
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -17,20 +18,20 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 # The directory where files get saved to
-download_dir_location = "Courses/"
+download_dir_location = "Courses"
 
 # The directory for intern stuff such as passwords
-intern_dir_location = ".intern/"
+intern_dir_location = ".intern"
 
 # The directory for unpacked archives such as .zip and .tar.gz
-unpacked_archive_dir_location = "UnpackedArchives/"
+unpacked_archive_dir_location = "UnpackedArchives"
 unpacked_archive_suffix = ".unpacked"
 
 # Will create a symlink in the working_dir.
 settings_file_location = os.path.join(intern_dir_location, "settings.py")
 
 # Logs
-log_dir_location = os.path.join(intern_dir_location, "logs/")
+log_dir_location = os.path.join(intern_dir_location, "logs")
 log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
 
 whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
@@ -71,7 +72,7 @@ checksum_range_parameter_ignored = 512
 
 # < Password / Cryptography options >
 
-password_dir = os.path.join(intern_dir_location, "Passwords/")
+password_dir = os.path.join(intern_dir_location, "Passwords")
 clear_password_file = os.path.join(password_dir, ".pass.clean")
 encrypted_password_file = os.path.join(password_dir, ".pass.encrypted")
 
@@ -85,7 +86,6 @@ hash_length = 32
 # < Password / Cryptography options >
 
 # < Miscellaneous options >
-
 
 # The number of places the progress bar has.
 progress_bar_resolution = 16
@@ -127,6 +127,13 @@ download_chunk_size = 2 ** 14
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
 sleep_time_for_isis = 3
 
+# Will retry downloading a url ↓ times. If it fails, that MediaContainer will not get downloaded.
+num_tries_download = 5
+
+# Will fail a download if ISIS is not responding in ↓ amount of s
+download_timeout = 10
+
+
 # When cancelling downloads it is waited ↓ s to check if the downloads have finished.
 sleep_time_for_download_interrupt = 0.25
 
@@ -135,5 +142,10 @@ is_windows = platform.system() == "Windows"
 
 # DownloadThrottler refresh rate in s
 token_queue_refresh_rate = 0.01
+
+if "pytest" in sys.modules:
+    # Yes, this is evil. But I don't want to ruin the directory of the user.
+    _working_dir_location = working_dir_location
+    working_dir_location = os.path.join(os.path.expanduser("~"), "test_isis_dl")
 
 # </ Miscellaneous options >

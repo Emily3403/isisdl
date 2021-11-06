@@ -9,19 +9,24 @@ from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, 
 
 
 def test_working_dir_location():
-    assert working_dir_location == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
+    cwd = working_dir_location
+    if working_dir_location == os.path.join(os.path.expanduser("~"), "test_isis_dl"):
+        from isis_dl.share.settings import _working_dir_location
+        cwd = _working_dir_location
+
+    assert cwd == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
 
 
 def test_download_dir_location():
-    assert download_dir_location == "Courses/"
+    assert download_dir_location == "Courses"
 
 
 def test_intern_dir_location():
-    assert intern_dir_location == ".intern/"
+    assert intern_dir_location == ".intern"
 
 
 def test_unpacked_archive_dir_location():
-    assert unpacked_archive_dir_location == "UnpackedArchives/"
+    assert unpacked_archive_dir_location == "UnpackedArchives"
 
 
 def test_unpacked_archive_suffix():
@@ -33,7 +38,7 @@ def test_settings_file_location():
 
 
 def test_log_dir_location():
-    assert log_dir_location == os.path.join(intern_dir_location, "logs/")
+    assert log_dir_location == os.path.join(intern_dir_location, "logs")
 
 
 def test_log_file_location():
@@ -73,7 +78,7 @@ def test_checksum_range_parameter_ignored():
 
 
 def test_password_dir():
-    assert password_dir == os.path.join(intern_dir_location, "Passwords/")
+    assert password_dir == os.path.join(intern_dir_location, "Passwords")
 
 
 def test_clear_password_file():

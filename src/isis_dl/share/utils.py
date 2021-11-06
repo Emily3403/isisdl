@@ -12,14 +12,15 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from queue import PriorityQueue
-from typing import Union, Dict, Callable, Optional, List, Tuple
+from typing import Union, Callable, Optional, List, Tuple
 from urllib.parse import unquote
 
 import requests
+from func_timeout import FunctionTimedOut, func_timeout
 
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode
+    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode, num_tries_download, download_timeout
 
 
 def get_args():
@@ -91,7 +92,14 @@ def startup():
         fp = path(settings_file_location)
 
         def restore_link():
-            os.symlink(file, fp)
+            try:
+                os.remove(fp)
+            except FileNotFoundError:
+                pass
+
+            if not is_windows:
+                # Sym-linking isn't really supported on windows / not in a uniform way. I am not doing that.
+                os.symlink(file, fp)
 
         # TODO: What if link is invalid
         if os.path.exists(fp):
@@ -168,13 +176,24 @@ def get_logger(debug_level: Optional[int] = None):
     return logger
 
 
+class CriticalError(Exception):
+    pass
+
+
 def path(*args) -> str:
     return os.path.join(working_dir_location, *args)
 
 
 def sanitize_name_for_dir(name: str) -> str:
     name = unquote(name)
-    return name.replace("/", "-")
+
+    not_found_char = "-"
+    if is_windows:
+        name = name.replace("/", not_found_char).replace("\\", not_found_char).replace("*", not_found_char)
+        name = name.replace("<", not_found_char).replace(">", not_found_char).replace("|", not_found_char)
+        return name.strip()
+
+    return name.replace("/", "-").replace("\\", "-").strip()
 
 
 def clear_screen():
@@ -184,29 +203,49 @@ def clear_screen():
     os.system("cls") if is_windows else os.system("clear")
 
 
-def _get_func_session(func, *args, **kwargs) -> requests.Response:
-    while True:
+def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
+    import isis_dl.backend.api as api
+    i = 0
+    while i < num_tries_download:
         try:
-            return func(*args, **kwargs)  # type: ignore
+            return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
+
+        except FunctionTimedOut:
+            logger.warning(f"Timed out getting url ({i} / {num_tries_download - 1}). Sleeping for {sleep_time_for_isis}s")
+            api.CourseDownloader.had_error = True
+            i += 1
 
         except requests.exceptions.ConnectionError:
-            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s ")
-            pass
+            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
+            api.CourseDownloader.had_error = True
+            i += 1
+
+    return None
 
 
-def get_url_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+def get_url_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
     return _get_func_session(sess.get, *args, **kwargs)
 
 
-def get_head_from_session(sess: requests.Session, *args, **kwargs) -> requests.Response:
+def get_head_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
     return _get_func_session(sess.head, *args, **kwargs)
 
 
 def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[str]:
-    if (s := get_url_from_session(sess, *args, **kwargs)).ok:
+    s = get_url_from_session(sess, *args, **kwargs)
+    if s is None:
+        return None
+
+    if s.ok:
         return s.text
 
     return None
+
+
+# Copied from https://stackoverflow.com/a/7864317
+class classproperty(property):
+    def __get__(self, cls, owner):
+        return classmethod(self.fget).__get__(None, owner)()  # type: ignore
 
 
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
@@ -314,40 +353,6 @@ class User:
 
     def dump(self):
         return self.username + "\n" + self.password + "\n"
-
-
-# TODO: Probably delete
-@dataclass
-class Video:
-    name: str
-    collection_name: Union[str, None] = None
-    url: Union[str, None] = None
-    created: Union[str, None] = None
-    approximate_filename: Union[str, None] = None
-
-    @classmethod
-    def from_dict(cls, content: Dict[str, str]):
-        return cls(content["title"], content["collectionname"], content["url"], content["timecreated"])
-
-    def __post_init__(self):
-        self.name = sanitize_name_for_dir(self.name)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        if isinstance(other, str):
-            return self.name == other
-        return self.__class__ == other.__class__ and self.name == other.name
-
-    def __lt__(self, other):
-        if self.__class__ != other.__class__:
-            raise ValueError
-        if self.created is None:
-            if other.created is not None:
-                return False
-            return self.name > other.name
-        return other.created > self.created
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
