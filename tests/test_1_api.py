@@ -91,9 +91,7 @@ def download_course_downloader(dl):
 
 
 def test_course_downloader():
-    return
-
-    dl = make_dl()  # type: ignore
+    dl = make_dl()
 
     download_course_downloader(dl)
 
@@ -101,10 +99,7 @@ def test_course_downloader():
 
 
 def test_course_downloader_again():
-    # Reset the file status
-    return
-
-    dl = make_dl()  # type: ignore
+    dl = make_dl()
 
     download_course_downloader(dl)
 
@@ -115,10 +110,8 @@ def test_course_downloader_again():
 
 
 def test_build_checksums():
-    return
-
     # Delete all checksum files
-    for file in Path(path()).rglob(checksum_file):  # type: ignore
+    for file in Path(path()).rglob(checksum_file):
         file.unlink()
 
     build_checksums.main()
