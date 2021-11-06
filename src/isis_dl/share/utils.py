@@ -96,7 +96,13 @@ def startup():
                 os.remove(fp)
             except FileNotFoundError:
                 pass
-            os.link(file, fp)
+
+            if is_windows:
+                # Why is symlinking not supported on windows… I hate it
+                import win32file
+                win32file.CreateSymbolicLink(file, fp, 1)
+            else:
+                os.symlink(file, fp)
 
         # TODO: What if link is invalid
         if os.path.exists(fp):
