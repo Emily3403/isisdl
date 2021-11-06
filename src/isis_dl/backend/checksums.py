@@ -45,7 +45,7 @@ class CheckSumHandler:
 
         chunks: List[Optional[bytes]] = []
         # The isis video server is *really* fast (0.01s latency) and it is the one accepting the range parameter. Thus, it is okay if we discard that request.
-        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=100-1000"}, params=file.additional_params_for_request, stream=True)
+        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=0-10"}, params=file.additional_params_for_request, stream=True)
 
         if req is None:
             return None

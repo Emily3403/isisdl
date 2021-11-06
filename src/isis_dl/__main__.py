@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-import warnings
 
-from bs4 import GuessedAtParserWarning
-
+import isis_dl.bin.build_checksums as build_checksums
+import isis_dl.bin.unpack_archives as unpack_archives
 from isis_dl.backend.api import CourseDownloader
 from isis_dl.backend.crypt import get_credentials
 from isis_dl.backend.downloads import throttler, Status
-from isis_dl.bin import execute_binaries, unpack_archive_and_exit
 from isis_dl.share.settings import download_chunk_size
-from isis_dl.share.utils import on_kill, logger, HumanBytes
+from isis_dl.share.utils import on_kill, logger, HumanBytes, args
 
-warnings.filterwarnings('ignore', category=GuessedAtParserWarning)
+
+def maybe_print_version_and_exit():
+    if not args.version:
+        return
+
+    print("isisdl Version 0.4")  # TODO
+    exit(0)
 
 
 def main():
-    execute_binaries()
+    maybe_print_version_and_exit()
+
+    build_checksums.main()
 
     user = get_credentials()
 
@@ -32,7 +38,7 @@ def main():
         logger.debug(f"Had error: {CourseDownloader.had_error}")
 
         logger.info("Unzipping archives…")
-        unpack_archive_and_exit()
+        unpack_archives.main()
         logger.info("Done! Bye Bye ^.^")
 
     dl.start()
@@ -61,7 +67,6 @@ def main():
 #       → Meh…
 #
 #   Check for corrupted files
-
 
 if __name__ == '__main__':
     main()

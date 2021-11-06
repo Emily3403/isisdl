@@ -147,6 +147,7 @@ class DownloadStatus(enum.Enum):
 
     # Special states
     found_by_checksum = enum.auto()
+    # TODO: Migrate to FailedDownload
     stopped = enum.auto()
 
     @property
@@ -255,7 +256,7 @@ class MediaContainer:
         return size, date
 
     @classmethod
-    def from_video(cls, s: SessionWithKey, video: Dict[str, str], parent_course):
+    def from_video(cls, s: SessionWithKey, parent_course, video: Dict[str, str]):
         timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
         url = video["url"]
         info = MediaContainer.extract_info_from_header(s, url)
@@ -268,7 +269,7 @@ class MediaContainer:
         return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
 
     @classmethod
-    def from_url(cls, s: SessionWithKey, url: str, parent_course):
+    def from_url(cls, s: SessionWithKey, parent_course, url: str):
         if "isis" not in url:
             # Don't go downloading other stuff.
             return
@@ -302,6 +303,7 @@ class MediaContainer:
         elif "mod/resource" in url:
             # Follow the link and get the file
             req = get_url_from_session(s, url, allow_redirects=False)
+
             name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
             if req is None:
                 return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
@@ -311,7 +313,7 @@ class MediaContainer:
                 logger.warning(f"The {url = } (Course = {parent_course}) does not redirect.  I am going to ignore it!")
                 return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
 
-            redirect = BeautifulSoup(req.text)
+            redirect = BeautifulSoup(req.text, features="html.parser")
 
             links = redirect.find_all("a")
             if len(links) > 1:
@@ -381,6 +383,7 @@ class MediaContainer:
         # Only register the hash after successfully downloading the file
         if self.checksum is not None and not isinstance(self.checksum, bool):
             self.parent_course.checksum_handler.add(self.checksum)
+
         running_download.close()
 
     def stop_download(self):
@@ -414,7 +417,10 @@ class MediaContainer:
         if not isinstance(self.status, FailedDownload):
             return self.name
 
-        return self.name + "\n    Reason: " + self.status.reason + "\n    Possible fix: " + self.status.fix + "\n"
+        lf = "\n" + " " * 8
+        final_str = self.name + ":" + lf + "Name:     " + self.name + lf + "Course:   " + self.parent_course.name + lf + "Url:      " + self.url
+        final_str += lf + "Reason:   " + self.status.reason + lf * 2 + "Possible fix: " + self.status.fix + "\n"
+        return final_str
 
 
 class Status(Thread):

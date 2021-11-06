@@ -1,7 +1,7 @@
 import base64
 import os
 import pickle
-from getpass import getpass
+import getpass
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -76,13 +76,13 @@ def get_credentials() -> User:
                 return User(*lines)
 
     # Now check encrypted file
-    elif os.path.exists(path(encrypted_password_file)):
+    if os.path.exists(path(encrypted_password_file)):
         logger.info("Found encrypted file.")
 
         if password := os.getenv(env_var_name_encrypted_password):
             pass
         else:
-            password = getpass("Please enter the password for the encrypted file: ")
+            password = getpass.getpass("Please enter the password for the encrypted file: ")
 
         content = decryptor(password)
         if content is None:
@@ -94,7 +94,8 @@ def get_credentials() -> User:
     # If nothing is found prompt the user
     logger.info("Please provide authentication for ISIS.")
     username = input("Username: ")
-    password = getpass("Password: ")
+
+    password = getpass.getpass("Password: ")
 
     content = User(username, password)
 
@@ -110,10 +111,7 @@ def get_credentials() -> User:
                 logger.info("I am going to interpret this as a no.")
             return content
 
-        if args.clear:
-            store_clear(content)
-        else:
-            encrypt_password = getpass("Please enter the password to encrypt the file with: ")
-            encryptor(encrypt_password, content)
+        encrypt_password = getpass.getpass("Please enter the password to encrypt the file with: ")
+        encryptor(encrypt_password, content)
 
     return content

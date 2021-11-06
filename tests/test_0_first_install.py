@@ -1,7 +1,7 @@
 import os
 
 from isis_dl.share.settings import working_dir_location, intern_dir_location, download_dir_location, settings_file_location, log_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, course_name_to_id_file_location, password_dir, clear_password_file, encrypted_password_file, already_prompted_file
+    blacklist_file_name_location, course_name_to_id_file_location, password_dir, clear_password_file, encrypted_password_file
 from isis_dl.share.utils import path
 
 
@@ -18,7 +18,7 @@ def test_working_dir_structrue():
     assert os.path.exists(path(password_dir))
     assert os.path.exists(path(clear_password_file))
     assert not os.path.exists(path(encrypted_password_file))
-    assert not os.path.exists(path(already_prompted_file))
+    # assert not os.path.exists(path(already_prompted_file))
 
 
 def test_settings_link():

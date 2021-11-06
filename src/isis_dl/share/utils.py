@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from queue import PriorityQueue
-from typing import Union, Dict, Callable, Optional, List, Tuple
+from typing import Union, Callable, Optional, List, Tuple
 from urllib.parse import unquote
 
 import requests
@@ -232,6 +232,12 @@ def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[s
     return None
 
 
+# Copied from https://stackoverflow.com/a/7864317
+class classproperty(property):
+    def __get__(self, cls, owner):
+        return classmethod(self.fget).__get__(None, owner)()  # type: ignore
+
+
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
 def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level: int = logging.DEBUG):
     def decorator(function):
@@ -337,40 +343,6 @@ class User:
 
     def dump(self):
         return self.username + "\n" + self.password + "\n"
-
-
-# TODO: Probably delete
-@dataclass
-class Video:
-    name: str
-    collection_name: Union[str, None] = None
-    url: Union[str, None] = None
-    created: Union[str, None] = None
-    approximate_filename: Union[str, None] = None
-
-    @classmethod
-    def from_dict(cls, content: Dict[str, str]):
-        return cls(content["title"], content["collectionname"], content["url"], content["timecreated"])
-
-    def __post_init__(self):
-        self.name = sanitize_name_for_dir(self.name)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        if isinstance(other, str):
-            return self.name == other
-        return self.__class__ == other.__class__ and self.name == other.name
-
-    def __lt__(self, other):
-        if self.__class__ != other.__class__:
-            raise ValueError
-        if self.created is None:
-            if other.created is not None:
-                return False
-            return self.name > other.name
-        return other.created > self.created
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
