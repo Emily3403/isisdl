@@ -23,4 +23,8 @@ def test_working_dir_structrue():
 
 def test_settings_link():
     import isis_dl
-    assert isis_dl.share.settings.__file__ == os.readlink(path(settings_file_location))
+    stats0 = os.stat(isis_dl.share.settings.__file__)
+    stats1 = os.stat(path(settings_file_location))
+
+    assert stats0 == stats1
+    assert stats0.st_nlink == 2

@@ -96,7 +96,7 @@ def startup():
                 os.remove(fp)
             except FileNotFoundError:
                 pass
-            os.symlink(file, fp)
+            os.link(file, fp)
 
         # TODO: What if link is invalid
         if os.path.exists(fp):
