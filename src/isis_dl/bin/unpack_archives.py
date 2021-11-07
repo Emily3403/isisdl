@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import json
 import os
 import shutil
 import time
@@ -12,7 +12,11 @@ from isis_dl.share.utils import path, logger
 def main():
     s = time.time()
     for _course in os.listdir(path(download_dir_location)):
-        course = Course.from_name(_course)
+        try:
+            course = Course.from_name(_course)
+        except (FileNotFoundError, KeyError, json.decoder.JSONDecodeError):
+            logger.error(f"I could not find the ID for course {_course}.")
+            continue
 
         for file in course.list_files():
             try:

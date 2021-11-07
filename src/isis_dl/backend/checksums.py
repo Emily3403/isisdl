@@ -45,7 +45,7 @@ class CheckSumHandler:
 
         chunks: List[Optional[bytes]] = []
         # The isis video server is *really* fast (0.01s latency) and it is the one accepting the range parameter. Thus, it is okay if we discard that request.
-        req = get_url_from_session(file.s, file.url, headers={"Range": "bytes=0-10"}, params=file.additional_params_for_request, stream=True)
+        req = get_url_from_session(file.s.s, file.url, headers={"Range": "bytes=0-10"}, params=file.additional_params_for_request, stream=True)
 
         if req is None:
             return None
@@ -60,7 +60,7 @@ class CheckSumHandler:
 
             def download_chunk_with_offset(s: SessionWithKey, offset: int) -> Optional[bytes]:
 
-                req = get_url_from_session(s, file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
+                req = get_url_from_session(s.s, file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
                 # bts = self.ensure_read(req.raw, size.num_bytes_per_point)
                 if req is None:
                     return None
@@ -77,7 +77,7 @@ class CheckSumHandler:
                 # And, since `file.size` is (based on my current testing) never None, it is pretty useless. This could be a fun experiment tho.
                 pass
 
-            base_skip = file.size // (size.num_data_points - 1)
+            base_skip = self.calculate_base_skip(file.size, size)
 
             sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
 
@@ -96,12 +96,17 @@ class CheckSumHandler:
 
         chunks: List[Optional[bytes]] = []
         file_size = os.path.getsize(file.name)
-        base_skip = file_size // (size.num_data_points - 1)
+
+        base_skip = self.calculate_base_skip(file_size, size)
         for offset in range(size.skip_header, file_size - size.skip_footer, base_skip):
             file.seek(offset)
             chunks.append(self.ensure_read(file, size.num_bytes_per_point))
 
         return self.calculate_hash(chunks)
+
+    @staticmethod
+    def calculate_base_skip(file_size: int, size: ExtensionNumBytes):
+        return (file_size - size.skip_header - size.skip_footer - size.num_bytes_per_point) // (size.num_data_points - 1)
 
     @staticmethod
     def calculate_hash(chunks: List[Optional[bytes]]) -> Optional[str]:

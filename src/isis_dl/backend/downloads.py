@@ -16,17 +16,17 @@ from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
 
-import requests
 from bs4 import BeautifulSoup
+from requests import Session
 
 from isis_dl.backend import api
 from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
 from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
-class SessionWithKey(requests.Session):
-    def __init__(self, key: str):
-        super().__init__()
+class SessionWithKey:
+    def __init__(self, s: Session, key: str):
+        self.s = s
         self.key = key
 
     def __str__(self):
@@ -236,7 +236,7 @@ class MediaContainer:
     def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, Tuple[Optional[int], Optional[datetime.datetime]]]:
         additional_params = additional_params or {}
         # Read the size from url
-        req = get_url_from_session(s, url, stream=True, params=additional_params)
+        req = get_url_from_session(s.s, url, stream=True, params=additional_params)
         if req is None:
             return None
 
@@ -283,7 +283,7 @@ class MediaContainer:
         if "mod/folder" in url:
             folder_id = url.split("id=")[-1]
             # Use the POST form
-            req = get_head_from_session(s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
+            req = get_head_from_session(s.s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
             name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
             if req is None:
                 return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.timeout)
@@ -302,7 +302,7 @@ class MediaContainer:
 
         elif "mod/resource" in url:
             # Follow the link and get the file
-            req = get_url_from_session(s, url, allow_redirects=False)
+            req = get_url_from_session(s.s, url, allow_redirects=False)
 
             name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
             if req is None:
@@ -342,7 +342,7 @@ class MediaContainer:
                 self.status = FailedDownload.stopped
             return
 
-        running_download = get_url_from_session(self.s, self.url, stream=True, params=self.additional_params_for_request)
+        running_download = get_url_from_session(self.s.s, self.url, stream=True, params=self.additional_params_for_request)
         if running_download is None:
             self.status = FailedDownload.timeout
             return
@@ -483,7 +483,7 @@ class Status(Thread):
                 bandwidth_usage = "\n"
             else:
                 curr_download_usage, curr_download_unit = HumanBytes.format(throttler.used_tokens.qsize() * download_chunk_size / token_queue_refresh_rate)
-                bandwidth_usage = f"Current bandwidth usage: {curr_download_usage:.2f} {curr_download_unit}\n\n"
+                bandwidth_usage = f"Current bandwidth usage: {curr_download_usage:.2f} {curr_download_unit}/s\n\n"
 
             amount_downloaded, amount_downloaded_unit = HumanBytes.format(sum(item.already_downloaded for item in self.files))
             amount_downloaded_max, amount_downloaded_max_unit = HumanBytes.format(Status.sum_file_sizes)

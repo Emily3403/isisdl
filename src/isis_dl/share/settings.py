@@ -49,12 +49,11 @@ checksum_algorithm = sha256
 
 @dataclass
 class ExtensionNumBytes:
-    """a docstring"""
     num_bytes_per_point: int = 64
 
     skip_header: int = 0
     skip_footer: int = 0
-    num_data_points: int = 3
+    num_data_points: int = 5
 
 
 # The number of bytes which get considered for a checksum. See the according documentation in the wiki (currently non existent D:).
@@ -128,10 +127,10 @@ download_chunk_size = 2 ** 14
 sleep_time_for_isis = 3
 
 # Will retry downloading a url ↓ times. If it fails, that MediaContainer will not get downloaded.
-num_tries_download = 5
+num_tries_download = 10
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 10
+download_timeout = 3
 
 
 # When cancelling downloads it is waited ↓ s to check if the downloads have finished.

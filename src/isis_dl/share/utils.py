@@ -20,7 +20,7 @@ from func_timeout import FunctionTimedOut, func_timeout
 
 from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, debug_mode, num_tries_download, download_timeout
+    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, num_tries_download, download_timeout
 
 
 def get_args():
@@ -37,6 +37,9 @@ def get_args():
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
+    parser.add_argument("-ni", "--num-threads-instantiate", help="The number of threads which instantiates the objects.", type=check_positive,
+                        default=8)
+
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
@@ -47,12 +50,6 @@ def get_args():
 
     # Crypt options
     parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
-
-    parser.add_argument("-b", "--build-checksums", help="Builds the checksums of all existent files and exits", action="store_true")
-
-    if debug_mode:
-        parser.add_argument("-t", "--test-checksums", help="Builds the checksums of all existent files and exits. Then checks if any collisions occurred.\nThis is meant as a debug feature.",
-                            action="store_true")
 
     the_args, unknown = parser.parse_known_args()
 
