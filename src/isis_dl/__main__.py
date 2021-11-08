@@ -42,6 +42,7 @@ def main():
         logger.info("Done! Bye Bye ^.^")
 
     dl.start()
+    dl.finish()
 
 
 # TODO:
@@ -57,6 +58,8 @@ def main():
 #   Credentials multiple errors
 #
 #   Zipped archives → double
+#
+#   Fake user agent
 
 # Maybe todo
 
@@ -67,6 +70,7 @@ def main():
 #       → Meh…
 #
 #   Check for corrupted files
+
 
 if __name__ == '__main__':
     main()

@@ -11,7 +11,6 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from itertools import count
 from json import JSONDecodeError
 from pathlib import Path
 from queue import Queue
@@ -20,6 +19,7 @@ from typing import List, Optional, Iterable, Callable, Dict, Union
 
 import requests
 from bs4 import BeautifulSoup
+from requests import Session
 
 from isis_dl.backend.checksums import CheckSumHandler
 from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
@@ -85,7 +85,7 @@ class Course:
         """
 
         def get_url(s: SessionWithKey, queue: Queue[Optional[requests.Response]], url: str, **kwargs):
-            queue.put(get_url_from_session(s, url, **kwargs))
+            queue.put(get_url_from_session(s.s, url, **kwargs))
 
         doc_queue: Queue[Optional[requests.Response]] = Queue()
         vid_queue: Queue[Optional[requests.Response]] = Queue()
@@ -205,11 +205,13 @@ class CourseDownloader:
     had_error: bool = False
 
     def __init__(self, user: User):
-        CourseDownloader.sessions = [SessionWithKey("") for _ in range(num_sessions)]
         self.user = user
 
     @debug_time("Authentication with Shibboleth")
-    def _authenticate(self, num: int, s: SessionWithKey) -> None:
+    def _authenticate(self, num: int) -> SessionWithKey:
+        s = Session()
+        s.headers.update({"User-Agent": "UwU"})
+
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
@@ -230,15 +232,17 @@ class CourseDownloader:
 
         # Extract the session key
         soup = BeautifulSoup(response.text, features="html.parser")
-        s.key = soup.find("input", {"name": "sesskey"})["value"]
+        key = soup.find("input", {"name": "sesskey"})["value"]
+
+        return SessionWithKey(s, key)
 
     def _authenticate_all(self) -> None:
         with ThreadPoolExecutor(num_sessions) as ex:
-            list(ex.map(self._authenticate, count(), self.sessions))
+            CourseDownloader.sessions = list(ex.map(self._authenticate, range(num_sessions)))
 
     # @debug_time("Find Courses")
     def _find_courses(self):
-        soup = BeautifulSoup(get_text_from_session(CourseDownloader.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"), features="html.parser")
+        soup = BeautifulSoup(get_text_from_session(CourseDownloader.s.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"), features="html.parser")
 
         links = []
         titles = []
@@ -309,7 +313,7 @@ class CourseDownloader:
         # TODO: Remove filter
         to_download: List[MediaContainer]
         if enable_multithread:
-            with ThreadPoolExecutor(min(len(files) // num_sessions // 4, 64) or 1) as ex:  # Each thread has a lifespan of ~4 files
+            with ThreadPoolExecutor(args.num_threads_instantiate) as ex:
                 to_download = list(filter(None, ex.map(lambda x: x.instantiate(), files)))  # type: ignore
 
         else:

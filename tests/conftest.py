@@ -1,4 +1,5 @@
 import os
+import shutil
 
 import pytest
 
@@ -16,8 +17,8 @@ def pytest_configure():
         pass
 
 
-# def pytest_unconfigure():
-#     shutil.rmtree(path())
+def pytest_unconfigure():
+    shutil.rmtree(path())
 
 
 @pytest.fixture
