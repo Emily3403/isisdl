@@ -88,12 +88,16 @@ class Course:
             queue.put(get_url_from_session(s.s, url, **kwargs))
 
         doc_queue: Queue[Optional[requests.Response]] = Queue()
+        other_queue: Queue[Optional[requests.Response]] = Queue()
         vid_queue: Queue[Optional[requests.Response]] = Queue()
 
         def build_file_list():
             # First handle documents → This takes the majority of time
             doc_dl = Thread(target=get_url, args=(parent.s, doc_queue, "https://isis.tu-berlin.de/course/resources.php",), kwargs={"params": {"id": self.course_id}})
             doc_dl.start()
+
+            other_dl = Thread(target=get_url, args=(parent.s, other_queue, "https://isis.tu-berlin.de/course/view.php",), kwargs={"params": {"id": self.course_id}})
+            other_dl.start()
 
             # Now handle videos
             # Thank you isia_tub for this field <3
@@ -108,23 +112,30 @@ class Course:
             vid_dl.start()
 
             vid_dl.join()
+            other_dl.join()
             doc_dl.join()
 
         #
         build_file_list()
 
         resource_req = doc_queue.get()
+        other_req = other_queue.get()
         video_req = vid_queue.get()
 
         if resource_req is None:
             raise CriticalError("I could not get the url for the resources! Please restart me and hope it will work this time.")
 
+        if other_req is None:
+            raise CriticalError("I could not get the url for other downloads! Please restart me and hope it will work this time.")
+
         if video_req is None:
             raise CriticalError("I could not get the url for the videos! Please restart me and hope it will work this time.")
 
         res_soup = BeautifulSoup(resource_req.text, features="html.parser")
-        resources = [item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")]
+        resources = {item["href"] for item in res_soup.find("div", {"role": "main"}).find_all("a")}
 
+        other_soup = BeautifulSoup(other_req.text, features="html.parser")
+        resources.update([item.attrs["href"] for item in other_soup.find("div", {"role": "main"}).find_all("a") if "href" in item.attrs])
         videos_json = video_req.json()[0]
 
         if videos_json["error"]:
@@ -171,7 +182,6 @@ class Course:
     def __repr__(self):
         return f"{self.name} ({self.course_id})"
 
-    # TODO: Is this ever used?
     def __eq__(self, other):
         if other is True:
             return True
@@ -310,7 +320,6 @@ class CourseDownloader:
         files = CourseDownloader.not_inst_files
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
-        # TODO: Remove filter
         to_download: List[MediaContainer]
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads_instantiate) as ex:

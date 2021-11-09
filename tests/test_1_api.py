@@ -36,9 +36,13 @@ def make_files():
         if item.is_video:
             info = MediaContainer.extract_info_from_header(item.s, item.arg["url"])  # type: ignore
             if info is None:
-                raise CriticalError()
+                raise CriticalError
 
-            item.size, _ = info  # type: ignore
+            a, *_ = info
+            if a is None:
+                raise CriticalError
+
+            item.size = a
 
             videos.append(item)
 

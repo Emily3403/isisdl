@@ -127,10 +127,10 @@ download_chunk_size = 2 ** 14
 sleep_time_for_isis = 3
 
 # Will retry downloading a url ↓ times. If it fails, that MediaContainer will not get downloaded.
-num_tries_download = 10
+num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 3
+download_timeout = 2
 
 
 # When cancelling downloads it is waited ↓ s to check if the downloads have finished.

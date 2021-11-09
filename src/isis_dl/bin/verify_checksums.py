@@ -40,7 +40,6 @@ def main():
 
         failed_one = True
 
-        logger.info("")
         logger.info(f"Analyzing course {course}")
         logger.info(f"Number of files with the same checksum: {print_percent(sum(item for item in checksums.values() if item > 1), len(checksum_mapping))}")
 
@@ -75,7 +74,7 @@ def main():
 
                 logger.debug(
                     f"The following have the checksum {key_}:\n\n" + f"{'Are equal' if all(item == sha256sum(value_[0]) for item in chs.values()) else 'Not equal'}\n\n" + "\n".join(value_) + "\n\n"
-                    + "\n".join(f"{os.path.basename(file).ljust(m_len)}  {sha}" for file, sha in chs.items()) + "\n\n")
+                    + "\n".join(f"{os.path.basename(file).ljust(m_len)}  {sha}" for file, sha in chs.items()) + "\n")
 
     if not failed_one:
         logger.info("I could not find any conflicts!")
