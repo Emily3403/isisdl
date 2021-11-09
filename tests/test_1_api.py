@@ -76,10 +76,10 @@ def make_files():
 
 
 def download_course_downloader(dl):
-    dl._authenticate_all()
+    dl.authenticate_all()
     assert len(CourseDownloader.sessions) == num_sessions
 
-    dl._find_courses()
+    dl.find_courses()
     assert len(CourseDownloader.courses) > 0
 
     dl.build_file_list()

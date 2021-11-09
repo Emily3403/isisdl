@@ -34,12 +34,11 @@ def main():
         usage, unit = HumanBytes.format(throttler.times_get * download_chunk_size)
         logger.info(f"Downloaded {usage:.2f} {unit} of Data.")
 
-        logger.debug("Timings:\n" + "\n".join(f"{(key + ':').ljust(9)} {value:.3f}s" for key, value in CourseDownloader.timings.items()))
-        logger.debug(f"Had error: {CourseDownloader.had_error}")
+        logger.debug("Timings:\n" + "\n".join(f"{(key + ':').ljust(9)} {value if value is not None else 0:.3f}s" for key, value in CourseDownloader.timings.items()))
 
         logger.info("Unzipping archives…")
         unpack_archives.main()
-        logger.info("Done! Bye Bye ^.^")
+        logger.info("Done! Have a nice day ^.^")
 
     dl.start()
     dl.finish()
@@ -54,6 +53,8 @@ def main():
 #   Automatic upload to PyPi: https://www.caktusgroup.com/blog/2021/02/11/automating-pypi-releases/
 #
 #   Credentials multiple errors
+#
+#   Download from mod/submission
 #
 
 # Maybe todo

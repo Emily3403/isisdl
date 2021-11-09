@@ -90,7 +90,7 @@ hash_length = 32
 progress_bar_resolution = 16
 
 # The number of sessions to open with Shibboleth.
-num_sessions = 4
+num_sessions = 6
 
 # It is possible to specify credentials using environment variables.
 # Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`
