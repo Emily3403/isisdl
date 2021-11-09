@@ -90,7 +90,7 @@ hash_length = 32
 progress_bar_resolution = 16
 
 # The number of sessions to open with Shibboleth.
-num_sessions = 6
+num_sessions = 4
 
 # It is possible to specify credentials using environment variables.
 # Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`
@@ -121,7 +121,7 @@ log_clear_screen = True  # Triggers a `clear` command every time before printing
 status_time = 0.5  # The refresh time.
 
 # Sets the chunk size.
-download_chunk_size = 2 ** 14
+download_chunk_size = 2 ** 15
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
 sleep_time_for_isis = 3
@@ -130,7 +130,7 @@ sleep_time_for_isis = 3
 num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 2
+download_timeout = 4
 
 
 # When cancelling downloads it is waited ↓ s to check if the downloads have finished.

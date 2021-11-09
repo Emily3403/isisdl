@@ -72,15 +72,6 @@ def get_args():
     except JSONDecodeError:
         pass
 
-    # Copied from https://stackoverflow.com/a/24017597
-    def is_sub_sequence(sub_seq: str, seq: str):
-        current_pos = 0
-        for c in sub_seq:
-            current_pos = seq.find(c, current_pos) + 1
-            if current_pos == 0:
-                return False
-        return True
-
     def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
         if lst is None:
             return []
@@ -91,7 +82,7 @@ def get_args():
                 ret.add(int(item))
             except ValueError:
                 for course, num in course_id_mapping.items():
-                    if is_sub_sequence(item.lower(), course.lower()):
+                    if item.lower() in course.lower():
                         ret.add(int(num))
 
         return list(ret)
