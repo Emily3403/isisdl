@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 from requests import Session
 
 from isis_dl.backend import api
-from isis_dl.share.settings import progress_bar_resolution, checksum_algorithm, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
+from isis_dl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
 from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
@@ -233,7 +233,7 @@ class MediaContainer:
         return name.split("/")[-1].split("?")[0]
 
     @staticmethod
-    def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, Tuple[Optional[int], Optional[datetime.datetime]]]:
+    def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, Tuple[Optional[int], Optional[datetime.datetime], Optional[str]]]:
         additional_params = additional_params or {}
         # Read the size from url
         req = get_url_from_session(s.s, url, stream=True, params=additional_params)
@@ -253,7 +253,12 @@ class MediaContainer:
         except KeyError:
             date = None
 
-        return size, date
+        try:
+            filename: Optional[str] = MediaContainer.strip_content_disposition(headers["content-disposition"])
+        except KeyError:
+            filename = None
+
+        return size, date, filename
 
     @classmethod
     def from_video(cls, s: SessionWithKey, parent_course, video: Dict[str, str]):
@@ -264,7 +269,7 @@ class MediaContainer:
             cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.timeout)
             return
 
-        size, _ = info
+        size, *_ = info
 
         return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
 
@@ -274,8 +279,14 @@ class MediaContainer:
             # Don't go downloading other stuff.
             return
 
-        elif any(item in url for item in ["mod/url", "mod/page", "mod/forum"]):
-            # These links dont lead to actual files. Ignore them
+        elif any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpatdlite",
+                                          "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
+                                          "mod/choicegroup", ""}):
+            # These links are definite blacklists on stuff we don't want to follow.
+            return
+
+        if not any(item in url for item in {"pluginfile.php", "mod/resource", "mod/folder"}):
+            # This is a whitelist
             return
 
         filename, media_type, additional_kwargs = None, MediaType.document, {}
@@ -322,17 +333,22 @@ class MediaContainer:
             url = links[0].attrs["href"]
             filename = MediaContainer.name_from_url(url)
 
-        if filename is None:
-            logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
-            filename = "Did not find filename - " + checksum_algorithm(os.urandom(64)).hexdigest()
-
         # Read the size from url
         info = MediaContainer.extract_info_from_header(s, url, additional_kwargs)
         if info is None:
+            if filename is None:
+                filename = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+
             cls(media_type, parent_course, s, url, filename, status=FailedDownload.timeout)
             return
 
-        size, date = info
+        size, date, _name = info
+        if filename is None:
+            filename = _name
+
+        if filename is None:
+            logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
+            filename = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
@@ -389,6 +405,16 @@ class MediaContainer:
     def stop_download(self):
         if self.status == DownloadStatus.not_started:
             self.status = DownloadStatus.stopped
+
+    @staticmethod
+    def strip_content_disposition(st: str):
+        if st.startswith("inline"):
+            return st.split("filename=")[-1].strip("\"")
+
+        if st.startswith("attachment"):
+            return st.split("filename*=UTF-8\'\'")[-1].strip("\'")
+
+        print()
 
     @property
     def percent_done(self) -> Optional[float]:

@@ -53,22 +53,11 @@ def main():
 #
 #   Automatic upload to PyPi: https://www.caktusgroup.com/blog/2021/02/11/automating-pypi-releases/
 #
-#   Github actions → environment variables
-#
 #   Credentials multiple errors
 #
-#   Zipped archives → double
-#
-#   Fake user agent
 
 # Maybe todo
 
-#   Change instantiation of MediaContainer into web-requests + multiprocessing. Should be more efficient - but is fast enough already
-#
-#   When calculating a hash the server does not always respect the Range parameter.
-#       → Store the 512 Byte hash as an identifier and associate the hash algorithm based on that.
-#       → Meh…
-#
 #   Check for corrupted files
 
 

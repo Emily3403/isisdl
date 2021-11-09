@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import inspect
+import json
 import logging
 import os
 import signal
@@ -11,6 +12,7 @@ import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
+from json import JSONDecodeError
 from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple
 from urllib.parse import unquote
@@ -43,8 +45,8 @@ def get_args():
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
-    parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", type=int, nargs="*")
-    parser.add_argument("-B", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", type=int, nargs="*")
+    parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
+    parser.add_argument("-B", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
 
     parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
 
@@ -64,11 +66,41 @@ def get_args():
         except FileNotFoundError:
             return []
 
+    try:
+        with open(path(course_name_to_id_file_location)) as f:
+            course_id_mapping = json.load(f)
+    except JSONDecodeError:
+        pass
+
+    # Copied from https://stackoverflow.com/a/24017597
+    def is_sub_sequence(sub_seq: str, seq: str):
+        current_pos = 0
+        for c in sub_seq:
+            current_pos = seq.find(c, current_pos) + 1
+            if current_pos == 0:
+                return False
+        return True
+
+    def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
+        if lst is None:
+            return []
+
+        ret = set()
+        for item in lst:
+            try:
+                ret.add(int(item))
+            except ValueError:
+                for course, num in course_id_mapping.items():
+                    if is_sub_sequence(item.lower(), course.lower()):
+                        ret.add(int(num))
+
+        return list(ret)
+
     whitelist = make_list_from_file(whitelist_file_name_location)
     blacklist = make_list_from_file(blacklist_file_name_location)
 
-    whitelist.extend(the_args.whitelist or [])
-    blacklist.extend(the_args.blacklist or [])
+    whitelist.extend(add_arg_to_list(the_args.whitelist))
+    blacklist.extend(add_arg_to_list(the_args.blacklist))
 
     the_args.whitelist = whitelist or [True]
     the_args.blacklist = blacklist
@@ -98,7 +130,6 @@ def startup():
                 # Sym-linking isn't really supported on windows / not in a uniform way. I am not doing that.
                 os.symlink(file, fp)
 
-        # TODO: What if link is invalid
         if os.path.exists(fp):
             if os.path.realpath(fp) != file:
                 os.remove(fp)
@@ -208,7 +239,7 @@ def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
             return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
 
         except FunctionTimedOut:
-            logger.warning(f"Timed out getting url ({i} / {num_tries_download - 1}). Sleeping for {sleep_time_for_isis}s")
+            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}). Sleeping for {sleep_time_for_isis}s")
             api.CourseDownloader.had_error = True
             i += 1
 
