@@ -287,7 +287,6 @@ class MediaContainer:
 
         if not any(item in url for item in {"pluginfile.php", "mod/resource", "mod/folder"}):
             # This is a whitelist
-            logger.info(url)
             return
 
         filename, media_type, additional_kwargs = None, MediaType.document, {}
