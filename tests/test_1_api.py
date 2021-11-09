@@ -86,7 +86,7 @@ def download_course_downloader(dl):
 
     make_files()
 
-    dl.instantiate_files()
+    dl.build_checksums()
     assert len(CourseDownloader.files) >= 0
     dl.check_for_conflicts_in_files()
 

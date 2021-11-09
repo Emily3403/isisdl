@@ -456,6 +456,11 @@ class MediaContainer:
             # If they aren't comparable by percent do it by name
             return self.name < other.name
 
+    def __hash__(self):
+        if not isinstance(self.checksum, str):
+            return random.randint(0, 2 ** 15)
+        return int("0x" + self.checksum, 0)
+
     def __eq__(self, other):
         return self.__class__ == other.__class__ and self.name == other.name
 

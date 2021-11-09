@@ -228,7 +228,7 @@ class CourseDownloader:
         "auth": None,
         "course": None,
         "build": None,
-        "inst": None,
+        "checksum": None,
         "conflict": None,
         "download": None,
     }
@@ -252,7 +252,7 @@ class CourseDownloader:
         time_func(self.authenticate_all, "auth")
         time_func(self.find_courses, "course")
         time_func(self.build_file_list, "build")
-        time_func(self.instantiate_files, "inst")
+        time_func(self.build_checksums, "checksum")
         time_func(self.check_for_conflicts_in_files, "conflict")
 
         status.add_files(CourseDownloader.files)
@@ -343,8 +343,8 @@ class CourseDownloader:
 
         CourseDownloader.not_inst_files = files
 
-    @debug_time("Instantiating file list", debug_level=logging.INFO)
-    def instantiate_files(self):
+    @debug_time("Building checksums", debug_level=logging.INFO)
+    def build_checksums(self):
         files = CourseDownloader.not_inst_files
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
@@ -356,6 +356,8 @@ class CourseDownloader:
         else:
             to_download = list(filter(None, [file.instantiate() for file in files]))
 
+        to_download = list(set(to_download))
+        random.shuffle(to_download)
         CourseDownloader.files = to_download
 
     @staticmethod
