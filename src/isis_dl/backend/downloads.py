@@ -107,6 +107,10 @@ class FailedDownload(enum.Enum):
         return True
 
     @property
+    def fixable(self):
+        return self in {FailedDownload.timeout, FailedDownload.stopped}
+
+    @property
     def reason(self) -> str:
         if self == FailedDownload.link_did_not_redirect:
             return "The link did not redirect."
@@ -153,6 +157,10 @@ class DownloadStatus(enum.Enum):
     @property
     def done(self):
         return self in {DownloadStatus.succeeded, DownloadStatus.found_by_checksum}  # O(1) lookup time goes brr
+
+    @property
+    def fixable(self):
+        return True
 
 
 def make_progress_bar(item: MediaContainer):
@@ -275,18 +283,38 @@ class MediaContainer:
 
     @classmethod
     def from_url(cls, s: SessionWithKey, parent_course, url: str):
-        if "isis" not in url:
-            # Don't go downloading other stuff.
+        _temp_name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+
+        if "mod/url" in url:
+            # Try to follow the redirect. If it is allowed through the black- / whitelist, download it
+            req = get_url_from_session(s.s, url)
+            if req is None:
+                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.timeout)
+
+            if req.history:
+                url = req.url
+
+            else:
+                # Did not redirect → find the link on the ISIS-Page
+                req_soup = BeautifulSoup(req.text, features="html.parser")
+                url = req_soup.find("div", "urlworkaround").find("a").attrs.get("href")
+
+        if url is None:
+            return   # type: ignore
+
+        if any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpadlite",
+                                        "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
+                                        "mod/choicegroup", "mailto:", "tu-berlin.zoom.us", "@campus.tu-berlin.de", "mod/h5pactivity", "meet.isis.tu-berlin.de",
+                                        "course/view.php"}):
+            # These links are definite blacklists on stuff we don't want to follow.
             return
 
-        elif any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpatdlite",
-                                          "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
-                                          "mod/choicegroup", ""}):
-            # These links are definite blacklists on stuff we don't want to follow.
+        if "isis" not in url:
             return
 
         if not any(item in url for item in {"pluginfile.php", "mod/resource", "mod/folder"}):
             # This is a whitelist
+            logger.debug(f"This url was ignored but not blacklisted: {url}.")
             return
 
         filename, media_type, additional_kwargs = None, MediaType.document, {}
@@ -295,13 +323,11 @@ class MediaContainer:
             folder_id = url.split("id=")[-1]
             # Use the POST form
             req = get_head_from_session(s.s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
-            name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
             if req is None:
-                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.timeout)
+                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.timeout)
 
             if not req.ok:
-                logger.warning(f"The folder {folder_id} from {url = } (Course: {parent_course}) could not be downloaded.\nReason: {req.reason}")
-                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
+                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.link_did_not_redirect)
 
             filename = req.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
             name, ext = os.path.splitext(filename)
@@ -321,14 +347,13 @@ class MediaContainer:
 
             if req.status_code != 303:
                 # TODO: Still download the content
-                logger.warning(f"The {url = } (Course = {parent_course}) does not redirect.  I am going to ignore it!")
                 return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
 
             redirect = BeautifulSoup(req.text, features="html.parser")
 
             links = redirect.find_all("a")
             if len(links) > 1:
-                logger.warning(f"I've found {len(links) = } (Course = {parent_course}) many links. This should be debugged!")
+                logger.debug(f"I've found {len(links) = } (Course = {parent_course}) many links. This should be debugged!")
 
             url = links[0].attrs["href"]
             filename = MediaContainer.name_from_url(url)
@@ -408,13 +433,14 @@ class MediaContainer:
 
     @staticmethod
     def strip_content_disposition(st: str):
-        if st.startswith("inline"):
+        if st.startswith("inline") or "filename=" in st:
             return st.split("filename=")[-1].strip("\"")
 
         if st.startswith("attachment"):
-            return st.split("filename*=UTF-8\'\'")[-1].strip("\'")
+            if "filename*=" in st:
+                return st.split("filename*=UTF-8\'\'")[-1].strip("\'")
 
-        print()
+        logger.error(f"Error decoding {st}: Did not find a valid transformation.")
 
     @property
     def percent_done(self) -> Optional[float]:
@@ -429,6 +455,11 @@ class MediaContainer:
         except TypeError:
             # If they aren't comparable by percent do it by name
             return self.name < other.name
+
+    def __hash__(self):
+        if not isinstance(self.checksum, str):
+            return random.randint(0, 2 ** 15)
+        return int("0x" + self.checksum, 0)
 
     def __eq__(self, other):
         return self.__class__ == other.__class__ and self.name == other.name
@@ -517,7 +548,7 @@ class Status(Thread):
             if Status._running:
                 logger.info(
                     "\n -- Status --\n\n" +
-                    f"Downloaded {amount_downloaded:.3f} {amount_downloaded_unit} / {amount_downloaded_max:.3f} {amount_downloaded_max_unit}\n" +
+                    f"Downloaded {amount_downloaded:.2f} {amount_downloaded_unit} / {amount_downloaded_max:.2f} {amount_downloaded_max_unit}\n" +
                     bandwidth_usage +
                     f"Finished: {format_int(len(finished))} / {format_int(len(self.files))} files\n" +
                     f"Skipped:  {format_lst(skipped)} files (Checksum)\n" +

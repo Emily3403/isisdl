@@ -38,6 +38,9 @@ class AlmostMediaContainer:
     size: int = 0
 
     def instantiate(self):
+        if CourseDownloader.do_shutdown:
+            return
+
         return self.func(self.s, self.parent_course, self.arg)
 
     def __str__(self):
@@ -80,9 +83,8 @@ class Course:
         return "https://isis.tu-berlin.de/course/view.php?id=" + self.course_id
 
     def download(self, parent: CourseDownloader) -> List[AlmostMediaContainer]:
-        """
-
-        """
+        if CourseDownloader.do_shutdown:
+            return []
 
         def get_url(s: SessionWithKey, queue: Queue[Optional[requests.Response]], url: str, **kwargs):
             queue.put(get_url_from_session(s.s, url, **kwargs))
@@ -151,6 +153,24 @@ class Course:
         else:
             videos = [item for item in videos_json["data"]["videos"]]
 
+        # Do some additional parsing for exercises as they contain more resources
+        assignments = [item for item in resources if "mod/assign" in item]
+
+        def get_assignment(assignment: str):
+            req = get_url_from_session(parent.s.s, assignment)
+            if req is None or not req.ok:
+                raise CriticalError("I could not get the resources from the exercises! Please restart me and hope it will work this time.")
+
+            req_soup = BeautifulSoup(req.text, features="html.parser")
+            links = req_soup.find_all("div", {"class": "fileuploadsubmission"})
+            for item in links:
+                for new_url in item.find_all("a"):
+                    if "href" in new_url.attrs:
+                        resources.update({new_url.attrs["href"]})
+
+        with ThreadPoolExecutor(len(assignments)) as ex:
+            ex.map(get_assignment, assignments)
+
         x = [AlmostMediaContainer(MediaContainer.from_url, parent.s, self, resource, False) for resource in resources]  # type: ignore
         y = [AlmostMediaContainer(MediaContainer.from_video, parent.s, self, video, True) for video in videos]  # type: ignore
 
@@ -208,17 +228,43 @@ class CourseDownloader:
         "auth": None,
         "course": None,
         "build": None,
-        "inst": None,
+        "checksum": None,
         "conflict": None,
         "download": None,
     }
-    had_error: bool = False
+    do_shutdown: bool = False
+    downloading_files: bool = False
 
     def __init__(self, user: User):
         self.user = user
 
+    def start(self):
+        def time_func(func: Callable[[], None], entry: str) -> None:
+            s = time.time()
+            func()
+            CourseDownloader.timings[entry] = time.time() - s
+            maybe_shutdown()
+
+        def maybe_shutdown():
+            if CourseDownloader.do_shutdown:
+                exit(0)
+
+        time_func(self.authenticate_all, "auth")
+        time_func(self.find_courses, "course")
+        time_func(self.build_file_list, "build")
+        time_func(self.build_checksums, "checksum")
+        time_func(self.check_for_conflicts_in_files, "conflict")
+
+        status.add_files(CourseDownloader.files)
+
+        # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
+        Thread(target=self.download_runner).start()
+
     @debug_time("Authentication with Shibboleth")
     def _authenticate(self, num: int) -> SessionWithKey:
+        if CourseDownloader.do_shutdown:
+            return SessionWithKey(Session(), "")
+
         s = Session()
         s.headers.update({"User-Agent": "UwU"})
 
@@ -246,12 +292,11 @@ class CourseDownloader:
 
         return SessionWithKey(s, key)
 
-    def _authenticate_all(self) -> None:
+    def authenticate_all(self) -> None:
         with ThreadPoolExecutor(num_sessions) as ex:
             CourseDownloader.sessions = list(ex.map(self._authenticate, range(num_sessions)))
 
-    # @debug_time("Find Courses")
-    def _find_courses(self):
+    def find_courses(self):
         soup = BeautifulSoup(get_text_from_session(CourseDownloader.s.s, "https://isis.tu-berlin.de/user/profile.php?lang=en"), features="html.parser")
 
         links = []
@@ -281,23 +326,6 @@ class CourseDownloader:
 
         CourseDownloader.courses = courses
 
-    def start(self):
-        def time_func(func: Callable[[], None], entry: str) -> None:
-            s = time.time()
-            func()
-            CourseDownloader.timings[entry] = time.time() - s
-
-        time_func(self._authenticate_all, "auth")
-        time_func(self._find_courses, "course")
-        time_func(self.build_file_list, "build")
-        time_func(self.instantiate_files, "inst")
-        time_func(self.check_for_conflicts_in_files, "conflict")
-
-        status.add_files(CourseDownloader.files)
-
-        # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
-        Thread(target=self.download_runner).start()
-
     @debug_time("Building file list", debug_level=logging.INFO)
     def build_file_list(self) -> None:
         # First we get all the possible files
@@ -315,8 +343,8 @@ class CourseDownloader:
 
         CourseDownloader.not_inst_files = files
 
-    @debug_time("Instantiating file list", debug_level=logging.INFO)
-    def instantiate_files(self):
+    @debug_time("Building checksums", debug_level=logging.INFO)
+    def build_checksums(self):
         files = CourseDownloader.not_inst_files
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
@@ -328,6 +356,8 @@ class CourseDownloader:
         else:
             to_download = list(filter(None, [file.instantiate() for file in files]))
 
+        to_download = list(set(to_download))
+        random.shuffle(to_download)
         CourseDownloader.files = to_download
 
     @staticmethod
@@ -357,13 +387,16 @@ class CourseDownloader:
 
         CourseDownloader.timings["download"] = time.time() - s
 
-        new_files, failed_files = defaultdict(list), defaultdict(list)
+        new_files, fixable_failed_files, unfixable_failed_files = defaultdict(list), defaultdict(list), defaultdict(list)
         for item in self.files:
             if item.status == DownloadStatus.succeeded:
                 new_files[item.parent_course.name].append(item)
 
             if isinstance(item.status, FailedDownload):
-                failed_files[item.parent_course.name].append(item)
+                if item.status.fixable:
+                    fixable_failed_files[item.parent_course.name].append(item)
+                else:
+                    unfixable_failed_files[item.parent_course.name].append(item)
 
         def format_files(files: Dict[str, List[MediaContainer]]):
             format_list = []
@@ -373,8 +406,13 @@ class CourseDownloader:
 
             return "\n\n".join(format_list)
 
-        if failed_files:
-            logger.info("Failed files:\n" + format_files(failed_files))
+        if unfixable_failed_files:
+            logger.debug("Unfixable failed files:\n" + format_files(unfixable_failed_files))
+        else:
+            logger.debug("No unfixable failed files.")
+
+        if fixable_failed_files:
+            logger.info("Failed files:\n" + format_files(fixable_failed_files))
         else:
             logger.info("No failed files.")
 
@@ -386,6 +424,7 @@ class CourseDownloader:
     @staticmethod
     @on_kill(-2)
     def shutdown_running_downloads(*_):
+        CourseDownloader.do_shutdown = True
         to_download = CourseDownloader.files
 
         for item in to_download:

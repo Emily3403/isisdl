@@ -223,20 +223,17 @@ def clear_screen():
 
 
 def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
-    import isis_dl.backend.api as api
     i = 0
     while i < num_tries_download:
         try:
             return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
 
         except FunctionTimedOut:
-            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}). Sleeping for {sleep_time_for_isis}s")
-            api.CourseDownloader.had_error = True
+            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}).")
             i += 1
 
         except requests.exceptions.ConnectionError:
             logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
-            api.CourseDownloader.had_error = True
             i += 1
 
     return None
@@ -327,7 +324,13 @@ class OnKill:
     @atexit.register
     def exit(sig=None, frame=None):
         if OnKill._already_killed and sig is not None:
-            logger.info("Alright, stay calm. I am skipping cleanup and exiting! This *will* lead to corrupted files!")
+            logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
+            from isis_dl.backend.api import CourseDownloader
+            if CourseDownloader.downloading_files:
+                logger.info("This *will* lead to corrupted files!")
+            else:
+                logger.info("No files were harmed!")
+
             os._exit(1)
 
         if sig is not None:
