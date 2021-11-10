@@ -168,8 +168,9 @@ class Course:
                     if "href" in new_url.attrs:
                         resources.update({new_url.attrs["href"]})
 
-        with ThreadPoolExecutor(len(assignments)) as ex:
-            ex.map(get_assignment, assignments)
+        if assignments:
+            with ThreadPoolExecutor(len(assignments)) as ex:
+                ex.map(get_assignment, assignments)
 
         x = [AlmostMediaContainer(MediaContainer.from_url, parent.s, self, resource, False) for resource in resources]  # type: ignore
         y = [AlmostMediaContainer(MediaContainer.from_video, parent.s, self, video, True) for video in videos]  # type: ignore
