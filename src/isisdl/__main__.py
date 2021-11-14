@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-import isis_dl.bin.build_checksums as build_checksums
-import isis_dl.bin.unpack_archives as unpack_archives
-from isis_dl.backend.api import CourseDownloader
-from isis_dl.backend.crypt import get_credentials
-from isis_dl.backend.downloads import throttler, Status
-from isis_dl.share.settings import download_chunk_size
-from isis_dl.share.utils import on_kill, logger, HumanBytes, args
+import isisdl.bin.build_checksums as build_checksums
+import isisdl.bin.unpack_archives as unpack_archives
+from isisdl.backend.api import CourseDownloader
+from isisdl.backend.crypt import get_credentials
+from isisdl.backend.downloads import throttler, Status
+from isisdl.share.settings import download_chunk_size
+from isisdl.share.utils import on_kill, logger, HumanBytes, args
 
 
 def maybe_print_version_and_exit():

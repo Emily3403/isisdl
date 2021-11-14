@@ -4,9 +4,9 @@ import random
 import string
 from typing import Tuple
 
-from isis_dl.backend.crypt import get_credentials, store_clear, encryptor
-from isis_dl.share.settings import env_var_name_username, env_var_name_password, clear_password_file, encrypted_password_file, env_var_name_encrypted_password, already_prompted_file
-from isis_dl.share.utils import path, User
+from isisdl.backend.crypt import get_credentials, store_clear, encryptor
+from isisdl.share.settings import env_var_name_username, env_var_name_password, clear_password_file, encrypted_password_file, env_var_name_encrypted_password, already_prompted_file
+from isisdl.share.utils import path, User
 
 
 def generate_random_string(alphabet: str):

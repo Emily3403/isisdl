@@ -19,9 +19,9 @@ from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
 from bs4 import BeautifulSoup
 from requests import Session
 
-from isis_dl.backend import api
-from isis_dl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
-from isis_dl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
+from isisdl.backend import api
+from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
+from isisdl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
 
 
 class SessionWithKey:

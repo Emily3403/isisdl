@@ -4,9 +4,9 @@ import os
 import shutil
 import time
 
-from isis_dl.backend.api import Course
-from isis_dl.share.settings import download_dir_location, unpacked_archive_dir_location
-from isis_dl.share.utils import path, logger
+from isisdl.backend.api import Course
+from isisdl.share.settings import download_dir_location, unpacked_archive_dir_location
+from isisdl.share.utils import path, logger
 
 
 def main():

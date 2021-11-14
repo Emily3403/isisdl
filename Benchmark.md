@@ -12,16 +12,16 @@ Threads 1 (Test 1) → Threads 3 (Test 1) → … → Threads 1 (Test 2) → …
 
 This is currently untested aside from my local machine (V-Server is lacking storage).
 
-The result was ~11min for `isis_dl` and ~15min for `isia-tub`
+The result was ~11min for `isisdl` and ~15min for `isia-tub`
 
-### isis_dl version 0.1
-
-```
+### isisdl version 0.1
 
 ```
 
+```
 
-### isis_dl version 0.2
+
+### isisdl version 0.2
 ```
 ~ No previous downloads ~
 #Threads = 1

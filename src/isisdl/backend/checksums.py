@@ -11,10 +11,10 @@ from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Set, BinaryIO, Union, Optional, List
 
-import isis_dl.backend.api as api
-from isis_dl.backend.downloads import MediaContainer, SessionWithKey
-from isis_dl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
-from isis_dl.share.utils import args, get_url_from_session
+import isisdl.backend.api as api
+from isisdl.backend.downloads import MediaContainer, SessionWithKey
+from isisdl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
+from isisdl.share.utils import args, get_url_from_session
 
 
 @dataclass

@@ -1,6 +1,6 @@
-# isis_dl
+# isisdl
 
-![Tests](https://github.com/Emily3403/isis_dl/actions/workflows/tests.yml/badge.svg)
+![Tests](https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg)
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
@@ -19,6 +19,10 @@ Binary functionality:
 - Building and testing of checksums from existing files.
 - Automatic unpacking of archives.
 
+For more documentation please refer to the Wiki.
+
+[comment]: <> (TODO: Hyperref)
+
 ## Installation
 
 You **will** need a working python3.8 interpreter or above. The script will fail for python3.7 as some new python3.8
@@ -27,7 +31,7 @@ features are used.
 If you are familiar with `pip` and have it set up, simply install it with
 
 ```shell
-pip install isis_dl
+pip install isisdl
 ```
 
 To run the executable type
@@ -49,10 +53,6 @@ Consider checking out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
 This was the original inspiration for this library. At the time isia did not offer the functionality of uri-encoding the
 password which lead me to create this library. I have recently implemented this functionality into isia in order to
 benchmark and test both solutions.
-
-#### Comparison
-
-Downloading my entire isis directory took 22m8s with isia. This is in contrast to the 11m16s it took with isis_dl
 
 ### mCoding
 

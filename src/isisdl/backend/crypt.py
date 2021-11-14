@@ -7,9 +7,9 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isis_dl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, already_prompted_file, \
+from isisdl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, already_prompted_file, \
     env_var_name_username, env_var_name_password, env_var_name_encrypted_password
-from isis_dl.share.utils import User, path, args, logger
+from isisdl.share.utils import User, path, args, logger
 
 
 def generate_key(password):

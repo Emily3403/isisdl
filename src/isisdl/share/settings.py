@@ -7,7 +7,7 @@ from hashlib import sha256
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
 
-# In this file you will find various constants that dictate how isis_dl works.
+# In this file you will find various constants that dictate how isisdl works.
 # First up there are things that you may want to change.
 # In the second part you should only change stuff if you know what you are doing.
 
@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 
 # The directory where everything lives in.
 # Note: If you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory.
-working_dir_location = os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
+working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl_downloads")
 
 # The directory where files get saved to
 download_dir_location = "Courses"
@@ -96,11 +96,11 @@ num_sessions = 6
 # Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`
 
 # If you want to use username and password set these variables accordingly.
-env_var_name_username = "ISIS_DL_USERNAME"
-env_var_name_password = "ISIS_DL_PASSWORD"
+env_var_name_username = "ISISDL_USERNAME"
+env_var_name_password = "ISISDL_PASSWORD"
 
 # If you want to use the encrypted file to store your credentials then specify your password with the environment variable.
-env_var_name_encrypted_password = "ISIS_DL_ENC_PASSWORD"
+env_var_name_encrypted_password = "ISISDL_ENC_PASSWORD"
 
 # </ Miscellaneous options >
 
@@ -145,6 +145,6 @@ token_queue_refresh_rate = 0.01
 if "pytest" in sys.modules:
     # Yes, this is evil. But I don't want to ruin the directory of the user.
     _working_dir_location = working_dir_location
-    working_dir_location = os.path.join(os.path.expanduser("~"), "test_isis_dl")
+    working_dir_location = os.path.join(os.path.expanduser("~"), "test_isisdl")
 
 # </ Miscellaneous options >

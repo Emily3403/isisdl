@@ -21,11 +21,11 @@ import requests
 from bs4 import BeautifulSoup
 from requests import Session
 
-from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
-from isis_dl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
+from isisdl.backend.checksums import CheckSumHandler
+from isisdl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
+from isisdl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
-from isis_dl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session, CriticalError, classproperty
+from isisdl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session, CriticalError, classproperty
 
 
 @dataclass

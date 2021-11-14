@@ -1,7 +1,7 @@
 import os
 from hashlib import sha256
 
-from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, download_chunk_size, enable_multithread, sleep_time_for_isis, \
+from isisdl.share.settings import checksum_num_bytes, progress_bar_resolution, download_chunk_size, enable_multithread, sleep_time_for_isis, \
     sleep_time_for_download_interrupt, log_clear_screen, num_sessions, working_dir_location, download_dir_location, intern_dir_location, unpacked_archive_dir_location, unpacked_archive_suffix, \
     settings_file_location, log_dir_location, log_file_location, whitelist_file_name_location, blacklist_file_name_location, course_name_to_id_file_location, checksum_file, checksum_algorithm, \
     ExtensionNumBytes, checksum_range_parameter_ignored, password_dir, clear_password_file, encrypted_password_file, already_prompted_file, hash_iterations, hash_length, \
@@ -10,11 +10,11 @@ from isis_dl.share.settings import checksum_num_bytes, progress_bar_resolution, 
 
 def test_working_dir_location():
     cwd = working_dir_location
-    if working_dir_location == os.path.join(os.path.expanduser("~"), "test_isis_dl"):
-        from isis_dl.share.settings import _working_dir_location
+    if working_dir_location == os.path.join(os.path.expanduser("~"), "test_isisdl"):
+        from isisdl.share.settings import _working_dir_location
         cwd = _working_dir_location
 
-    assert cwd == os.path.join(os.path.expanduser("~"), "isis_dl_downloads")
+    assert cwd == os.path.join(os.path.expanduser("~"), "isisdl_downloads")
 
 
 def test_download_dir_location():
@@ -110,15 +110,15 @@ def test_num_sessions():
 
 
 def test_env_var_name_username():
-    assert env_var_name_username == "ISIS_DL_USERNAME"
+    assert env_var_name_username == "ISISDL_USERNAME"
 
 
 def test_env_var_name_password():
-    assert env_var_name_password == "ISIS_DL_PASSWORD"
+    assert env_var_name_password == "ISISDL_PASSWORD"
 
 
 def test_env_var_name_encrypted_password():
-    assert env_var_name_encrypted_password == "ISIS_DL_ENC_PASSWORD"
+    assert env_var_name_encrypted_password == "ISISDL_ENC_PASSWORD"
 
 
 def test_debug_mode():

@@ -3,11 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List
 
-import isis_dl.bin.build_checksums as build_checksums
-from isis_dl.backend.api import CourseDownloader, AlmostMediaContainer
-from isis_dl.backend.downloads import MediaContainer, DownloadStatus, FailedDownload, MediaType
-from isis_dl.share.settings import num_sessions, checksum_file
-from isis_dl.share.utils import path, CriticalError
+import isisdl.bin.build_checksums as build_checksums
+from isisdl.backend.api import CourseDownloader, AlmostMediaContainer
+from isisdl.backend.downloads import MediaContainer, DownloadStatus, FailedDownload, MediaType
+from isisdl.share.settings import num_sessions, checksum_file
+from isisdl.share.utils import path, CriticalError
 
 try:
     from conftest import make_dl

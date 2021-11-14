@@ -24,7 +24,7 @@ jobs:
           pip install tox tox-gh-actions
       - name: Test with tox
         env:
-          ISIS_DL_ACTUAL_USERNAME: ${{ secrets.USERNAME }}
-          ISIS_DL_ACTUAL_PASSWORD: ${{ secrets.PASSWORD }}
+          ISISDL_ACTUAL_USERNAME: ${{ secrets.USERNAME }}
+          ISISDL_ACTUAL_PASSWORD: ${{ secrets.PASSWORD }}
 
         run: tox

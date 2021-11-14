@@ -4,10 +4,10 @@ from collections import defaultdict
 from hashlib import sha256
 from typing import Dict, List
 
-from isis_dl.backend.api import Course
-from isis_dl.backend.checksums import CheckSumHandler
-from isis_dl.share.settings import download_dir_location
-from isis_dl.share.utils import path, logger, CriticalError
+from isisdl.backend.api import Course
+from isisdl.backend.checksums import CheckSumHandler
+from isisdl.share.settings import download_dir_location
+from isisdl.share.utils import path, logger, CriticalError
 
 
 def main():

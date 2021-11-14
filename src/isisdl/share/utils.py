@@ -21,7 +21,7 @@ from urllib.parse import unquote
 import requests
 from func_timeout import FunctionTimedOut, func_timeout
 
-from isis_dl.share.settings import working_dir_location, whitelist_file_name_location, \
+from isisdl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
     log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, num_tries_download, download_timeout
 
@@ -137,8 +137,8 @@ def startup():
     prepare_file(course_name_to_id_file_location)
     prepare_file(clear_password_file)
 
-    import isis_dl
-    create_link_to_settings_file(os.path.abspath(isis_dl.share.settings.__file__))
+    import isisdl
+    create_link_to_settings_file(os.path.abspath(isisdl.share.settings.__file__))
     prepare_file(whitelist_file_name_location)
     prepare_file(blacklist_file_name_location)
 
@@ -330,7 +330,7 @@ class OnKill:
     def exit(sig=None, frame=None):
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
-            from isis_dl.backend.api import CourseDownloader
+            from isisdl.backend.api import CourseDownloader
             if CourseDownloader.downloading_files:
                 logger.info("This *will* lead to corrupted files!")
             else:
