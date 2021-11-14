@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import signal
+import string
 import sys
 import time
 from dataclasses import dataclass
@@ -207,12 +208,16 @@ def sanitize_name_for_dir(name: str) -> str:
     name = unquote(name)
 
     not_found_char = "-"
-    if is_windows:
-        name = name.replace("/", not_found_char).replace("\\", not_found_char).replace("*", not_found_char)
-        name = name.replace("<", not_found_char).replace(">", not_found_char).replace("|", not_found_char)
-        return name.strip()
+    punctuation_char = "."
 
-    return name.replace("/", "-").replace("\\", "-").strip()
+    bad_chars = r""""#$%&'*/:<=>?@\^`|~"""
+
+    name = name.strip()
+
+    name = name.translate(str.maketrans(string.whitespace + "_", punctuation_char * (len(string.whitespace) + 1)))
+    name = name.translate(str.maketrans(bad_chars, not_found_char * len(bad_chars)))
+
+    return name
 
 
 def clear_screen():
