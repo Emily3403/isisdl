@@ -41,7 +41,7 @@ def get_args():
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
     parser.add_argument("-ni", "--num-threads-instantiate", help="The number of threads which instantiates the objects.", type=check_positive,
-                        default=8)
+                        default=12)
 
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
 
@@ -334,7 +334,7 @@ class OnKill:
             if CourseDownloader.downloading_files:
                 logger.info("This *will* lead to corrupted files!")
             else:
-                logger.info("No files were harmed!")
+                logger.info("Don't worry, no files were harmed!")
 
             os._exit(1)
 
