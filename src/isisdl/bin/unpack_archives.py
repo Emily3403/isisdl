@@ -26,7 +26,7 @@ def main():
             except shutil.ReadError:
                 pass
 
-    logger.info(f"Successfully unpacked all checksums in {time.time() - s:.3f}s.")
+    logger.info(f"Successfully unpacked all archives in {time.time() - s:.3f}s.")
 
 
 if __name__ == '__main__':

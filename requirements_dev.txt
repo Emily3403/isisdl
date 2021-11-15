@@ -4,5 +4,5 @@ pytest==6.2.5
 pytest-cov==2.12.1
 mypy===0.910
 twine===3.4.2
-build
+build===0.7.0
 types-requests
