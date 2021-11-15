@@ -50,11 +50,7 @@ def main():
 #
 #   Better list of file downloads?
 #
-#   Automatic upload to PyPi: https://www.caktusgroup.com/blog/2021/02/11/automating-pypi-releases/
-#
 #   Credentials multiple errors
-#
-#   Download from mod/submission
 #
 
 # Maybe todo
