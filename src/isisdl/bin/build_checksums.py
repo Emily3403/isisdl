@@ -6,7 +6,7 @@ import time
 from isisdl.backend.api import Course
 from isisdl.backend.checksums import CheckSumHandler
 from isisdl.share.settings import download_dir_location
-from isisdl.share.utils import path, logger, CriticalError
+from isisdl.share.utils import path, logger
 
 
 def main():
@@ -24,8 +24,7 @@ def main():
             with file.open("rb") as f:
                 checksum = csh.calculate_checksum(f)
                 if checksum is None:
-                    # This is just a dummy placeholder. Mypy doesn't (and can't) know that checksum will never be None.
-                    raise CriticalError
+                    continue
 
                 csh.add(checksum)
 

@@ -234,7 +234,7 @@ def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
             return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
 
         except FunctionTimedOut:
-            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}).")
+            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1})")
             i += 1
 
         except requests.exceptions.ConnectionError:

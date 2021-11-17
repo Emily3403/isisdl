@@ -14,7 +14,7 @@ from typing import Set, BinaryIO, Union, Optional, List
 import isisdl.backend.api as api
 from isisdl.backend.downloads import MediaContainer, SessionWithKey
 from isisdl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
-from isisdl.share.utils import args, get_url_from_session
+from isisdl.share.utils import args, get_url_from_session, logger
 
 
 @dataclass
@@ -79,7 +79,15 @@ class CheckSumHandler:
 
             base_skip = self.calculate_base_skip(file.size, size)
 
-            sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
+            if self.handle_not_enough_space(base_skip, file.name):
+                return None
+            assert base_skip is not None
+
+            if len(api.CourseDownloader.sessions) >= size.num_data_points:
+                # If there are enough sessions guarantee None is used twice.
+                sessions = random.sample(api.CourseDownloader.sessions, k=size.num_data_points)
+            else:
+                sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
 
             if enable_multithread:
                 with ThreadPoolExecutor(num_sessions) as ex:
@@ -98,6 +106,10 @@ class CheckSumHandler:
         file_size = os.path.getsize(file.name)
 
         base_skip = self.calculate_base_skip(file_size, size)
+        if self.handle_not_enough_space(base_skip, file.name):
+            return None
+        assert base_skip is not None
+
         for offset in range(size.skip_header, file_size - size.skip_footer, base_skip):
             file.seek(offset)
             chunks.append(self.ensure_read(file, size.num_bytes_per_point))
@@ -105,8 +117,17 @@ class CheckSumHandler:
         return self.calculate_hash(chunks)
 
     @staticmethod
-    def calculate_base_skip(file_size: int, size: ExtensionNumBytes):
-        return (file_size - size.skip_header - size.skip_footer - size.num_bytes_per_point) // (size.num_data_points - 1)
+    def calculate_base_skip(file_size: int, size: ExtensionNumBytes) -> Optional[int]:
+        return (file_size - size.skip_header - size.skip_footer - size.num_bytes_per_point) // (size.num_data_points - 1) or None
+
+    @staticmethod
+    def handle_not_enough_space(base_skip: Optional[int], file_name: str) -> bool:
+        if base_skip is None:
+            # TODO: Push to debug
+            logger.warning(f"I could not calculate a hash for the file {file_name}. Ignoring this file.")
+            return True
+
+        return False
 
     @staticmethod
     def calculate_hash(chunks: List[Optional[bytes]]) -> Optional[str]:

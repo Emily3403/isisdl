@@ -52,6 +52,8 @@ def main():
 #
 #   Credentials multiple errors
 #
+#   Try checksums
+#       → If checksum != log an error
 
 # Maybe todo
 
