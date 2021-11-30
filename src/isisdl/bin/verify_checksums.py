@@ -7,7 +7,7 @@ from typing import Dict, List
 from isisdl.backend.api import Course
 from isisdl.backend.checksums import CheckSumHandler
 from isisdl.share.settings import download_dir_location
-from isisdl.share.utils import path, logger, CriticalError
+from isisdl.share.utils import path, logger
 
 
 def main():

@@ -33,7 +33,6 @@ def main():
         dl.finish()
         usage, unit = HumanBytes.format(throttler.times_get * download_chunk_size)
         logger.info(f"Downloaded {usage:.2f} {unit} of Data.")
-        x: int = None
 
         logger.debug("Timings:\n" + "\n".join(f"{(key + ':').ljust(9)} {value if value is not None else 0:.3f}s" for key, value in CourseDownloader.timings.items()))
 
