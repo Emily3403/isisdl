@@ -25,8 +25,7 @@ def main():
             with file.open("rb") as f:
                 checksum = csh.calculate_checksum(f)
                 if checksum is None:
-                    # This is just a dummy placeholder. Mypy doesn't (and can't) know that checksum will never be None.
-                    raise CriticalError
+                    continue
 
                 checksum_mapping.update({file.as_posix(): checksum})
 
