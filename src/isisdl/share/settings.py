@@ -36,6 +36,7 @@ log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now
 
 whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
 blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
+blacklist_test_checksums_file_name_location = os.path.join(intern_dir_location, "blacklist_test_checksums.txt")
 course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.json")
 
 # </ Directory options >
@@ -49,11 +50,11 @@ checksum_algorithm = sha256
 
 @dataclass
 class ExtensionNumBytes:
-    num_bytes_per_point: int = 64
+    num_bytes_per_point: int = 2056
 
     skip_header: int = 0
     skip_footer: int = 0
-    num_data_points: int = 5
+    num_data_points: int = 3
 
 
 # The number of bytes which get considered for a checksum. See the according documentation in the wiki (currently non existent D:).
@@ -130,7 +131,8 @@ sleep_time_for_isis = 3
 num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 4
+download_timeout = 3
+download_timeout_multiplier = 2
 
 
 # When cancelling downloads it is waited ↓ s to check if the downloads have finished.

@@ -59,7 +59,6 @@ class CheckSumHandler:
             req.close()
 
             def download_chunk_with_offset(s: SessionWithKey, offset: int) -> Optional[bytes]:
-
                 req = get_url_from_session(s.s, file.url, headers={"Range": f"bytes={offset}-{offset + size.num_bytes_per_point - 1}"}, stream=True, params=file.additional_params_for_request)
                 # bts = self.ensure_read(req.raw, size.num_bytes_per_point)
                 if req is None:
@@ -79,23 +78,31 @@ class CheckSumHandler:
 
             base_skip = self.calculate_base_skip(file.size, size)
 
-            if self.handle_not_enough_space(base_skip, file.name):
-                return None
-            assert base_skip is not None
+            if base_skip is None or base_skip <= 0:
+                req = get_url_from_session(file.s.s, file.url, stream=True)
+                if req is None:
+                    return None
 
-            if len(api.CourseDownloader.sessions) >= size.num_data_points:
-                # If there are enough sessions guarantee None is used twice.
-                sessions = random.sample(api.CourseDownloader.sessions, k=size.num_data_points)
-            else:
-                sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
-
-            if enable_multithread:
-                with ThreadPoolExecutor(num_sessions) as ex:
-                    chunks.extend(list(ex.map(download_chunk_with_offset, sessions, range(size.skip_header, file.size - size.skip_footer, base_skip))))
+                bts = self.ensure_read(req.raw, file.size)
+                if not bts:
+                    logger.debug(f"I could not calculate a hash for the file {file.name}. Ignoring this file.")
+                    return None
+                chunks.append(bts)
 
             else:
-                for session, offset in zip(sessions, range(size.skip_header, file.size - size.skip_footer, base_skip)):
-                    chunks.append(download_chunk_with_offset(session, offset))
+                if len(api.CourseDownloader.sessions) >= size.num_data_points:
+                    # If there are enough sessions guarantee None is used twice.
+                    sessions = random.sample(api.CourseDownloader.sessions, k=size.num_data_points)
+                else:
+                    sessions = random.choices(api.CourseDownloader.sessions, k=size.num_data_points)
+
+                if enable_multithread:
+                    with ThreadPoolExecutor(num_sessions) as ex:
+                        chunks.extend(list(ex.map(download_chunk_with_offset, sessions, range(size.skip_header, file.size - size.skip_footer, base_skip))))
+
+                else:
+                    for session, offset in zip(sessions, range(size.skip_header, file.size - size.skip_footer, base_skip)):
+                        chunks.append(download_chunk_with_offset(session, offset))
 
         return self.calculate_hash(chunks)
 
@@ -106,28 +113,29 @@ class CheckSumHandler:
         file_size = os.path.getsize(file.name)
 
         base_skip = self.calculate_base_skip(file_size, size)
-        if self.handle_not_enough_space(base_skip, file.name):
-            return None
-        assert base_skip is not None
+        if base_skip is None or base_skip <= 0:
+            # Use the entire file
+            bts = file.read()
+            if not bts:
+                # Empty file
+                logger.debug(f"I could not calculate a hash for the file {file.name}. Ignoring this file.")
+                return None
 
-        for offset in range(size.skip_header, file_size - size.skip_footer, base_skip):
-            file.seek(offset)
-            chunks.append(self.ensure_read(file, size.num_bytes_per_point))
+            chunks.append(bts)
+
+        else:
+            for offset in range(size.skip_header, file_size - size.skip_footer, base_skip):
+                file.seek(offset)
+                chunks.append(self.ensure_read(file, size.num_bytes_per_point))
 
         return self.calculate_hash(chunks)
 
     @staticmethod
     def calculate_base_skip(file_size: int, size: ExtensionNumBytes) -> Optional[int]:
-        return (file_size - size.skip_header - size.skip_footer - size.num_bytes_per_point) // (size.num_data_points - 1) or None
+        if (ret := (file_size - size.skip_header - size.skip_footer - size.num_bytes_per_point) // (size.num_data_points - 1)) > 0:
+            return ret
 
-    @staticmethod
-    def handle_not_enough_space(base_skip: Optional[int], file_name: str) -> bool:
-        if base_skip is None:
-            # TODO: Push to debug
-            logger.warning(f"I could not calculate a hash for the file {file_name}. Ignoring this file.")
-            return True
-
-        return False
+        return None
 
     @staticmethod
     def calculate_hash(chunks: List[Optional[bytes]]) -> Optional[str]:

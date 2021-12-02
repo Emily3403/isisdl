@@ -305,7 +305,7 @@ class MediaContainer:
         if any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpadlite",
                                         "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
                                         "mod/choicegroup", "mailto:", "tu-berlin.zoom.us", "@campus.tu-berlin.de", "mod/h5pactivity", "meet.isis.tu-berlin.de",
-                                        "course/view.php"}):
+                                        "course/view.php", "mod/ratingallocate"}):
             # These links are definite blacklists on stuff we don't want to follow.
             return
 

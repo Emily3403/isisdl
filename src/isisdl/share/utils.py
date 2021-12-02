@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from json import JSONDecodeError
+from multiprocessing import current_process
 from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple
 from urllib.parse import unquote
@@ -23,7 +24,8 @@ from func_timeout import FunctionTimedOut, func_timeout
 
 from isisdl.share.settings import working_dir_location, whitelist_file_name_location, \
     blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, num_tries_download, download_timeout
+    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, num_tries_download, download_timeout, blacklist_test_checksums_file_name_location, \
+    download_timeout_multiplier
 
 
 def get_args():
@@ -34,7 +36,7 @@ def get_args():
         return ivalue
 
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
-    This programs downloads all courses from your ISIS page.""")
+    This program downloads all courses from your ISIS page.""")
 
     parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
@@ -64,7 +66,7 @@ def get_args():
         try:
             with open(path(filename)) as f:
                 return [int(item.strip()) for item in f.readlines() if item]
-        except FileNotFoundError:
+        except OSError:
             return []
 
     try:
@@ -115,7 +117,7 @@ def startup():
         def restore_link():
             try:
                 os.remove(fp)
-            except FileNotFoundError:
+            except OSError:
                 pass
 
             if not is_windows:
@@ -141,6 +143,7 @@ def startup():
     create_link_to_settings_file(os.path.abspath(isisdl.share.settings.__file__))
     prepare_file(whitelist_file_name_location)
     prepare_file(blacklist_file_name_location)
+    prepare_file(blacklist_test_checksums_file_name_location)
 
 
 def get_logger(debug_level: Optional[int] = None):
@@ -231,10 +234,10 @@ def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
     i = 0
     while i < num_tries_download:
         try:
-            return func_timeout(download_timeout, func, args, kwargs)  # type: ignore
+            return func_timeout(download_timeout + download_timeout_multiplier ** (0.5 * i), func, args, kwargs)  # type: ignore
 
         except FunctionTimedOut:
-            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1})")
+            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}) {args[0]}")
             i += 1
 
         except requests.exceptions.ConnectionError:
@@ -443,7 +446,8 @@ def e_format(
     return final
 
 
-startup()
-OnKill()
-args = get_args()
-logger = get_logger()
+if current_process().name == 'MainProcess':
+    startup()
+    OnKill()
+    args = get_args()
+    logger = get_logger()

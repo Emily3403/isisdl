@@ -21,12 +21,15 @@ def main():
         csh = CheckSumHandler(course, autoload_checksums=True)
 
         for file in course.list_files():
-            with file.open("rb") as f:
-                checksum = csh.calculate_checksum(f)
-                if checksum is None:
-                    continue
+            try:
+                with file.open("rb") as f:
+                    checksum = csh.calculate_checksum(f)
+                    if checksum is None:
+                        continue
 
-                csh.add(checksum)
+                    csh.add(checksum)
+            except OSError:
+                logger.warning(f"I could not open the file {file}. Ignoring this file.")
 
         csh.dump()
 

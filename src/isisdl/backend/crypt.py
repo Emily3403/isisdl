@@ -42,7 +42,7 @@ def decryptor(password: str) -> Optional[User]:
         with open(path(encrypted_password_file), "rb") as f:
             content = f.read()
 
-    except FileNotFoundError:
+    except OSError:
         logger.debug(f"The encrypted file {encrypted_password_file} was not found. It should have been checked! Please investigate!")
         return None
 
