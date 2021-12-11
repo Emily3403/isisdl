@@ -15,13 +15,14 @@ from email.utils import parsedate_to_datetime
 from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 from requests import Session
 
 from isisdl.backend import api
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
-from isisdl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session, get_head_from_session
+from isisdl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session
 
 
 class SessionWithKey:
@@ -98,9 +99,9 @@ class DownloadThrottler(Thread):
 
 class FailedDownload(enum.Enum):
     link_did_not_redirect = enum.auto()
-    empty_folder = enum.auto()
     timeout = enum.auto()
     stopped = enum.auto()
+    download_not_okay = enum.auto()
 
     @property
     def done(self):
@@ -115,8 +116,8 @@ class FailedDownload(enum.Enum):
         if self == FailedDownload.link_did_not_redirect:
             return "The link did not redirect."
 
-        if self == FailedDownload.empty_folder:
-            return "The folder was empty."
+        if self == FailedDownload.download_not_okay:
+            return "The download was not okay."
 
         if self == FailedDownload.timeout:
             return f"The request timed out ({num_tries_download} tried)."
@@ -131,7 +132,7 @@ class FailedDownload(enum.Enum):
         if self == FailedDownload.link_did_not_redirect:
             return "None. This can only be fixed by a programmer."
 
-        if self == FailedDownload.empty_folder:
+        if self == FailedDownload.download_not_okay:
             return "None. This cannot be fixed."
 
         if self == FailedDownload.timeout:
@@ -238,15 +239,18 @@ class MediaContainer:
 
     @staticmethod
     def name_from_url(name: str) -> str:
-        return name.split("/")[-1].split("?")[0]
+        return unquote(name).split("/")[-1].split("?")[0]
 
     @staticmethod
-    def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, Tuple[Optional[int], Optional[datetime.datetime], Optional[str]]]:
+    def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, bool, Tuple[Optional[int], Optional[datetime.datetime], Optional[str], bool, str]]:
         additional_params = additional_params or {}
         # Read the size from url
         req = get_url_from_session(s.s, url, stream=True, params=additional_params)
         if req is None:
             return None
+
+        if not req.ok:
+            return False
 
         headers = req.headers
         req.close()
@@ -266,7 +270,9 @@ class MediaContainer:
         except KeyError:
             filename = None
 
-        return size, date, filename
+        is_html = "text/html" in headers["Content-Type"]
+
+        return size, date, filename, is_html, req.url
 
     @classmethod
     def from_video(cls, s: SessionWithKey, parent_course, video: Dict[str, str]):
@@ -275,6 +281,9 @@ class MediaContainer:
         info = MediaContainer.extract_info_from_header(s, url)
         if info is None:
             cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.timeout)
+            return
+        if isinstance(info, bool):
+            cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.download_not_okay)
             return
 
         size, *_ = info
@@ -300,7 +309,7 @@ class MediaContainer:
                 url = req_soup.find("div", "urlworkaround").find("a").attrs.get("href")
 
         if url is None:
-            return   # type: ignore
+            return  # type: ignore
 
         if any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpadlite",
                                         "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
@@ -321,59 +330,34 @@ class MediaContainer:
 
         if "mod/folder" in url:
             folder_id = url.split("id=")[-1]
-            # Use the POST form
-            req = get_head_from_session(s.s, "https://isis.tu-berlin.de/mod/folder/download_folder.php", params={"id": folder_id, "sesskey": s.key})
-            if req is None:
-                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.timeout)
-
-            if not req.ok:
-                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.link_did_not_redirect)
-
-            filename = req.headers["content-disposition"].split("filename*=UTF-8\'\'")[-1].strip('"')
-            name, ext = os.path.splitext(filename)
-
-            filename = name[:-9] + ext
-            media_type = MediaType.archive
-            url = "https://isis.tu-berlin.de/mod/folder/download_folder.php"
             additional_kwargs = {"id": folder_id, "sesskey": s.key}
-
-        elif "mod/resource" in url:
-            # Follow the link and get the file
-            req = get_url_from_session(s.s, url, allow_redirects=False)
-
-            name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
-            if req is None:
-                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
-
-            if req.status_code != 303:
-                # TODO: Still download the content
-                return cls(MediaType.not_found, parent_course, s, url, name, status=FailedDownload.link_did_not_redirect)
-
-            redirect = BeautifulSoup(req.text, features="html.parser")
-
-            links = redirect.find_all("a")
-            if len(links) > 1:
-                logger.debug(f"I've found {len(links) = } (Course = {parent_course}) many links. This should be debugged!")
-
-            url = links[0].attrs["href"]
-            filename = MediaContainer.name_from_url(url)
+            url = "https://isis.tu-berlin.de/mod/folder/download_folder.php"
+            media_type = MediaType.archive
 
         # Read the size from url
         info = MediaContainer.extract_info_from_header(s, url, additional_kwargs)
         if info is None:
-            if filename is None:
-                filename = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+            return cls(media_type, parent_course, s, url, f"Not-found-{''.join(random.choices(string.digits, k=16))}", status=FailedDownload.timeout)
 
-            cls(media_type, parent_course, s, url, filename, status=FailedDownload.timeout)
-            return
+        if isinstance(info, bool):
+            logger.debug(f"The download is not okay: {url = }")
+            return cls(media_type, parent_course, s, url, f"Not-found-{''.join(random.choices(string.digits, k=16))}", status=FailedDownload.download_not_okay)
 
-        size, date, _name = info
-        if filename is None:
-            filename = _name
+        from_mod_resource = False
+        if "mod/resource" in url:
+            # Since the url will get overwritten save the information
+            from_mod_resource = True
+
+        size, date, filename, is_html, url = info
+
+        if from_mod_resource:
+            filename = MediaContainer.name_from_url(url)
+            if is_html:
+                return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.link_did_not_redirect)
 
         if filename is None:
             logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
-            filename = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
+            filename = _temp_name
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
@@ -433,12 +417,19 @@ class MediaContainer:
 
     @staticmethod
     def strip_content_disposition(st: str):
+        st = unquote(st)
         if st.startswith("inline") or "filename=" in st:
             return st.split("filename=")[-1].strip("\"")
 
         if st.startswith("attachment"):
             if "filename*=" in st:
-                return st.split("filename*=UTF-8\'\'")[-1].strip("\'")
+                name = st.split("filename*=UTF-8\'\'")[-1].strip("\'")
+                name, ext = os.path.splitext(name)
+                if name[-8:] == datetime.datetime.now().strftime("%Y%m%d"):
+                    # Strip unneeded datetime
+                    name = name[:-9] + ext
+
+                return name
 
         logger.error(f"Error decoding {st}: Did not find a valid transformation.")
 

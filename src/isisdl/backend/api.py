@@ -232,6 +232,9 @@ class CourseDownloader:
         "checksum": None,
         "conflict": None,
         "download": None,
+        "checksum_mod/folder": 0,
+        "checksum_mod/resource": 0,
+        "checksum_rest": 0,
     }
     do_shutdown: bool = False
     downloading_files: bool = False
@@ -329,6 +332,8 @@ class CourseDownloader:
 
     @debug_time("Building file list", debug_level=logging.INFO)
     def build_file_list(self) -> None:
+        # TODO: Get file url redirect and filter unnecessary out
+
         # First we get all the possible files
         if enable_multithread:
             with ThreadPoolExecutor(len(CourseDownloader.courses)) as ex:
@@ -355,7 +360,7 @@ class CourseDownloader:
                 to_download = list(filter(None, ex.map(lambda x: x.instantiate(), files)))  # type: ignore
 
         else:
-            to_download = list(filter(None, [file.instantiate() for file in files]))
+            to_download = [item for file in files if (item := file.instantiate()) is not None]
 
         to_download = list(set(to_download))
         random.shuffle(to_download)

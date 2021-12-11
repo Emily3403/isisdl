@@ -37,6 +37,8 @@ def make_files():
             info = MediaContainer.extract_info_from_header(item.s, item.arg["url"])  # type: ignore
             if info is None:
                 raise CriticalError
+            if isinstance(info, bool):
+                return
 
             a, *_ = info
             if a is None:

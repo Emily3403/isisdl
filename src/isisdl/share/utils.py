@@ -230,14 +230,15 @@ def clear_screen():
     os.system("cls") if is_windows else os.system("clear")
 
 
-def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
+def _get_func_session(func, *args, extra_timeout, **kwargs) -> Optional[requests.Response]:
     i = 0
     while i < num_tries_download:
         try:
-            return func_timeout(download_timeout + download_timeout_multiplier ** (0.5 * i), func, args, kwargs)  # type: ignore
+            return func_timeout(download_timeout + extra_timeout + download_timeout_multiplier ** (0.5 * i), func, args, kwargs)  # type: ignore
 
         except FunctionTimedOut:
             logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}) {args[0]}")
+            # logger.debug("".join(traceback.format_stack()))
             i += 1
 
         except requests.exceptions.ConnectionError:
@@ -247,16 +248,16 @@ def _get_func_session(func, *args, **kwargs) -> Optional[requests.Response]:
     return None
 
 
-def get_url_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
-    return _get_func_session(sess.get, *args, **kwargs)
+def get_url_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[requests.Response]:
+    return _get_func_session(sess.get, *args, extra_timeout=extra_timeout, **kwargs)
 
 
-def get_head_from_session(sess: requests.Session, *args, **kwargs) -> Optional[requests.Response]:
-    return _get_func_session(sess.head, *args, **kwargs)
+def get_head_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[requests.Response]:
+    return _get_func_session(sess.head, *args, extra_timeout=extra_timeout, **kwargs)
 
 
-def get_text_from_session(sess: requests.Session, *args, **kwargs) -> Optional[str]:
-    s = get_url_from_session(sess, *args, **kwargs)
+def get_text_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[str]:
+    s = get_url_from_session(sess, *args, extra_timeout=extra_timeout, **kwargs)
     if s is None:
         return None
 
