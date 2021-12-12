@@ -230,6 +230,7 @@ class CourseDownloader:
         "course": 0,
         "build": 0,
         "instantiate": 0,
+        "instantiate_video": 0,
         "checksum": 0,
         "instantiate_and_checksum": 0,
         "conflict": 0,
@@ -256,8 +257,6 @@ class CourseDownloader:
         time_func(self.find_courses, "course")
         time_func(self.build_file_list, "build")
         time_func(self.build_checksums, "instantiate_and_checksum")
-        self.timings["instantiate"] /= args.num_threads_instantiate
-        self.timings["checksum"] /= args.num_threads_instantiate
 
         time_func(self.check_for_conflicts_in_files, "conflict")
 
@@ -354,10 +353,11 @@ class CourseDownloader:
     @debug_time("Building checksums", debug_level=logging.INFO)
     def build_checksums(self):
         files = CourseDownloader.not_inst_files
+        files = files[:100]
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
         to_download: List[MediaContainer]
-        if enable_multithread:
+        if enable_multithread and False:
             with ThreadPoolExecutor(args.num_threads_instantiate) as ex:
                 to_download = list(filter(None, ex.map(lambda x: x.instantiate(), files)))  # type: ignore
 

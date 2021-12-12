@@ -292,7 +292,7 @@ class MediaContainer:
         size, *_ = info
 
         new_time = time.perf_counter() - start_time
-        api.CourseDownloader.timings["instantiate"] += new_time
+        api.CourseDownloader.timings["instantiate_video"] += new_time
 
         return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
 
@@ -365,8 +365,7 @@ class MediaContainer:
             logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
             filename = _temp_name
 
-        new_time = time.perf_counter() - start_time
-        api.CourseDownloader.timings["instantiate"] += new_time
+        api.CourseDownloader.timings["instantiate"] += time.perf_counter() - start_time
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
