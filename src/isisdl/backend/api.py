@@ -59,7 +59,7 @@ class Course:
                 the_id = json.load(f)[name]
 
         except (FileNotFoundError, KeyError, json.decoder.JSONDecodeError) as ex:
-            logger.error(f"Malformed file {path(course_name_to_id_file_location)!r}.")
+            logger.warning(f"I could not find the ID for course {name}. This shouldn't be a problem - just restart me when I'm done downloading the courses.")
             raise ex
 
         return cls(name, the_id)
@@ -225,16 +225,15 @@ class CourseDownloader:
     not_inst_files: List[AlmostMediaContainer] = []
     files: List[MediaContainer] = []
 
-    timings: Dict[str, Optional[float]] = {
-        "auth": None,
-        "course": None,
-        "build": None,
-        "checksum": None,
-        "conflict": None,
-        "download": None,
-        "checksum_mod/folder": 0,
-        "checksum_mod/resource": 0,
-        "checksum_rest": 0,
+    timings: Dict[str, float] = {
+        "auth": 0,
+        "course": 0,
+        "build": 0,
+        "instantiate": 0,
+        "checksum": 0,
+        "instantiate_and_checksum": 0,
+        "conflict": 0,
+        "download": 0,
     }
     do_shutdown: bool = False
     downloading_files: bool = False
@@ -244,9 +243,9 @@ class CourseDownloader:
 
     def start(self):
         def time_func(func: Callable[[], None], entry: str) -> None:
-            s = time.time()
+            s = time.perf_counter()
             func()
-            CourseDownloader.timings[entry] = time.time() - s
+            CourseDownloader.timings[entry] = time.perf_counter() - s
             maybe_shutdown()
 
         def maybe_shutdown():
@@ -256,7 +255,10 @@ class CourseDownloader:
         time_func(self.authenticate_all, "auth")
         time_func(self.find_courses, "course")
         time_func(self.build_file_list, "build")
-        time_func(self.build_checksums, "checksum")
+        time_func(self.build_checksums, "instantiate_and_checksum")
+        self.timings["instantiate"] /= args.num_threads_instantiate
+        self.timings["checksum"] /= args.num_threads_instantiate
+
         time_func(self.check_for_conflicts_in_files, "conflict")
 
         status.add_files(CourseDownloader.files)
@@ -383,7 +385,7 @@ class CourseDownloader:
             logger.error("No files to download! Exiting!")
             return
 
-        s = time.time()
+        s = time.perf_counter()
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads) as ex:
                 ex.map(lambda x: x.download(), self.files)  # type: ignore
@@ -391,7 +393,7 @@ class CourseDownloader:
             for item in self.files:
                 item.download()
 
-        CourseDownloader.timings["download"] = time.time() - s
+        CourseDownloader.timings["download"] = time.perf_counter() - s
 
         new_files, fixable_failed_files, unfixable_failed_files = defaultdict(list), defaultdict(list), defaultdict(list)
         for item in self.files:

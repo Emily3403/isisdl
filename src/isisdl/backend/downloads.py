@@ -228,7 +228,9 @@ class MediaContainer:
     def __post_init__(self):
         self.name = sanitize_name_for_dir(self.name)
 
+        s = time.perf_counter()
         self.checksum = self.parent_course.checksum_handler.already_downloaded(self)
+        api.CourseDownloader.timings["checksum"] += time.perf_counter() - s
 
         if self.checksum is None:
             self.status = FailedDownload.timeout
@@ -276,6 +278,7 @@ class MediaContainer:
 
     @classmethod
     def from_video(cls, s: SessionWithKey, parent_course, video: Dict[str, str]):
+        start_time = time.perf_counter()
         timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
         url = video["url"]
         info = MediaContainer.extract_info_from_header(s, url)
@@ -288,15 +291,20 @@ class MediaContainer:
 
         size, *_ = info
 
+        new_time = time.perf_counter() - start_time
+        api.CourseDownloader.timings["instantiate"] += new_time
+
         return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
 
     @classmethod
     def from_url(cls, s: SessionWithKey, parent_course, url: str):
+        start_time = time.perf_counter()
         _temp_name = f"Not-found-{''.join(random.choices(string.digits, k=16))}"
 
         if "mod/url" in url:
             # Try to follow the redirect. If it is allowed through the black- / whitelist, download it
             req = get_url_from_session(s.s, url)
+
             if req is None:
                 return cls(MediaType.not_found, parent_course, s, url, _temp_name, status=FailedDownload.timeout)
 
@@ -307,9 +315,6 @@ class MediaContainer:
                 # Did not redirect → find the link on the ISIS-Page
                 req_soup = BeautifulSoup(req.text, features="html.parser")
                 url = req_soup.find("div", "urlworkaround").find("a").attrs.get("href")
-
-        if url is None:
-            return  # type: ignore
 
         if any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpadlite",
                                         "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
@@ -336,6 +341,7 @@ class MediaContainer:
 
         # Read the size from url
         info = MediaContainer.extract_info_from_header(s, url, additional_kwargs)
+
         if info is None:
             return cls(media_type, parent_course, s, url, f"Not-found-{''.join(random.choices(string.digits, k=16))}", status=FailedDownload.timeout)
 
@@ -358,6 +364,9 @@ class MediaContainer:
         if filename is None:
             logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
             filename = _temp_name
+
+        new_time = time.perf_counter() - start_time
+        api.CourseDownloader.timings["instantiate"] += new_time
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 

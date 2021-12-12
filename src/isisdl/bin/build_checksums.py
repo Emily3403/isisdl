@@ -15,7 +15,6 @@ def main():
         try:
             course = Course.from_name(_course)
         except (FileNotFoundError, KeyError, json.decoder.JSONDecodeError):
-            logger.error(f"I could not find the ID for course {_course}.")
             continue
 
         csh = CheckSumHandler(course, autoload_checksums=True)
