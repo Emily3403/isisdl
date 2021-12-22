@@ -14,21 +14,25 @@ from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union
+from typing import Optional, List, Any, Iterable, Dict, cast, Tuple, Union, TYPE_CHECKING
 from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 from requests import Session
 
-from isisdl.backend import api
+import isisdl.backend.api_old as api_old
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, print_status, status_time, num_tries_download
 from isisdl.share.utils import HumanBytes, clear_screen, args, logger, e_format, on_kill, sanitize_name_for_dir, get_url_from_session
 
 
+if TYPE_CHECKING:
+    from isisdl.backend.request_helper import RequestHelper
+
 class SessionWithKey:
-    def __init__(self, s: Session, key: str):
+    def __init__(self, s: Session, key: str, token: str):
         self.s = s
         self.key = key
+        self.token = token
 
     def __str__(self):
         return f"Session with {self.key}"
@@ -68,7 +72,7 @@ class DownloadThrottler(Thread):
         num = DownloadThrottler.max_tokens()
 
         while True:
-            start = time.time()
+            start = time.perf_counter()
             try:
                 for _ in range(num):
                     self.active_tokens.put(self.used_tokens.get())
@@ -76,7 +80,7 @@ class DownloadThrottler(Thread):
             except (Full, Empty):
                 pass
 
-            time.sleep(max(token_queue_refresh_rate - (time.time() - start), 0))
+            time.sleep(max(token_queue_refresh_rate - (time.perf_counter() - start), 0))
 
     def get(self):
         self.times_get += 1
@@ -214,7 +218,7 @@ class MediaType(enum.Enum):
 @dataclass
 class MediaContainer:
     media_type: MediaType
-    parent_course: api.Course
+    parent_course: api_old.Course
     s: SessionWithKey
     url: str
     name: str
@@ -230,7 +234,7 @@ class MediaContainer:
 
         s = time.perf_counter()
         self.checksum = self.parent_course.checksum_handler.already_downloaded(self)
-        api.CourseDownloader.timings["checksum"] += time.perf_counter() - s
+        api_old.CourseDownloader.timings["checksum"] += time.perf_counter() - s
 
         if self.checksum is None:
             self.status = FailedDownload.timeout
@@ -245,9 +249,20 @@ class MediaContainer:
 
     @staticmethod
     def extract_info_from_header(s: SessionWithKey, url: str, additional_params=None) -> Union[None, bool, Tuple[Optional[int], Optional[datetime.datetime], Optional[str], bool, str]]:
+        s1 = time.perf_counter()
         additional_params = additional_params or {}
         # Read the size from url
-        req = get_url_from_session(s.s, url, stream=True, params=additional_params)
+        timings = []
+        while True:
+            sn = time.perf_counter()
+            req = get_url_from_session(s.s, url, stream=True, params=additional_params, allow_redirects=False)
+            if req.status_code != 303:
+                timings.append(time.perf_counter() - sn)
+                break
+            timings.append(time.perf_counter() - sn)
+            url = req.next.url
+
+        s2 = time.perf_counter()
         if req is None:
             return None
 
@@ -262,11 +277,13 @@ class MediaContainer:
         except KeyError:
             size = None
 
+        s3 = time.perf_counter()
         try:
             date: Optional[datetime.datetime] = parsedate_to_datetime(headers["last-modified"])
         except KeyError:
             date = None
 
+        s4 = time.perf_counter()
         try:
             filename: Optional[str] = MediaContainer.strip_content_disposition(headers["content-disposition"])
         except KeyError:
@@ -274,27 +291,68 @@ class MediaContainer:
 
         is_html = "text/html" in headers["Content-Type"]
 
+        api_old.CourseDownloader.timings["extract_info_1"] += time.perf_counter() - s1
+        api_old.CourseDownloader.timings["extract_info_2"] += time.perf_counter() - s2
+        api_old.CourseDownloader.timings["extract_info_3"] += time.perf_counter() - s3
+        api_old.CourseDownloader.timings["extract_info_4"] += time.perf_counter() - s4
+
         return size, date, filename, is_html, req.url
 
-    @classmethod
-    def from_video(cls, s: SessionWithKey, parent_course, video: Dict[str, str]):
+    @staticmethod
+    def from_dict(helper: RequestHelper, where: str, info: dict) -> List[MediaContainer]:
+        # helper.post_REST('core_course_get_contents', data)
+
+        return
+        # if where == "download_assignments":
+        #     return MediaContainer.from_assignment(helper, info)
+        #
+        # elif where == "download_folders":
+        #     return MediaContainer.from_folder(s, info)
+        #
+        # elif where == "download_resources":
+        #     return MediaContainer.from_resource(s, info)
+        #
+        # elif where == "download_videos":
+        #     return MediaContainer.from_video(s, info)
+        #
+        # raise ValueError
+
+    @staticmethod
+    def from_assignment(s: SessionWithKey, info: dict) -> List[MediaContainer]:
+        files = info["introattachments"]
+        # for file in files:
+
+        return
+
+    @staticmethod
+    def from_folder(s: SessionWithKey, info: dict) -> List[MediaContainer]:
+        # self.request_helper.post_REST('core_course_get_contents', data)
+        return
+
+    @staticmethod
+    def from_resource(s: SessionWithKey, info: dict) -> List[MediaContainer]:
+
+        return
+
+    @staticmethod
+    def from_video(s: SessionWithKey, video: Dict[str, str]) -> List[MediaContainer]:
         start_time = time.perf_counter()
-        timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
-        url = video["url"]
-        info = MediaContainer.extract_info_from_header(s, url)
-        if info is None:
-            cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.timeout)
-            return
-        if isinstance(info, bool):
-            cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], status=FailedDownload.download_not_okay)
-            return
-
-        size, *_ = info
-
-        new_time = time.perf_counter() - start_time
-        api.CourseDownloader.timings["instantiate_video"] += new_time
-
-        return cls(MediaType.video, parent_course, s, url, video["title"] + video["fileext"], size, timestamp)
+        # timestamp = datetime.datetime.fromtimestamp(cast(int, video["timecreated"]))
+        # url = video["url"]
+        # info = MediaContainer.extract_info_from_header(s, url)
+        # if info is None:
+        #     cls(MediaType.video, None, s, url, video["title"] + video["fileext"], status=FailedDownload.timeout)
+        #     return
+        # if isinstance(info, bool):
+        #     cls(MediaType.video, None, s, url, video["title"] + video["fileext"], status=FailedDownload.download_not_okay)
+        #     return
+        #
+        # size, *_ = info
+        #
+        # new_time = time.perf_counter() - start_time
+        # api_old.CourseDownloader.timings["instantiate_video"] += new_time
+        #
+        # return cls(MediaType.video, None, s, url, video["title"] + video["fileext"], size, timestamp)
 
     @classmethod
     def from_url(cls, s: SessionWithKey, parent_course, url: str):
@@ -316,12 +374,7 @@ class MediaContainer:
                 req_soup = BeautifulSoup(req.text, features="html.parser")
                 url = req_soup.find("div", "urlworkaround").find("a").attrs.get("href")
 
-        if any(item in url for item in {"mod/url", "mod/page", "mod/forum", "mod/assign", "mod/feedback", "mod/quiz", "mod/videoservice", "mod/etherpadlite",
-                                        "mod/questionnaire", "availability/condition", "mod/lti", "mod/scorm", "mod/choicegroup", "mod/glossary", "mod/choice",
-                                        "mod/choicegroup", "mailto:", "tu-berlin.zoom.us", "@campus.tu-berlin.de", "mod/h5pactivity", "meet.isis.tu-berlin.de",
-                                        "course/view.php", "mod/ratingallocate"}):
-            # These links are definite blacklists on stuff we don't want to follow.
-            return
+
 
         if "isis" not in url:
             return
@@ -365,7 +418,7 @@ class MediaContainer:
             logger.warning(f"The filename is None. (Course = {parent_course}) This is probably a bug. Please investigate!\n{url = }")
             filename = _temp_name
 
-        api.CourseDownloader.timings["instantiate"] += time.perf_counter() - start_time
+        api_old.CourseDownloader.timings["instantiate"] += time.perf_counter() - start_time
 
         return cls(media_type, parent_course, s, url, filename, size, date, additional_params_for_request=additional_kwargs)
 
@@ -433,7 +486,7 @@ class MediaContainer:
             if "filename*=" in st:
                 name = st.split("filename*=UTF-8\'\'")[-1].strip("\'")
                 name, ext = os.path.splitext(name)
-                if name[-8:] == datetime.datetime.now().strftime("%Y%m%d"):
+                if True or name[-8:] == datetime.datetime.now().strftime("%Y%m%d"):
                     # Strip unneeded datetime
                     name = name[:-9] + ext
 
@@ -587,6 +640,7 @@ class Status(Thread):
     @on_kill(-1)
     def finish():
         Status._running = False
+
 
 
 status = Status()

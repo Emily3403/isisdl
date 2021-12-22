@@ -4,13 +4,13 @@ import os
 import shutil
 import time
 
-from isisdl.backend.api import Course
+from isisdl.backend.api_old import Course
 from isisdl.share.settings import download_dir_location, unpacked_archive_dir_location
 from isisdl.share.utils import path, logger
 
 
 def main():
-    s = time.time()
+    s = time.perf_counter()
     for _course in os.listdir(path(download_dir_location)):
         try:
             course = Course.from_name(_course)
@@ -26,7 +26,7 @@ def main():
             except shutil.ReadError:
                 pass
 
-    logger.info(f"Successfully unpacked all archives in {time.time() - s:.3f}s.")
+    logger.info(f"Successfully unpacked all archives in {time.perf_counter() - s:.3f}s.")
 
 
 if __name__ == '__main__':

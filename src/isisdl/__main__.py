@@ -2,7 +2,7 @@
 
 import isisdl.bin.build_checksums as build_checksums
 import isisdl.bin.unpack_archives as unpack_archives
-from isisdl.backend.api import CourseDownloader
+from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import throttler, Status
 from isisdl.share.settings import download_chunk_size
@@ -46,8 +46,6 @@ def main():
 
 # TODO:
 #
-#   Try to reproduce 503
-#
 #   Better list of file downloads?
 #
 #   Credentials multiple errors
@@ -58,10 +56,19 @@ def main():
 #   Exponential time decay
 #
 #   Umlaute
+#
+#   Only save a login token
+#
+#   When downloading use queue to move urls around → build + checksum can be merged
+#
+#   Expected download size not working
+
 
 # Maybe todo
 
 #   Check for corrupted files
+#
+#   Notify via telegram
 
 
 if __name__ == '__main__':

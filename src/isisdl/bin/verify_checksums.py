@@ -8,7 +8,7 @@ from typing import Dict, List
 
 from isisdl.share.settings import working_dir_location, blacklist_test_checksums_file_name_location
 
-from isisdl.backend.api import Course
+from isisdl.backend.api_old import Course
 from isisdl.backend.checksums import CheckSumHandler
 from isisdl.share.utils import logger, path
 

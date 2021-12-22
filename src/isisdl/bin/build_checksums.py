@@ -3,14 +3,14 @@ import json
 import os
 import time
 
-from isisdl.backend.api import Course
+from isisdl.backend.api_old import Course
 from isisdl.backend.checksums import CheckSumHandler
 from isisdl.share.settings import download_dir_location
 from isisdl.share.utils import path, logger
 
 
 def main():
-    s = time.time()
+    s = time.perf_counter()
     for _course in os.listdir(path(download_dir_location)):
         try:
             course = Course.from_name(_course)
@@ -32,7 +32,7 @@ def main():
 
         csh.dump()
 
-    logger.info(f"Successfully built all checksums in {time.time() - s:.3f}s.")
+    logger.info(f"Successfully built all checksums in {time.perf_counter() - s:.3f}s.")
 
 
 if __name__ == '__main__':

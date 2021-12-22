@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List
 
 import isisdl.bin.build_checksums as build_checksums
-from isisdl.backend.api import CourseDownloader, AlmostMediaContainer
+from isisdl.backend.api_old import CourseDownloader, AlmostMediaContainer
 from isisdl.backend.downloads import MediaContainer, DownloadStatus, FailedDownload, MediaType
 from isisdl.share.settings import num_sessions, checksum_file
 from isisdl.share.utils import path, CriticalError

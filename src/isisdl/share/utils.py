@@ -211,13 +211,13 @@ def sanitize_name_for_dir(name: str) -> str:
     name = unquote(name)
 
     not_found_char = "-"
-    punctuation_char = "."
+    punctuation_char = "_"
 
     bad_chars = r""""#$%&'*/:<=>?@\^`|~"""
 
     name = name.strip()
 
-    name = name.translate(str.maketrans(string.whitespace + "_", punctuation_char * (len(string.whitespace) + 1)))
+    name = name.translate(str.maketrans(string.whitespace, punctuation_char * (len(string.whitespace))))
     name = name.translate(str.maketrans(bad_chars, not_found_char * len(bad_chars)))
 
     return name
@@ -279,19 +279,19 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
         @wraps(function)
         def _self_impl(self, *method_args, **method_kwargs):
             logger.log(debug_level, f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
-            s = time.time()
+            s = time.perf_counter()
 
             method_output = function(self, *method_args, **method_kwargs)
-            logger.log(debug_level, f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.time() - s:.3f}s")
+            logger.log(debug_level, f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.perf_counter() - s:.3f}s")
 
             return method_output
 
         def _impl(*method_args, **method_kwargs):
             logger.log(debug_level, f"Starting: {str_to_put}")
-            s = time.time()
+            s = time.perf_counter()
 
             method_output = function(*method_args, **method_kwargs)
-            logger.log(debug_level, f"Finished: {str_to_put} in {time.time() - s:.3f}s")
+            logger.log(debug_level, f"Finished: {str_to_put} in {time.perf_counter() - s:.3f}s")
 
             return method_output
 
@@ -334,7 +334,7 @@ class OnKill:
     def exit(sig=None, frame=None):
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
-            from isisdl.backend.api import CourseDownloader
+            from isisdl.backend.api_old import CourseDownloader
             if CourseDownloader.downloading_files:
                 logger.info("This *will* lead to corrupted files!")
             else:

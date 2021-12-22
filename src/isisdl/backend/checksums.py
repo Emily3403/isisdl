@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Set, BinaryIO, Union, Optional, List
 
-import isisdl.backend.api as api
+import isisdl.backend.api_old as api
 from isisdl.backend.downloads import MediaContainer, SessionWithKey
 from isisdl.share.settings import checksum_file, checksum_num_bytes, checksum_algorithm, ExtensionNumBytes, checksum_range_parameter_ignored, num_sessions, enable_multithread
 from isisdl.share.utils import args, get_url_from_session, logger

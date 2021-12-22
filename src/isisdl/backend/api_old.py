@@ -8,6 +8,7 @@ import logging
 import os
 import random
 import time
+import base64
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from requests import Session
 
 from isisdl.backend.checksums import CheckSumHandler
 from isisdl.backend.downloads import MediaType, SessionWithKey, MediaContainer, DownloadStatus, status, FailedDownload
+from isisdl.backend.request_helper import RequestHelper
 from isisdl.share.settings import download_dir_location, enable_multithread, course_name_to_id_file_location, \
     sleep_time_for_download_interrupt, num_sessions
 from isisdl.share.utils import User, args, path, debug_time, sanitize_name_for_dir, on_kill, logger, get_text_from_session, get_url_from_session, CriticalError, classproperty
@@ -231,6 +233,10 @@ class CourseDownloader:
         "build": 0,
         "instantiate": 0,
         "instantiate_video": 0,
+        "extract_info_1": 0,
+        "extract_info_2": 0,
+        "extract_info_3": 0,
+        "extract_info_4": 0,
         "checksum": 0,
         "instantiate_and_checksum": 0,
         "conflict": 0,
@@ -268,7 +274,7 @@ class CourseDownloader:
     @debug_time("Authentication with Shibboleth")
     def _authenticate(self, num: int) -> SessionWithKey:
         if CourseDownloader.do_shutdown:
-            return SessionWithKey(Session(), "")
+            return SessionWithKey(Session(), "", "")
 
         s = Session()
         s.headers.update({"User-Agent": "UwU"})
@@ -295,7 +301,17 @@ class CourseDownloader:
         soup = BeautifulSoup(response.text, features="html.parser")
         key = soup.find("input", {"name": "sesskey"})["value"]
 
-        return SessionWithKey(s, key)
+        try:
+            # This is a somewhat dirty hack.
+            # In order to obtain a token one usually calls the `login/token.php` site, however since ISIS handles authentication via SSO, this always results in an invalid password.
+            # In https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login this way of obtaining the token is described.
+            # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+            s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
+            raise requests.exceptions.InvalidSchema
+        except requests.exceptions.InvalidSchema as ex:
+            token = base64.standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
+
+        return SessionWithKey(s, key, token)
 
     def authenticate_all(self) -> None:
         with ThreadPoolExecutor(num_sessions) as ex:
@@ -353,11 +369,11 @@ class CourseDownloader:
     @debug_time("Building checksums", debug_level=logging.INFO)
     def build_checksums(self):
         files = CourseDownloader.not_inst_files
-        files = files[:100]
+        # files = files[:100]
 
         # Now instantiate the objects. This can be more efficient with ThreadPoolExecutor(requests) + multiprocessing
         to_download: List[MediaContainer]
-        if enable_multithread and False:
+        if enable_multithread:
             with ThreadPoolExecutor(args.num_threads_instantiate) as ex:
                 to_download = list(filter(None, ex.map(lambda x: x.instantiate(), files)))  # type: ignore
 
