@@ -13,7 +13,7 @@ def maybe_print_version_and_exit():
     if not args.version:
         return
 
-    print("isisdl Version 0.4")  # TODO
+    print("isisdl Version 0.5.1")  # TODO
     exit(0)
 
 
@@ -62,6 +62,10 @@ def main():
 #   When downloading use queue to move urls around → build + checksum can be merged
 #
 #   Expected download size not working
+#
+#   Flag for no videos
+#
+#   Attach the header to the MediaContainer
 
 
 # Maybe todo

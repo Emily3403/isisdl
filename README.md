@@ -4,58 +4,32 @@
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
-Version 0.4
+Version 0.5.1
 
 ## Features
 
-- Downloads all Material from all courses from your ISIS profile.
-- Efficient and dynamic checksum computing for a very good file recognition.
-- You can whitelist / blacklist courses with a given course ID.
-- Multithreaded: A fixed number of threads can be selected at start time.
+- Download all Files and Videos from your subscribed ISIS Courses.
+- Recognize already downloaded and updated files.
+- Easy black- / whitelisting (matched by substring) of Courses.
+- Multithreaded: A fixed number of threads may be selected at start time.
 - Compatibility: This library will run with any python interpreter that is ≥ 3.8.
-
-Binary functionality:
-
-- Building and testing of checksums from existing files.
 - Automatic unpacking of archives.
+- Compressing of videos.
 
-For more documentation please refer to the Wiki.
-
-[comment]: <> (TODO: Hyperref)
+[//]: # (TODO: Hyperref / more wiki pages)
 
 ## Installation
 
-You **will** need a working python3.8 interpreter or above. The script will fail for python3.7 as some new python3.8
-features are used.
-
-If you are familiar with `pip` and have it set up, simply install it with
-
+You **will** need a working python3.8 interpreter or above.
+Simply install this library with `pip` in your favorite environment.
 ```shell
 pip install isisdl
 ```
 
-To run the executable type
-```shell
-isisdl
-```
-into your favorite shell.
+To run the executable type `isisdl` into your favorite shell.
+Note that the path `~/.local/bin` has to be in the `PATH` in order to execute it.
 
-For more detailed instructions on installing (including the manual installation) please consult the wiki pages.
+For more detailed instructions on installing (including the manual installation) please consult the wiki pages [here]().
 
-[comment]: <> (TODO: Hyperref)
-
-## Acknowledgements
-
-### isia-tub
-
-Consider checking out the [gitlab](https://git.tu-berlin.de/freddy1404/isia-tub)
-
-This was the original inspiration for this library. At the time isia did not offer the functionality of uri-encoding the
-password which lead me to create this library. I have recently implemented this functionality into isia in order to
-benchmark and test both solutions.
-
-### mCoding
-
-The structure of this project is heavily inspired by the
-[GitHub](https://github.com/mCodingLLC/SlapThatLikeButton-TestingStarterProject) of mCoding.
+[//]: # (TODO: Hyperref)
 
