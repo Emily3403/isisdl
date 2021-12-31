@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import wraps
 from multiprocessing import current_process
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple
+from typing import Union, Callable, Optional, List, Tuple, Dict
 from urllib.parse import unquote
 
 from isisdl.share.settings import working_dir_location, whitelist_file_name_location, \
@@ -38,19 +38,16 @@ def get_args():
 
     parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
-    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
-                        default=4)
-    parser.add_argument("-ni", "--num-threads-instantiate", help="The number of threads which instantiates the objects.", type=check_positive,
-                        default=12)  # TODO: Remove
-
+    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive, default=4)
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
-
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
+
     parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
     parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
 
     parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
     parser.add_argument("-a", "--enable-assertions", help="Enables all debug assertions. Defaults to true.", action="store_false")
+
     parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos", action="store_true")
     parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
@@ -70,8 +67,8 @@ def get_args():
         except OSError:
             return []
 
-    from database import database_helper
-    course_id_mapping = dict(database_helper.get_course_name_and_ids())
+    from isisdl.backend.database import database_helper
+    course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
     def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
         if lst is None:
@@ -307,29 +304,26 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig=None, frame=None):
+        from isisdl.backend.request_helper import CourseDownloader
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
-            from isisdl.backend.request_helper import CourseDownloader
-            if CourseDownloader.downloading_files:
-                logger.info("This *will* lead to corrupted files!")
-            else:
-                logger.info("Don't worry, no files were harmed!")
+            logger.info("This *will* lead to corrupted files!")
 
-            os._exit(1)
+            os._exit(sig)
 
         if sig is not None:
             sig = signal.Signals(sig)
-            logger.warning(f"Noticed signal {sig.name} ({sig.value}). Cleaning up…")
-            logger.debug("If you *really* need to exit please send another signal!")
-            OnKill._already_killed = True
+            logger.warning(f"Noticed signal {sig.name} ({sig.value}).")
+            if CourseDownloader.downloading_files:
+                logger.debug("If you *really* need to exit please send another signal!")
+                OnKill._already_killed = True
+            else:
+                os._exit(sig.value)
 
         for _ in range(OnKill._funcs.qsize()):
             func: Callable[[], None]
             _, func = OnKill._funcs.get_nowait()
-            # try:
             func()
-            # except:  # type: ignore
-            # logger.error(f"The function {func.__name__} did not succeed.")
 
 
 def on_kill(priority: Optional[int] = None):

@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
-from database import database_helper
+from isisdl.backend.database import database_helper
 from isisdl.share.settings import download_dir_location
 from isisdl.share.utils import path, logger, calculate_checksum
 
@@ -23,7 +23,7 @@ def main():
 
     missed_files = [(item, course) for course, row in checksums.items() for item in row]
 
-    missed_file_names: List[Tuple[str, str]] = [(database_helper.get_name_by_checksum(item), course) for item, course in missed_files]
+    missed_file_names: List[Tuple[str, str]] = [(database_helper.get_name_by_checksum(item), course) for item, course in missed_files]  # type: ignore
 
     if missed_file_names:
         max_file_len = max(len(item[0]) for item in missed_file_names)

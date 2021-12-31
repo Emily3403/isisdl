@@ -4,8 +4,6 @@
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
-Version 0.5.1
-
 ## Features
 
 - Download all Files and Videos from your subscribed ISIS Courses.

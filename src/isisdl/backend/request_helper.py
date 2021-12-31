@@ -10,11 +10,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import repeat
 from pathlib import Path
+from threading import Thread
 from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.database import database_helper
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status, Status
+from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status
 from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time
 from isisdl.share.utils import logger, User, debug_time, path, sanitize_name_for_dir, args, static_fail_msg, on_kill
 
@@ -348,7 +349,6 @@ class CourseDownloader:
         "Instantiating & Calculating file object": 0,
         "Downloading files": 0,
     }
-    do_shutdown: bool = False
     helper: Optional[RequestHelper] = None
     downloading_files: List[MediaContainer] = []
 
@@ -356,32 +356,23 @@ class CourseDownloader:
         self.user = user
 
     def start(self):
-        def maybe_shutdown():
-            if CourseDownloader.do_shutdown:
-                exit(0)
-
-        maybe_shutdown()
-
         self.make_helper()
-
-        maybe_shutdown()
 
         pre_containers = self.build_files()
         self.check_for_conflicts_in_files(pre_containers)
-        maybe_shutdown()
 
         media_containers = self.make_files(pre_containers)
         CourseDownloader.downloading_files = media_containers
-        maybe_shutdown()
 
         status.add_files(media_containers)
 
-        # Make the runner a thread in case of a user needing to exit the program (done by the main-thread)
-        self.download_files(media_containers)
-        maybe_shutdown()
+        # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
+        downloader = Thread(target=self.download_files, args=(media_containers,))
+        downloader.start()
+        downloader.join()
 
         status.request_shutdown()
-        while Status.running:
+        while status.is_alive():
             time.sleep(status_time / 5)
 
     @with_timing("Creating RequestHelper")
@@ -402,14 +393,9 @@ class CourseDownloader:
 
         sessions = self.helper.get_sessions(len(files))
 
-        new_files: List[Optional[MediaContainer]]
-        if enable_multithread:
-            with ThreadPoolExecutor(args.num_threads_instantiate) as ex:
-                new_files = list(ex.map(MediaContainer.from_pre_container, files, sessions))
-        else:
-            new_files = [MediaContainer.from_pre_container(file, s) for file, s in zip(files, sessions)]
-
+        new_files = [MediaContainer.from_pre_container(file, s) for file, s in zip(files, sessions)]
         filtered_files = [item for item in new_files if item is not None]
+
         return filtered_files
 
     @with_timing("Downloading files")
@@ -445,9 +431,8 @@ class CourseDownloader:
                     item.name = basename + f"({i}-{len(new_row) - 1})" + ext
 
     @staticmethod
-    @on_kill(-2)
+    @on_kill()
     def shutdown_running_downloads(*_):
-        CourseDownloader.do_shutdown = True
         to_download = CourseDownloader.downloading_files
 
         status.request_shutdown()

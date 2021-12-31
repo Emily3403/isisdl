@@ -24,7 +24,7 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.database import database_helper
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, e_format, on_kill, User, calculate_checksum
+from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_checksum
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -252,12 +252,14 @@ class MediaContainer:
     def download(self):
         if self._exit:
             status.stop_request_download(self)
+            self.done = True
             return
 
         running_download = self.s.get_(self.url, params={"token": self.s.token}, stream=True)
 
         if running_download is None or not running_download.ok:
             status.timeout_exit_download(self)
+            self.done = True
             return
 
         try:
@@ -318,7 +320,6 @@ class MediaContainer:
 
 
 class Status(Thread):
-    running = True
     _shutdown_requested = False
     num_files = 0
     last_len = 0
@@ -368,22 +369,17 @@ class Status(Thread):
         return sum(item.curr_size for item in all_items)
 
     @staticmethod
-    @on_kill(-1)
-    def finish():
-        Status.running = False
-
-    @staticmethod
     def request_shutdown():
         Status._shutdown_requested = True
 
     def run(self) -> None:
         Status.last_len = 0
-        while Status.running:
+        while True:
             time.sleep(status_time)
             to_download = {item for name, queue in Status.status_file_mapping.items() for item in queue if name != "succeeded" and name != "stopped"}
             if not to_download:
                 if Status._shutdown_requested:
-                    Status.running = False
+                    break
                 continue
 
             # Start off by erasing all previous chars
@@ -403,7 +399,8 @@ class Status(Thread):
             first_str = ""
             if Status.last_len:
                 first_str += f"\033[{Status.last_len}A\r"
-            first_str += "\n -- Status --\n"
+
+            first_str += " -- Status --"
             log_strings.append(first_str)
             curr_download = format_num(throttler.bandwidth_used)
             log_strings.append(f"Current bandwidth usage: {curr_download}/s    ")
@@ -418,7 +415,6 @@ class Status(Thread):
             downloading = Status.status_file_mapping["downloading"]
             curr_download_strings: List[str] = []
             if downloading:
-
                 done: List[Tuple[Union[int, float], str]] = [HumanBytes.format(num.curr_size) for num in downloading]
                 first = e_format([num[0] for num in done])
                 first_units = [item[1] for item in done]
@@ -428,8 +424,6 @@ class Status(Thread):
                 second_units = [item[1] if item[0] is not None else '   ' for item in max_values]
 
                 progress_str = [item.progress_bar for item in downloading]
-
-                curr_download_strings.append(f"\nCurrently downloading {len(downloading)} files:\n")
 
                 # Use a tuple to sort based on percent done.
                 final_middle = [
@@ -441,9 +435,6 @@ class Status(Thread):
 
                 curr_download_strings.extend(item[1] for item in sorted(final_middle, key=lambda x: x[0], reverse=True))
 
-                if Status._shutdown_requested:
-                    log_strings += "\n\nPlease wait for shutdown…"
-
             # Now sanitize the output
             width = shutil.get_terminal_size().columns
 
@@ -452,24 +443,26 @@ class Status(Thread):
             def maybe_chop_off(item: str):
                 if len(item) > width - status_chop_off + 1:
                     return item[:width - status_chop_off] + "." * status_chop_off
-                return item
+                return item.ljust(width)
 
             for item in log_strings:
                 new_log_strings.append(maybe_chop_off(item))
 
+            if Status._shutdown_requested:
+                new_log_strings.append(maybe_chop_off("\nPlease wait for shutdown…"))
+
+            new_log_strings.append(maybe_chop_off(""))
             for item in curr_download_strings:
                 item = maybe_chop_off(item)
-                item = item.ljust(width, " ")
                 new_log_strings.append(item)
 
             pre_final_string = "\n".join(new_log_strings)
             new_log_strings.extend([" " * width for _ in range(max(0, Status.last_len - pre_final_string.count("\n") - 1))])
 
-            if Status.running:
-                final_str = "\n".join(new_log_strings)
-                Status.last_len = final_str.count("\n") + 1
+            final_str = "\n".join(new_log_strings)
+            Status.last_len = final_str.count("\n") + 1
 
-                print(final_str)
+            print(final_str)
 
         logger.disabled = False
 

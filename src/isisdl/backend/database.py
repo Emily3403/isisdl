@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple
 
 from isisdl.share.settings import database_file_location
 from isisdl.share.utils import path
@@ -56,7 +56,7 @@ class DatabaseHelper:
     def get_course_id_by_name(self, course_name: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("id", course_name, "name", "courseinfo"))
 
-    def get_course_name_and_ids(self) -> List[str]:
+    def get_course_name_and_ids(self) -> List[Tuple[str, int]]:
         with DatabaseHelper.lock:
             return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
 
