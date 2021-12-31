@@ -2,7 +2,6 @@ import datetime
 import os
 import platform
 import sys
-from dataclasses import dataclass
 from hashlib import sha256
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
@@ -23,12 +22,11 @@ download_dir_location = "Courses"
 # The directory for intern stuff such as passwords
 intern_dir_location = ".intern"
 
-# The directory for unpacked archives such as .zip and .tar.gz
-unpacked_archive_dir_location = "UnpackedArchives"
-unpacked_archive_suffix = ".unpacked"
-
 # Will create a symlink in the working_dir.
 settings_file_location = os.path.join(intern_dir_location, "settings.py")
+
+# Will create the corresponding SQlite Database
+database_file_location = os.path.join(intern_dir_location, "state.db")
 
 # Logs
 log_dir_location = os.path.join(intern_dir_location, "logs")
@@ -36,36 +34,19 @@ log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now
 
 whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
 blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
-blacklist_test_checksums_file_name_location = os.path.join(intern_dir_location, "blacklist_test_checksums.txt")
-course_name_to_id_file_location = os.path.join(intern_dir_location, "id_file.json")
 
 # </ Directory options >
 
 # < Checksums >
 
-# Checksums are dumped into this file on a per-course basis.
-checksum_file = ".checksums.json"
+# A checksum is calculated with this algorithm
 checksum_algorithm = sha256
 
+# The number of bytes sampled
+checksum_num_bytes = 1024
 
-@dataclass
-class ExtensionNumBytes:
-    num_bytes_per_point: int = 2056
-
-    skip_header: int = 0
-    skip_footer: int = 0
-    num_data_points: int = 3
-
-
-# The number of bytes which get considered for a checksum. See the according documentation in the wiki (currently non existent D:).
-checksum_num_bytes = {
-    ".zip": ExtensionNumBytes(skip_header=512),
-
-    None: ExtensionNumBytes(),
-}
-
-# A special case: The server is ignoring the Range parameter that is given. In that case read the first ↓ bytes and calculate the checksum based on that.
-checksum_range_parameter_ignored = 512
+# Skips ↓ ** i bytes per calculation → O(log(n)) time :O
+checksum_base_skip = 2
 
 # </ Checksums >
 
@@ -76,6 +57,7 @@ password_dir = os.path.join(intern_dir_location, "Passwords")
 clear_password_file = os.path.join(password_dir, ".pass.clean")
 encrypted_password_file = os.path.join(password_dir, ".pass.encrypted")
 
+# TODO: Remove
 already_prompted_file = os.path.join(password_dir, ".pass.prompted")
 
 # Beware: Changing any of these options means loosing compatibility with the old password file.
@@ -85,10 +67,21 @@ hash_length = 32
 
 # < Password / Cryptography options >
 
-# < Miscellaneous options >
+# < Status options >
 
 # The number of places the progress bar has.
-progress_bar_resolution = 16
+progress_bar_resolution = 10
+
+# Chop off the last ↓ characters of the status message for a ...
+status_chop_off = 3
+
+# The refresh time for the status message
+status_time = 0.5
+
+# </ Status options >
+
+
+# < Miscellaneous options >
 
 # The number of sessions to open with Shibboleth.
 num_sessions = 1
@@ -107,45 +100,41 @@ env_var_name_encrypted_password = "ISISDL_ENC_PASSWORD"
 
 
 # Begin second part.
+# Don't change anything below this otherwise it might have negative implications. Or do… I don't care :D
 
+# < Download options >
+enable_multithread = True
 
-# < Miscellaneous options >
-
-# Enables debug features.
-debug_mode = False
-
-enable_multithread = False
-
-# Will disable the status.
-print_status = True
-log_clear_screen = True  # Triggers a `clear` command every time before printing.
-status_time = 0.5  # The refresh time.
-
-# Sets the chunk size.
+# Sets the chunk size for a download.
 download_chunk_size = 2 ** 15
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
 sleep_time_for_isis = 3
 
-# Will retry downloading a url ↓ times. If it fails, that MediaContainer will not get downloaded.
+# Will retry downloading an url ↓ times. If it fails, that MediaContainer will not get downloaded.
 num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 3
+download_timeout = 6
+
+# Adds `download_timeout_multiplier ** (0.5 * i)` of timeout every iteration
 download_timeout_multiplier = 2
 
+# </ Download options >
 
-# When cancelling downloads it is waited ↓ s to check if the downloads have finished.
-sleep_time_for_download_interrupt = 0.25
+# < Miscellaneous options >
 
 # A constant to detect if you are on windows.
 is_windows = platform.system() == "Windows"
 
 # DownloadThrottler refresh rate in s
-token_queue_refresh_rate = 0.01
+token_queue_refresh_rate = 0.1
+
+# Collect the amount of handed out tokens in the last ↓ secs
+token_queue_download_refresh_rate = 1
 
 if "pytest" in sys.modules:
-    # Yes, this is evil. But I don't want to ruin the directory of the user.
+    # Yes, this is evil. But I don't want to ruin my isisdl_downloads directory.
     _working_dir_location = working_dir_location
     working_dir_location = os.path.join(os.path.expanduser("~"), "test_isisdl")
 

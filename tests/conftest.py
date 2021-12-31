@@ -3,7 +3,6 @@ import shutil
 
 import pytest
 
-from isisdl.backend.api_old import CourseDownloader
 from isisdl.share.settings import working_dir_location, already_prompted_file, _working_dir_location, clear_password_file
 from isisdl.share.utils import startup, path, User
 

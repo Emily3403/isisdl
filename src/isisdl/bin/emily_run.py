@@ -2,7 +2,7 @@
 import sys
 
 # This is my personal preference
-sys.argv.extend(["-v", "-d", "55", "-n", "6", "-ni", "40"])
+sys.argv.extend(["-v", "-d", "55", "-n", "6"])
 
 import isisdl.__main__ as __main__  # noqa: E402
 

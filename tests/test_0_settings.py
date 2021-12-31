@@ -2,10 +2,10 @@ import os
 from hashlib import sha256
 
 from isisdl.share.settings import checksum_num_bytes, progress_bar_resolution, download_chunk_size, enable_multithread, sleep_time_for_isis, \
-    sleep_time_for_download_interrupt, log_clear_screen, num_sessions, working_dir_location, download_dir_location, intern_dir_location, unpacked_archive_dir_location, unpacked_archive_suffix, \
-    settings_file_location, log_dir_location, log_file_location, whitelist_file_name_location, blacklist_file_name_location, course_name_to_id_file_location, checksum_file, checksum_algorithm, \
-    ExtensionNumBytes, checksum_range_parameter_ignored, password_dir, clear_password_file, encrypted_password_file, already_prompted_file, hash_iterations, hash_length, \
-    env_var_name_username, env_var_name_password, env_var_name_encrypted_password, debug_mode, print_status, status_time, token_queue_refresh_rate
+    num_sessions, working_dir_location, download_dir_location, intern_dir_location, \
+    settings_file_location, log_dir_location, log_file_location, whitelist_file_name_location, blacklist_file_name_location, checksum_algorithm, \
+     password_dir, clear_password_file, encrypted_password_file, already_prompted_file, hash_iterations, hash_length, \
+    env_var_name_username, env_var_name_password, env_var_name_encrypted_password, status_time, token_queue_refresh_rate
 
 
 def test_working_dir_location():
@@ -57,8 +57,8 @@ def test_course_name_to_id_file_location():
     assert course_name_to_id_file_location == os.path.join(intern_dir_location, "id_file.json")
 
 
-def test_checksum_file():
-    assert checksum_file == ".checksums.json"
+# def test_checksum_file():
+#     assert checksum_file == ".checksums.json"
 
 
 def test_checksum_algorithm():

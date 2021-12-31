@@ -1,7 +1,7 @@
 import os
 
 from isisdl.share.settings import working_dir_location, intern_dir_location, download_dir_location, settings_file_location, log_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, course_name_to_id_file_location, password_dir, clear_password_file, encrypted_password_file, is_windows
+    blacklist_file_name_location, password_dir, clear_password_file, encrypted_password_file, is_windows
 from isisdl.share.utils import path
 
 

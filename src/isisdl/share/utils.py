@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import atexit
 import inspect
-import json
 import logging
 import os
 import signal
@@ -13,19 +12,18 @@ import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
-from json import JSONDecodeError
 from multiprocessing import current_process
 from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple
 from urllib.parse import unquote
 
-import requests
-from func_timeout import FunctionTimedOut, func_timeout
-
 from isisdl.share.settings import working_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, log_file_location, is_windows, log_clear_screen, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, course_name_to_id_file_location, clear_password_file, sleep_time_for_isis, num_tries_download, download_timeout, blacklist_test_checksums_file_name_location, \
-    download_timeout_multiplier
+    blacklist_file_name_location, log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
+    log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip
+
+static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
+                  "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
+                  "You can disable this assertion by rerunning with the '-a' flag."
 
 
 def get_args():
@@ -43,18 +41,21 @@ def get_args():
     parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive,
                         default=4)
     parser.add_argument("-ni", "--num-threads-instantiate", help="The number of threads which instantiates the objects.", type=check_positive,
-                        default=12)
+                        default=12)  # TODO: Remove
 
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
 
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
-    parser.add_argument("-W", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
-    parser.add_argument("-B", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
+    parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
+    parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
 
     parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
+    parser.add_argument("-a", "--enable-assertions", help="Enables all debug assertions. Defaults to true.", action="store_false")
+    parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos", action="store_true")
+    parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
     # Crypt options
-    parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")
+    parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")  # TODO: Remove
 
     the_args, unknown = parser.parse_known_args()
 
@@ -69,11 +70,8 @@ def get_args():
         except OSError:
             return []
 
-    try:
-        with open(path(course_name_to_id_file_location)) as f:
-            course_id_mapping = json.load(f)
-    except JSONDecodeError:
-        pass
+    from database import database_helper
+    course_id_mapping = dict(database_helper.get_course_name_and_ids())
 
     def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
         if lst is None:
@@ -136,14 +134,12 @@ def startup():
     prepare_dir(password_dir)
     prepare_dir(log_dir_location)
 
-    prepare_file(course_name_to_id_file_location)
     prepare_file(clear_password_file)
 
     import isisdl
     create_link_to_settings_file(os.path.abspath(isisdl.share.settings.__file__))
     prepare_file(whitelist_file_name_location)
     prepare_file(blacklist_file_name_location)
-    prepare_file(blacklist_test_checksums_file_name_location)
 
 
 def get_logger(debug_level: Optional[int] = None):
@@ -208,63 +204,42 @@ def path(*args) -> str:
 
 
 def sanitize_name_for_dir(name: str) -> str:
+    # Remove unnecessary whitespace
+    name = name.strip()
     name = unquote(name)
 
-    not_found_char = "-"
-    punctuation_char = "_"
+    # First replace any umlaute
+    name = name.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
 
-    bad_chars = r""""#$%&'*/:<=>?@\^`|~"""
+    # Now replace any remaining funny symbols with a `?`
+    name = name.encode("ascii", errors="replace").decode()
 
-    name = name.strip()
+    # name = r"""A's cover of a "book" """
+    # Now replace all known "bad" ascii chars with a symbol
+    char_mapping = {
+        "+": string.whitespace + "_",
+        "(": "[{",
+        ")": "]}",
+        "?": r"""#%&/:;<=>@\^`|~-$""",
+        "*": r""""'""",
+        "-": "?",
+    }
 
-    name = name.translate(str.maketrans(string.whitespace, punctuation_char * (len(string.whitespace))))
-    name = name.translate(str.maketrans(bad_chars, not_found_char * len(bad_chars)))
+    for char, mapping in char_mapping.items():
+        name = name.translate(str.maketrans(mapping, char * len(mapping)))
+
+    # Debug assertion that all chars were hit ↓
+    are_fine_chars = set("-_.+!*(),") | set(string.ascii_letters) | set(string.digits)
+
+    # Check if every character is in the expected pool
+    expected = set(are_fine_chars)
+    if args.enable_assertions:
+        for char in name:
+            if char not in expected:
+                logger.error(f"\nCongratulations: You have found an unhandled character: '{char}'\n" + static_fail_msg)
+                assert False
 
     return name
-
-
-def clear_screen():
-    if not log_clear_screen:
-        return
-
-    os.system("cls") if is_windows else os.system("clear")
-
-
-def _get_func_session(func, *args, extra_timeout, **kwargs) -> Optional[requests.Response]:
-    i = 0
-    while i < num_tries_download:
-        try:
-            return func_timeout(download_timeout + extra_timeout + download_timeout_multiplier ** (0.5 * i), func, args, kwargs)  # type: ignore
-
-        except FunctionTimedOut:
-            logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}) {args[0]}")
-            # logger.debug("".join(traceback.format_stack()))
-            i += 1
-
-        except requests.exceptions.ConnectionError:
-            logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
-            i += 1
-
-    return None
-
-
-def get_url_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[requests.Response]:
-    return _get_func_session(sess.get, *args, extra_timeout=extra_timeout, **kwargs)
-
-
-def get_head_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[requests.Response]:
-    return _get_func_session(sess.head, *args, extra_timeout=extra_timeout, **kwargs)
-
-
-def get_text_from_session(sess: requests.Session, *args, extra_timeout=0, **kwargs) -> Optional[str]:
-    s = get_url_from_session(sess, *args, extra_timeout=extra_timeout, **kwargs)
-    if s is None:
-        return None
-
-    if s.ok:
-        return s.text
-
-    return None
 
 
 # Copied from https://stackoverflow.com/a/7864317
@@ -334,7 +309,7 @@ class OnKill:
     def exit(sig=None, frame=None):
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
-            from isisdl.backend.api_old import CourseDownloader
+            from isisdl.backend.request_helper import CourseDownloader
             if CourseDownloader.downloading_files:
                 logger.info("This *will* lead to corrupted files!")
             else:
@@ -376,30 +351,53 @@ class User:
     username: str
     password: str
 
+    @property
+    def sanitized_username(self):
+        # Remove the deadname ^^
+        if self.username == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
+            return "emily3403"
+
+        return self.username
+
     def __repr__(self):
-        return f"{self.username}: {self.password}"
+        return f"{self.sanitized_username}: {self.password}"
 
     def __str__(self):
-        return f"\"{self.username}\""
+        return f"\"{self.sanitized_username}\""
 
     def dump(self):
         return self.username + "\n" + self.password + "\n"
 
 
+def calculate_checksum(filename: str):
+    sha = checksum_algorithm()
+    sha.update(str(os.path.getsize(filename)).encode())
+    curr_char = 0
+    with open(filename, 'rb') as f:
+        i = 1
+        while True:
+            f.seek(curr_char)
+            data = f.read(1024)
+            curr_char += 1024
+            if not data:
+                break
+            sha.update(data)
+
+            curr_char += checksum_base_skip ** i
+            i += 1
+
+    return sha.hexdigest()
+
+
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
-    def format(num: Union[int, float, None]) -> Tuple[Optional[float], str]:
+    def format(num: Union[int, float]) -> Tuple[float, str]:
         """
         Human-readable formatting of bytes, using binary (powers of 1024) representation.
 
         Note: num > 0
-        Will
-            return None <=> num == None
         """
-
-        if num is None:
-            return None, "None"
 
         unit_labels = ["  B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
         last_label = unit_labels[-1]

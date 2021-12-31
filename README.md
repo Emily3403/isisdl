@@ -33,3 +33,8 @@ For more detailed instructions on installing (including the manual installation)
 
 [//]: # (TODO: Hyperref)
 
+
+# Feedback
+
+If you have any ideas on which characters best to replace with an other char - e.g. umlaut: 'ä' → 'ae' - feedback 
+would be greatly appreciated!
