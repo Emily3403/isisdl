@@ -36,6 +36,10 @@ def main():
 #   init function
 #
 #   Autolog to server
+#
+#   Auto install new version / detect it
+#
+#   Auto detect files
 
 # Maybe TODO:
 #

@@ -127,6 +127,9 @@ download_timeout_multiplier = 2
 # A constant to detect if you are on windows.
 is_windows = platform.system() == "Windows"
 
+# Check if the user is executing the library for the first time → state.db should be missing
+is_first_time = not os.path.exists(os.path.join(working_dir_location, database_file_location))
+
 # DownloadThrottler refresh rate in s
 token_queue_refresh_rate = 0.1
 

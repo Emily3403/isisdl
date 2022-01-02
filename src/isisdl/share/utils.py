@@ -26,7 +26,7 @@ static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(
                   "You can disable this assertion by rerunning with the '-a' flag."
 
 
-def get_args():
+def get_args_main():
     def check_positive(value):
         ivalue = int(value)
         if ivalue <= 0:
@@ -67,7 +67,7 @@ def get_args():
         except OSError:
             return []
 
-    from isisdl.backend.database import database_helper
+    from isisdl.backend.database_helper import database_helper
     course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
     def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
@@ -95,6 +95,28 @@ def get_args():
     the_args.blacklist = blacklist
 
     return the_args
+
+
+def get_args_clean():
+    parser = argparse.ArgumentParser(prog="isisdl-clean", formatter_class=argparse.RawTextHelpFormatter, description="""
+        This program cleans all "bad" file names in the download directory.
+        Will skip hidden files (Also files in hidden directories).
+        """)
+
+    parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
+    parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
+    parser.add_argument("-a", "--enable-assertions", help="Enables all debug assertions. Defaults to true.", action="store_false")
+
+    parser.add_argument("-cwd", "--current-working-directory", help="Will execute the script with the scope of the current working directory instead of the download directory.", action="store_true")
+
+    return parser.parse_args()
+
+def get_args(file: str):
+    if file == "rename_files.py":
+        return get_args_clean()
+
+    return get_args_main()
 
 
 def startup():
@@ -200,7 +222,7 @@ def path(*args) -> str:
     return os.path.join(working_dir_location, *args)
 
 
-def sanitize_name_for_dir(name: str) -> str:
+def sanitize_name(name: str) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
@@ -439,8 +461,7 @@ def e_format(
     return final
 
 
-if current_process().name == 'MainProcess':
-    startup()
-    OnKill()
-    args = get_args()
-    logger = get_logger()
+startup()
+OnKill()
+args = get_args(os.path.basename(sys.argv[0]))
+logger = get_logger()

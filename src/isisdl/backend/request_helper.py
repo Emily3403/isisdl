@@ -14,10 +14,10 @@ from threading import Thread
 from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING
 from urllib.parse import urlparse, urljoin
 
-from isisdl.backend.database import database_helper
+from isisdl.backend.database_helper import database_helper
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status
 from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time
-from isisdl.share.utils import logger, User, debug_time, path, sanitize_name_for_dir, args, static_fail_msg, on_kill
+from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill
 
 
 @dataclass
@@ -39,7 +39,7 @@ class PreMediaContainer:
             relative_location = ""
 
         if relative_location:
-            relative_location = sanitize_name_for_dir(relative_location)
+            relative_location = sanitize_name(relative_location)
             if database_helper.get_time_from_file_id(file_id) is None:
                 os.makedirs(course.path(relative_location), exist_ok=True)
 
@@ -47,7 +47,7 @@ class PreMediaContainer:
         if is_video:
             relative_location = os.path.join(relative_location, "Videos")
 
-        name = sanitize_name_for_dir(name)
+        name = sanitize_name(name)
         sanitized_url = urljoin(url, urlparse(url).path)
 
         location = course.path(relative_location)
@@ -80,7 +80,7 @@ class Course:
         return cls(name, id)
 
     def __post_init__(self) -> None:
-        self.name = sanitize_name_for_dir(self.name)
+        self.name = sanitize_name(self.name)
         self.prepare_dirs()
 
     def prepare_dirs(self) -> None:
@@ -158,7 +158,7 @@ class Course:
 
                 if "mod/folder" in url:
                     for item in file["contents"]:
-                        item["filepath"] = sanitize_name_for_dir(file["name"])
+                        item["filepath"] = sanitize_name(file["name"])
 
                 if args.enable_assertions:
                     if "contents" not in file:

@@ -31,10 +31,9 @@ def store_clear(user: User) -> None:
         f.write(user.dump())
 
 
-def encryptor(password: str, obj: object) -> None:
+def encryptor(password: str, obj: object) -> bytes:
     key = generate_key(password)
-    with open(path(encrypted_password_file), "wb") as f:
-        f.write(Fernet(key).encrypt(pickle.dumps(obj)))
+    return Fernet(key).encrypt(pickle.dumps(obj))
 
 
 def decryptor(password: str) -> Optional[User]:

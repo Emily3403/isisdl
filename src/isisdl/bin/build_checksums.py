@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
-from isisdl.backend.database import database_helper
+from isisdl.backend.database_helper import database_helper
 from isisdl.share.settings import download_dir_location
 from isisdl.share.utils import path, logger, calculate_checksum
 

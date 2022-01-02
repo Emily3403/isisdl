@@ -21,7 +21,7 @@ from func_timeout import FunctionTimedOut, func_timeout
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.database import database_helper
+from isisdl.backend.database_helper import database_helper
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
 from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_checksum
@@ -160,7 +160,7 @@ class DownloadThrottler(Thread):
                 else:
                     break
 
-            if args.download_rate is not None:
+            if hasattr(args, "download_rate") and args.download_rate is not None:
                 # If a download limit is imposed hand out new tokens
                 try:
                     for _ in range(num):
@@ -194,7 +194,7 @@ class DownloadThrottler(Thread):
 
     @staticmethod
     def max_tokens() -> int:
-        if args.download_rate is None:
+        if not hasattr(args, "download_rate") or args.download_rate is None:
             return 1
 
         return int(args.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
