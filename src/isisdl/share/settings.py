@@ -71,7 +71,7 @@ progress_bar_resolution = 10
 status_chop_off = 3
 
 # The refresh time for the status message
-status_time = 0.5
+status_time = 0.1
 
 # </ Status options >
 
