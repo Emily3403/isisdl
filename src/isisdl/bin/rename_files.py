@@ -6,13 +6,11 @@ from isisdl.share.settings import download_dir_location
 from isisdl.share.utils import path, args, sanitize_name, logger
 
 
-def main():
-    working_dir = os.getcwd() if args.current_working_directory else path(download_dir_location)
-
+def main() -> None:
     all_files: List[str] = []
 
     # Copied from https://stackoverflow.com/a/13454267
-    for root, dirs, files in os.walk(working_dir):
+    for root, dirs, files in os.walk(path(download_dir_location)):
         # Skip hidden files
         all_files.extend(os.path.join(root, f) for f in files if not f[0] == '.')
         dirs[:] = [d for d in dirs if not d[0] == '.']

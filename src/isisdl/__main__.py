@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+from typing import NoReturn
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
@@ -8,7 +8,7 @@ from isisdl.share.utils import logger, args
 from isisdl.version import __version__
 
 
-def maybe_print_version_and_exit():
+def maybe_print_version_and_exit() -> None:
     if not args.version:
         return
 
@@ -16,7 +16,7 @@ def maybe_print_version_and_exit():
     exit(0)
 
 
-def main():
+def main() -> None:
     maybe_print_version_and_exit()
     build_checksums.main()
 
@@ -40,6 +40,8 @@ def main():
 #   Auto install new version / detect it
 #
 #   Auto detect files
+#
+#   Cron job
 
 # Maybe TODO:
 #

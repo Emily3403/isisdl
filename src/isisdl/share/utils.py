@@ -14,11 +14,11 @@ from dataclasses import dataclass
 from functools import wraps
 from multiprocessing import current_process
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict
+from typing import Union, Callable, Optional, List, Tuple, Dict, Iterable, cast, Any
 from urllib.parse import unquote
 
-from isisdl.share.settings import working_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
+from isisdl.share.settings import working_dir_location, \
+    log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
     log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip
 
 static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
@@ -26,8 +26,8 @@ static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(
                   "You can disable this assertion by rerunning with the '-a' flag."
 
 
-def get_args_main():
-    def check_positive(value):
+def get_args_main() -> argparse.Namespace:
+    def check_positive(value: str) -> int:
         ivalue = int(value)
         if ivalue <= 0:
             raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
@@ -59,14 +59,6 @@ def get_args_main():
     if unknown:
         print("I did not recognize the following arguments:\n" + "\n".join(unknown) + "\nI am going to ignore them.")
 
-    # Store the white- / blacklist in args such that it only has to be evaluated once
-    def make_list_from_file(filename: str) -> List[int]:
-        try:
-            with open(path(filename)) as f:
-                return [int(item.strip()) for item in f.readlines() if item]
-        except OSError:
-            return []
-
     from isisdl.backend.database_helper import database_helper
     course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
@@ -85,8 +77,8 @@ def get_args_main():
 
         return list(ret)
 
-    whitelist = make_list_from_file(whitelist_file_name_location)
-    blacklist = make_list_from_file(blacklist_file_name_location)
+    whitelist: List[int] = []
+    blacklist: List[int] = []
 
     whitelist.extend(add_arg_to_list(the_args.whitelist))
     blacklist.extend(add_arg_to_list(the_args.blacklist))
@@ -97,41 +89,23 @@ def get_args_main():
     return the_args
 
 
-def get_args_clean():
-    parser = argparse.ArgumentParser(prog="isisdl-clean", formatter_class=argparse.RawTextHelpFormatter, description="""
-        This program cleans all "bad" file names in the download directory.
-        Will skip hidden files (Also files in hidden directories).
-        """)
-
-    parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
-    parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
-    parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
-    parser.add_argument("-a", "--enable-assertions", help="Enables all debug assertions. Defaults to true.", action="store_false")
-
-    parser.add_argument("-cwd", "--current-working-directory", help="Will execute the script with the scope of the current working directory instead of the download directory.", action="store_true")
-
-    return parser.parse_args()
-
-def get_args(file: str):
-    if file == "rename_files.py":
-        return get_args_clean()
-
+def get_args(file: str) -> argparse.Namespace:
     return get_args_main()
 
 
-def startup():
-    def prepare_dir(p):
+def startup() -> None:
+    def prepare_dir(p: str) -> None:
         os.makedirs(path(p), exist_ok=True)
 
-    def prepare_file(p):
+    def prepare_file(p: str) -> None:
         if not os.path.exists(path(p)):
             with open(path(p), "w"):
                 pass
 
-    def create_link_to_settings_file(file: str):
+    def create_link_to_settings_file(file: str) -> None:
         fp = path(settings_file_location)
 
-        def restore_link():
+        def restore_link() -> None:
             try:
                 os.remove(fp)
             except OSError:
@@ -157,11 +131,9 @@ def startup():
 
     import isisdl
     create_link_to_settings_file(os.path.abspath(isisdl.share.settings.__file__))
-    prepare_file(whitelist_file_name_location)
-    prepare_file(blacklist_file_name_location)
 
 
-def get_logger(debug_level: Optional[int] = None):
+def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
     """
     Creates the logger
     """
@@ -218,7 +190,7 @@ class CriticalError(Exception):
     pass
 
 
-def path(*args) -> str:
+def path(*args: str) -> str:
     return os.path.join(working_dir_location, *args)
 
 
@@ -227,51 +199,38 @@ def sanitize_name(name: str) -> str:
     name = name.strip()
     name = unquote(name)
 
-    # First replace any umlaute
-    name = name.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    if _filename_scheme >= 2:
+        char_mapping = {
+            "a": "ä",
+            "o": "ö",
+            "u": "ü",
+            "-": """/\t\n\r\v\f""",
+        }
+        for char, mapping in char_mapping.items():
+            name = name.translate(str.maketrans(mapping, char * len(mapping)))
 
-    # Now replace any remaining funny symbols with a `?`
-    name = name.encode("ascii", errors="replace").decode()
+    if _filename_scheme >= 3:
+        # Now replace any remaining funny symbols with a `?`
+        name = name.encode("ascii", errors="replace").decode()
 
-    # name = r"""A's cover of a "book" """
-    # Now replace all known "bad" ascii chars with a symbol
-    char_mapping = {
-        "+": string.whitespace + "_",
-        "(": "[{",
-        ")": "]}",
-        "?": r"""#%&/:;<=>@\^`|~-$""",
-        "*": r""""'""",
-        "-": "?",
-    }
+        # Now replace all known "bad" ascii chars with a symbol
+        char_mapping = {
+            ".": string.whitespace + "_" + r"""#%&/:;<=>@\^`|~-$"'?""",
+            "(": "[{",
+            ")": "]}",
+        }
 
-    for char, mapping in char_mapping.items():
-        name = name.translate(str.maketrans(mapping, char * len(mapping)))
-
-    # Debug assertion that all chars were hit ↓
-    are_fine_chars = set("-_.+!*(),") | set(string.ascii_letters) | set(string.digits)
-
-    # Check if every character is in the expected pool
-    expected = set(are_fine_chars)
-    if args.enable_assertions:
-        for char in name:
-            if char not in expected:
-                logger.error(f"\nCongratulations: You have found an unhandled character: '{char}'\n" + static_fail_msg)
-                assert False
+        for char, mapping in char_mapping.items():
+            name = name.translate(str.maketrans(mapping, char * len(mapping)))
 
     return name
 
 
-# Copied from https://stackoverflow.com/a/7864317
-class classproperty(property):
-    def __get__(self, cls, owner):
-        return classmethod(self.fget).__get__(None, owner)()  # type: ignore
-
-
 # Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
-def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level: int = logging.DEBUG):
-    def decorator(function):
+def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level: int = logging.DEBUG) -> Callable[[Any], Any]:
+    def decorator(function: Any) -> Any:
         @wraps(function)
-        def _self_impl(self, *method_args, **method_kwargs):
+        def _self_impl(self: Any, *method_args: Any, **method_kwargs: Any) -> Any:
             logger.log(debug_level, f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
             s = time.perf_counter()
 
@@ -280,7 +239,7 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
 
             return method_output
 
-        def _impl(*method_args, **method_kwargs):
+        def _impl(*method_args: Any, **method_kwargs: Any) -> Any:
             logger.log(debug_level, f"Starting: {str_to_put}")
             s = time.perf_counter()
 
@@ -302,7 +261,7 @@ class OnKill:
     _min_priority = 0
     _already_killed = False
 
-    def __init__(self):
+    def __init__(self) -> None:
         signal.signal(signal.SIGINT, OnKill.exit)
         signal.signal(signal.SIGABRT, OnKill.exit)
         signal.signal(signal.SIGTERM, OnKill.exit)
@@ -310,11 +269,11 @@ class OnKill:
         if is_windows:
             pass
         else:
-            signal.signal(signal.SIGQUIT, OnKill.exit)  # type: ignore
-            signal.signal(signal.SIGHUP, OnKill.exit)  # type: ignore
+            signal.signal(signal.SIGQUIT, OnKill.exit)
+            signal.signal(signal.SIGHUP, OnKill.exit)
 
     @staticmethod
-    def add(func, priority: Optional[int] = None):
+    def add(func: Any, priority: Optional[int] = None) -> None:
         if priority is None:
             # Generate a new priority → max priority
             priority = OnKill._min_priority - 1
@@ -325,7 +284,7 @@ class OnKill:
 
     @staticmethod
     @atexit.register
-    def exit(sig=None, frame=None):
+    def exit(sig: Optional[int] = None, frame: Any = None) -> None:
         from isisdl.backend.request_helper import CourseDownloader
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
@@ -348,11 +307,11 @@ class OnKill:
             func()
 
 
-def on_kill(priority: Optional[int] = None):
-    def decorator(function):
+def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
+    def decorator(function: Any) -> Any:
         # Expects the method to have *no* args
         @wraps(function)
-        def _impl(*_):
+        def _impl(*_: Any) -> Any:
             return function()
 
         OnKill.add(_impl, priority)
@@ -368,24 +327,24 @@ class User:
     password: str
 
     @property
-    def sanitized_username(self):
+    def sanitized_username(self) -> str:
         # Remove the deadname ^^
         if self.username == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
             return "emily3403"
 
         return self.username
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.sanitized_username}: {self.password}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"\"{self.sanitized_username}\""
 
-    def dump(self):
+    def dump(self) -> str:
         return self.username + "\n" + self.password + "\n"
 
 
-def calculate_checksum(filename: str):
+def calculate_checksum(filename: str) -> str:
     sha = checksum_algorithm()
     sha.update(str(os.path.getsize(filename)).encode())
     curr_char = 0
@@ -433,7 +392,7 @@ class HumanBytes:
 
 def e_format(
         nums: List[Union[int, float, str, None]],
-        precision=2,
+        precision: int = 2,
         ab: Optional[bool] = None,  # True = Remove - from output | False = Space others accordingly
         direction: str = ">",
 
@@ -465,3 +424,7 @@ startup()
 OnKill()
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
+
+from database_helper import config_helper
+
+_filename_scheme = config_helper.get_filename_scheme()

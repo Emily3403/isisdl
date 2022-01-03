@@ -9,7 +9,7 @@ from isisdl.share.settings import download_dir_location
 from isisdl.share.utils import path, logger, calculate_checksum
 
 
-def main():
+def main() -> None:
     s = time.perf_counter()
     checksums = database_helper.get_checksums_per_course()
 

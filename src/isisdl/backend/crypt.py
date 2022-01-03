@@ -7,12 +7,12 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, already_prompted_file, \
+from isisdl.share.settings import hash_algorithm, hash_length, hash_iterations, clear_password_file, encrypted_password_file, \
     env_var_name_username, env_var_name_password, env_var_name_encrypted_password
 from isisdl.share.utils import User, path, args, logger
 
 
-def generate_key(password):
+def generate_key(password: str) -> bytes:
     # You might notice that the salt is empty. This is a deliberate decision.
     # In this scenario the encrypted file and password file are stored in the same directory.
     # Thus, if a hacker gains access they probably will have access to the salt file as well.
@@ -58,6 +58,8 @@ def get_credentials() -> User:
     """
     Prioritizes: Environment variable > Clean > Encrypted > Input
     """
+    # TODO: Get from database
+
     # First check the environment variables for username *and* password
     if (username := os.getenv(env_var_name_username)) and (password := os.getenv(env_var_name_password)):
         logger.info("Found environment variables: Username and Password.")
@@ -74,43 +76,35 @@ def get_credentials() -> User:
                 logger.info("Found clean file.")
                 return User(*lines)
 
+    assert False, "This is not yet implemented."
+
+    # TODO Implement new username
+
     # Now check encrypted file
-    if os.path.exists(path(encrypted_password_file)):
-        logger.info("Found encrypted file.")
-
-        if password := os.getenv(env_var_name_encrypted_password):
-            pass
-        else:
-            password = getpass.getpass("Please enter the password for the encrypted file: ")
-
-        content = decryptor(password)
-        if content is None:
-            logger.error("Supplied the wrong password. Please enter the info manually or restart me!")
-        else:
-            logger.info("Password accepted!")
-            return content
-
-    # If nothing is found prompt the user
-    logger.info("Please provide authentication for ISIS.")
-    username = input("Username: ")
-
-    password = getpass.getpass("Password: ")
-
-    content = User(username, password)
-
-    if args.prompt or not os.path.exists(path(already_prompted_file)):
-        with open(path(already_prompted_file), "w") as f:
-            # Just create the file
-            f.write("This could be your ad!")
-
-        logger.info("Would you like to store this information?")
-        reply = input("[y]es / [n]o: ")
-        if reply.lower() != "y":
-            if reply.lower() != "n":
-                logger.info("I am going to interpret this as a no.")
-            return content
-
-        encrypt_password = getpass.getpass("Please enter the password to encrypt the file with: ")
-        encryptor(encrypt_password, content)
-
-    return content
+    # if os.path.exists(path(encrypted_password_file)):
+    #     logger.info("Found encrypted file.")
+    #
+    #     if password := os.getenv(env_var_name_encrypted_password):
+    #         pass
+    #     else:
+    #         password = getpass.getpass("Please enter the password for the encrypted file: ")
+    #
+    #     content = decryptor(password)
+    #     if content is None:
+    #         logger.error("Supplied the wrong password. Please enter the info manually or restart me!")
+    #     else:
+    #         logger.info("Password accepted!")
+    #         return content
+    #
+    # # If nothing is found prompt the user
+    # logger.info("Please provide authentication for ISIS.")
+    # username = input("Username: ")
+    #
+    # password = getpass.getpass("Password: ")
+    #
+    # content = User(username, password)
+    #
+    # encrypt_password = getpass.getpass("Please enter the password to encrypt the file with: ")
+    # encryptor(encrypt_password, content)
+    #
+    # return content

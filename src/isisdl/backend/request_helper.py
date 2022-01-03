@@ -11,7 +11,7 @@ from datetime import datetime
 from itertools import repeat
 from pathlib import Path
 from threading import Thread
-from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING
+from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING, Callable
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.database_helper import database_helper
@@ -33,7 +33,7 @@ class PreMediaContainer:
     checksum: Optional[str] = None
 
     @classmethod
-    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = ""):
+    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "") -> PreMediaContainer:
         # Sanitize bad names
         if relative_location == "/":
             relative_location = ""
@@ -58,12 +58,12 @@ class PreMediaContainer:
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video)
 
-    def dump(self):
+    def dump(self) -> None:
         assert self.checksum is not None
         database_helper.add_pre_container(self)
 
     @property
-    def course_name(self):
+    def course_name(self) -> str:
         return RequestHelper.course_id_mapping[self.course_id].name
 
 
@@ -73,7 +73,7 @@ class Course:
     course_id: int
 
     @classmethod
-    def from_dict(cls, info: Dict[str, Any]):
+    def from_dict(cls, info: Dict[str, Any]) -> Course:
         name = cast(str, info["displayname"])
         id = cast(int, info["id"])
 
@@ -187,7 +187,7 @@ class Course:
     def url(self) -> str:
         return f"https://isis.tu-berlin.de/course/view.php?id={self.course_id}"
 
-    def path(self, *args) -> str:
+    def path(self, *args: str) -> str:
         """
         Custom path function that prepends the args with the `download_dir` and course name.
         """
@@ -200,37 +200,37 @@ class Course:
                     yield file
 
     @property
-    def ok(self):
+    def ok(self) -> bool:
         if args.whitelist != [True] and self in args.whitelist:
             return True
 
         return self in args.whitelist and self not in args.blacklist
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.name} ({self.course_id})"
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if other is True:
             return True
 
         if other.__class__ == self.__class__:
-            return self.course_id == other.course_id
+            return bool(self.course_id == other.course_id)
 
         if isinstance(other, (str, int)):
             return str(self.course_id) == str(other)
 
         return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.course_id
 
 
-def with_timing(course_downloader_entry: str):
-    def decorator(function):
-        def _impl(*method_args, **method_kwargs):
+def with_timing(course_downloader_entry: str) -> Callable[[Any], Any]:
+    def decorator(function: Any) -> Any:
+        def _impl(*method_args: Any, **method_kwargs: Any) -> Any:
             s = time.perf_counter()
             method_output = function(*method_args, **method_kwargs)
             CourseDownloader.timings[course_downloader_entry] += time.perf_counter() - s
@@ -255,7 +255,7 @@ class RequestHelper:
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.make_sessions()
         self._get_meta_info()
         self._get_courses()
@@ -267,7 +267,7 @@ class RequestHelper:
             assert self.courses is not None
 
     @debug_time("Creating RequestHelper")
-    def make_sessions(self):
+    def make_sessions(self) -> None:
         if not self.sessions:
             with ThreadPoolExecutor(num_sessions) as ex:
                 self.sessions = list(ex.map(SessionWithKey.from_scratch, repeat(self.user), range(num_sessions)))
@@ -275,7 +275,7 @@ class RequestHelper:
     def _get_meta_info(self) -> None:
         self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
 
-    def _get_courses(self):
+    def _get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST('core_enrol_get_users_courses', {"userid": self.userid}))
         for item in res:
             course = Course.from_dict(item)
@@ -318,7 +318,7 @@ class RequestHelper:
 
         sessions = self.get_sessions(len(self.courses))
 
-        def download_all(course, s, helper):
+        def download_all(course: Course, s: SessionWithKey, helper: RequestHelper) -> List[PreMediaContainer]:
             return course.download_videos(s) + course.download_documents(helper)
 
         if enable_multithread:
@@ -331,10 +331,10 @@ class RequestHelper:
         return [item for row in video_lists for item in row]
 
     @property
-    def userid(self):
+    def userid(self) -> str:
         return self._meta_info["userid"]
 
-    def get_sessions(self, num: int):
+    def get_sessions(self, num: int) -> Iterable[SessionWithKey]:
         if num <= len(self.sessions):
             # Ensure all sessions are unique if there are enough available
             return random.sample(self.sessions, k=num)
@@ -355,7 +355,7 @@ class CourseDownloader:
     def __init__(self, user: User):
         self.user = user
 
-    def start(self):
+    def start(self) -> None:
         self.make_helper()
 
         pre_containers = self.build_files()
@@ -376,7 +376,7 @@ class CourseDownloader:
             time.sleep(status_time / 5)
 
     @with_timing("Creating RequestHelper")
-    def make_helper(self):
+    def make_helper(self) -> None:
         self.helper = RequestHelper(self.user)
 
     @with_timing("Building all files")
@@ -399,8 +399,8 @@ class CourseDownloader:
         return filtered_files
 
     @with_timing("Downloading files")
-    def download_files(self, files: List[MediaContainer]):
-        def download(file: MediaContainer):
+    def download_files(self, files: List[MediaContainer]) -> None:
+        def download(file: MediaContainer) -> None:
             file.download()
 
         if enable_multithread:
@@ -410,14 +410,12 @@ class CourseDownloader:
             for file in files:
                 download(file)
 
-        print()
-
-    def check_for_conflicts_in_files(self, files: List[PreMediaContainer]):
+    def check_for_conflicts_in_files(self, files: List[PreMediaContainer]) -> None:
         conflicts = defaultdict(list)
         for item in files:
             conflicts[item.name].append(item)
 
-        items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]  # type: ignore
+        items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]
         for row in items:
             locations: Dict[str, List[PreMediaContainer]] = defaultdict(list)
             for item in row:
@@ -432,7 +430,7 @@ class CourseDownloader:
 
     @staticmethod
     @on_kill()
-    def shutdown_running_downloads(*_):
+    def shutdown_running_downloads(*_: Any) -> None:
         to_download = CourseDownloader.downloading_files
 
         status.request_shutdown()

@@ -79,7 +79,7 @@ class SessionWithKey(Session):
         return s
 
     @staticmethod
-    def _timeouter(func, *args, extra_timeout, **kwargs):
+    def _timeouter(func, *args: Iterable[Any], extra_timeout, **kwargs: Dict[Any, Any]) -> Any:  # type: ignore
         i = 0
         while i < num_tries_download:
             try:
@@ -95,16 +95,16 @@ class SessionWithKey(Session):
                 time.sleep(sleep_time_for_isis)
                 i += 1
 
-    def get_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:
+    def get_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
         return cast(Optional[Response], self._timeouter(super().get, *args, extra_timeout=extra_timeout, **kwargs))
 
-    def post_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:
+    def post_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
         return cast(Optional[Response], self._timeouter(super().post, *args, extra_timeout=extra_timeout, **kwargs))
 
-    def head_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:
+    def head_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
         return cast(Optional[Response], self._timeouter(super().head, *args, extra_timeout=extra_timeout, **kwargs))
 
-    def text(self, *args, extra_timeout=0, **kwargs) -> Optional[str]:
+    def text(self, *args, extra_timeout=0, **kwargs) -> Optional[str]:  # type: ignore
         res = self.get_(*args, extra_timeout=extra_timeout, **kwargs)
         if res is None:
             return None
@@ -114,10 +114,10 @@ class SessionWithKey(Session):
 
         return None
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Session with key={self.key}"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
 
@@ -133,7 +133,7 @@ class DownloadThrottler(Thread):
     It does so by handing out tokens, which are limited. With every token you may download a `download_chunk_size`.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
@@ -178,7 +178,7 @@ class DownloadThrottler(Thread):
         """
         return len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate
 
-    def get(self):
+    def get(self) -> Token:
         try:
             if args.download_rate is None:
                 return self.token
@@ -205,7 +205,7 @@ class MediaType(enum.Enum):
     document = enum.auto()
 
     @property
-    def dir_name(self):
+    def dir_name(self) -> str:
         if self == MediaType.video:
             return "Videos"
 
@@ -249,7 +249,7 @@ class MediaContainer:
 
         return MediaContainer(container.name, container.url, location, media_type, s, container)
 
-    def download(self):
+    def download(self) -> None:
         if self._exit:
             status.stop_request_download(self)
             self.done = True
@@ -292,7 +292,9 @@ class MediaContainer:
         self.done = True
         status.normal_exit_download(self)
 
-    def stop(self):
+        return None
+
+    def stop(self) -> None:
         self._exit = True
 
     @property
@@ -300,21 +302,21 @@ class MediaContainer:
         return self.curr_size / self.size
 
     @property
-    def progress_bar(self):
+    def progress_bar(self) -> str:
         progress = int(self.percent_done * progress_bar_resolution)
         return "╶" + "█" * progress + " " * (progress_bar_resolution - progress) + "╴"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         # The url is known and unique. No need to store an extra field "checksum".
         return self.url.__hash__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.name
 
-    def error_format(self):
+    def error_format(self) -> str:
         lf = "\n" + " " * 8
         return self.name + ":" + lf + "Name:     " + self.name + lf + "Course:   " + self.container.course_name + lf + "Url:      " + self.url
 
@@ -331,45 +333,45 @@ class Status(Thread):
         "stopped": set(),
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(daemon=True)
         self.start()
 
     @staticmethod
-    def add_files(files: List[MediaContainer]):
+    def add_files(files: List[MediaContainer]) -> None:
         Status.status_file_mapping["not_started"].update(files)
         Status.num_files += len(files)
         # If the status indicator is running disable all logging
         logger.disabled = True
 
     @staticmethod
-    def _move_from_to(file: MediaContainer, src: str, dest: str):
+    def _move_from_to(file: MediaContainer, src: str, dest: str) -> None:
         Status.status_file_mapping[src].remove(file)
         Status.status_file_mapping[dest].add(file)
 
     @staticmethod
-    def start_download(file: MediaContainer):
+    def start_download(file: MediaContainer) -> None:
         Status._move_from_to(file, "not_started", "downloading")
 
     @staticmethod
-    def normal_exit_download(file: MediaContainer):
+    def normal_exit_download(file: MediaContainer) -> None:
         Status._move_from_to(file, "downloading", "succeeded")
 
     @staticmethod
-    def timeout_exit_download(file: MediaContainer):
+    def timeout_exit_download(file: MediaContainer) -> None:
         Status._move_from_to(file, "downloading", "timeout")
 
     @staticmethod
-    def stop_request_download(file: MediaContainer):
+    def stop_request_download(file: MediaContainer) -> None:
         Status._move_from_to(file, "not_started", "stopped")
 
     @staticmethod
-    def total_downloaded():
+    def total_downloaded() -> int:
         all_items: Set[MediaContainer] = {item for row in Status.status_file_mapping.values() for item in row}
         return sum(item.curr_size for item in all_items)
 
     @staticmethod
-    def request_shutdown():
+    def request_shutdown() -> None:
         Status._shutdown_requested = True
 
     def run(self) -> None:
@@ -385,14 +387,14 @@ class Status(Thread):
             # Start off by erasing all previous chars
             log_strings: List[str] = []
 
-            def format_int(num: int):
+            def format_int(num: int) -> str:
                 # log_10(num) = number of numbers
                 return f"{num:{' '}>{math.ceil(math.log10(Status.num_files or 1))}}"
 
-            def format_lst(lst: Set[Any]):
+            def format_lst(lst: Set[Any]) -> str:
                 return format_int(len(lst)) + " " * (len(format_int(Status.num_files)) + 3)
 
-            def format_num(num: float):
+            def format_num(num: float) -> str:
                 a, b = HumanBytes.format(num)
                 return f"{a:.2f} {b}"
 
@@ -440,7 +442,7 @@ class Status(Thread):
 
             new_log_strings = []
 
-            def maybe_chop_off(item: str):
+            def maybe_chop_off(item: str) -> str:
                 if len(item) > width - status_chop_off + 1:
                     return item[:width - status_chop_off] + "." * status_chop_off
                 return item.ljust(width)

@@ -1,36 +1,34 @@
 import os
 import shutil
+from typing import cast
 
 import pytest
 
-from isisdl.share.settings import working_dir_location, already_prompted_file, _working_dir_location, clear_password_file
+from isisdl.share.settings import working_dir_location, _working_dir_location, clear_password_file
 from isisdl.share.utils import startup, path, User
+from request_helper import CourseDownloader
 
 
-def pytest_configure():
+def pytest_configure() -> None:
     assert working_dir_location == os.path.join(os.path.expanduser("~"), "test_isisdl")
     startup()
 
-    # Disable the "do you want to save your password" prompt (for now)
-    with open(path(already_prompted_file), "w"):
-        pass
 
-
-def pytest_unconfigure():
+def pytest_unconfigure() -> None:
     shutil.rmtree(path())
 
 
 @pytest.fixture
-def username():
-    return os.getenv("ISISDL_ACTUAL_USERNAME")
+def username() -> str:
+    return cast(str, os.getenv("ISISDL_ACTUAL_USERNAME"))
 
 
 @pytest.fixture
-def password():
-    return os.getenv("ISISDL_ACTUAL_USERNAME")
+def password() -> str:
+    return cast(str, os.getenv("ISISDL_ACTUAL_USERNAME"))
 
 
-def make_dl():
+def make_dl() -> CourseDownloader:
     if (usr := os.getenv("ISISDL_ACTUAL_USERNAME")) is not None and (pw := os.getenv("ISISDL_ACTUAL_PASSWORD")) is not None:
         user = User(usr, pw)
 
@@ -42,5 +40,5 @@ def make_dl():
 
 
 @pytest.fixture
-def course_downloader():
+def course_downloader() -> CourseDownloader:
     return make_dl()

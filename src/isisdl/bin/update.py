@@ -8,31 +8,31 @@ from isisdl.share.utils import logger
 from isisdl.version import __version__
 
 
-def check_pypi_for_version():
+def check_pypi_for_version() -> str:
     # Inspired from https://pypi.org/project/pypi-search
 
     soup = BeautifulSoup(requests.get("https://pypi.org/project/isisdl/").text, 'html.parser')
     package_name_header = soup.find('h1', class_='package-header__name')
     version = package_name_header.text.split()[1]
 
-    return version
+    return str(version)
 
 
-def check_github_for_version():
+def check_github_for_version() -> str:
     res = requests.get("https://raw.githubusercontent.com/Emily3403/isisdl/faster_checksum/src/isisdl/version.py")
     if not res.ok:
         logger.error("I could not obtain the latest version. Probably the link, which is hard-coded, is wrong.")
-        return
+        assert False
 
     version = re.match("__version__ = \"(.*)?\"", res.text)
     if version is None:
         logger.error("I could not parse the specified version.")
-        return
+        assert False
 
     return version.group(1)
 
 
-def main():
+def main() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 

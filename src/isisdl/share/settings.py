@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 
 # < Directory options >
 
+# TODO: Remove
 # The directory where everything lives in.
 # Note: If you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory.
 working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl_downloads")
@@ -31,9 +32,6 @@ database_file_location = os.path.join(intern_dir_location, "state.db")
 # Logs
 log_dir_location = os.path.join(intern_dir_location, "logs")
 log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
-
-whitelist_file_name_location = os.path.join(intern_dir_location, "whitelist.txt")
-blacklist_file_name_location = os.path.join(intern_dir_location, "blacklist.txt")
 
 # </ Directory options >
 
@@ -56,9 +54,6 @@ checksum_base_skip = 2
 password_dir = os.path.join(intern_dir_location, "Passwords")
 clear_password_file = os.path.join(password_dir, ".pass.clean")
 encrypted_password_file = os.path.join(password_dir, ".pass.encrypted")
-
-# TODO: Remove
-already_prompted_file = os.path.join(password_dir, ".pass.prompted")
 
 # Beware: Changing any of these options means loosing compatibility with the old password file.
 hash_iterations = 320_000  # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py)

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class SQLiteDatabase(ABC):
     lock: Lock = Lock()
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
         # self.con = sqlite3.connect(":memory:", check_same_thread=False)
         self.cur = self.con.cursor()
@@ -24,11 +24,11 @@ class SQLiteDatabase(ABC):
         self.create_default_tables()
 
     @abstractmethod
-    def create_default_tables(self):
+    def create_default_tables(self) -> None:
         ...
 
-    def get_state(self):
-        res = []
+    def get_state(self) -> List[Tuple[Any]]:
+        res: List[Any] = []
         with self.lock:
             names = self.cur.execute("""SELECT name FROM sqlite_master where type = 'table' """).fetchall()
             for name in names:
@@ -38,7 +38,7 @@ class SQLiteDatabase(ABC):
 
 
 class DatabaseHelper(SQLiteDatabase):
-    def create_default_tables(self):
+    def create_default_tables(self) -> None:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
@@ -50,7 +50,7 @@ class DatabaseHelper(SQLiteDatabase):
                 (name text, id int primary key)
             """)
 
-    def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str = "file_id", table: str = "fileinfo"):
+    def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str = "file_id", table: str = "fileinfo") -> Any:
         with DatabaseHelper.lock:
             res = self.cur.execute(f"""SELECT {attr} FROM {table} WHERE {eq_name} = ?""", (eq_val,)).fetchone()
 
@@ -75,19 +75,19 @@ class DatabaseHelper(SQLiteDatabase):
         with DatabaseHelper.lock:
             return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
 
-    def delete_by_checksum(self, checksum: str):
+    def delete_by_checksum(self, checksum: str) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
-    def add_pre_container(self, file: PreMediaContainer):
+    def add_pre_container(self, file: PreMediaContainer) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
                 INSERT OR IGNORE INTO fileinfo values (?, ?, ?, ?, ?, ?)
             """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum))
             self.con.commit()
 
-    def add_course(self, course: Course):
+    def add_course(self, course: Course) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
                 INSERT OR IGNORE INTO courseinfo values (?, ?)
@@ -104,35 +104,35 @@ class DatabaseHelper(SQLiteDatabase):
 
 
 class ConfigHelper(SQLiteDatabase):
-    def create_default_tables(self):
+    def create_default_tables(self) -> None:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS config
                 (key text unique, value text)
             """)
 
-    def _set(self, key: str, value: Any):
+    def _set(self, key: str, value: Any) -> None:
         with self.lock:
             self.cur.execute("""
                 INSERT OR IGNORE INTO config values (?, ?)
             """, (key, value))
             self.con.commit()
 
-    def _get(self, key) -> Any:
+    def _get(self, key: str) -> Optional[Any]:
         with self.lock:
-            res = self.cur.execute("SELECT * FROM config where key = ?", (key,)).fetchone()
+            res = self.cur.execute("SELECT value FROM config where key = ?", (key,)).fetchone()
             if res is None:
                 return None
 
             return res[0]
 
-    def set_how_user_is_stored(self, num: int):
+    def set_how_user_is_stored(self, num: int) -> None:
         self._set("user_store", num)
 
     def get_how_user_is_stored(self) -> int:
         return cast(int, self._get("user_store"))
 
-    def set_user(self, username: str, password: Union[str, bytes]):
+    def set_user(self, username: str, password: Union[str, bytes]) -> None:
         self._set("username", username)
         self._set("password", password)
 
@@ -142,13 +142,17 @@ class ConfigHelper(SQLiteDatabase):
 
         return username, password
 
-    def set_filename_scheme(self, num: int):
+    def set_filename_scheme(self, num: int) -> None:
         self._set("filename_scheme", num)
 
     def get_filename_scheme(self) -> int:
-        return cast(int, self._get("filename_scheme"))
+        res = self._get("filename_scheme")
+        if res is None:
+            return 1
 
-    def delete_config(self):
+        return int(res)
+
+    def delete_config(self) -> None:
         with self.lock:
             self.cur.execute("""
                 DROP table config
