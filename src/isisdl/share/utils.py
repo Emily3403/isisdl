@@ -17,6 +17,7 @@ from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Iterable, cast, Any
 from urllib.parse import unquote
 
+from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.share.settings import working_dir_location, \
     log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
     log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip
@@ -59,7 +60,6 @@ def get_args_main() -> argparse.Namespace:
     if unknown:
         print("I did not recognize the following arguments:\n" + "\n".join(unknown) + "\nI am going to ignore them.")
 
-    from isisdl.backend.database_helper import database_helper
     course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
     def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
@@ -198,6 +198,9 @@ def sanitize_name(name: str) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
+
+    if _filename_scheme >= 1:
+        name = name.replace("/", "-")
 
     if _filename_scheme >= 2:
         char_mapping = {
@@ -422,9 +425,11 @@ def e_format(
 
 startup()
 OnKill()
+database_helper = DatabaseHelper()
+config_helper = ConfigHelper()
+
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
 
-from isisdl.backend.database_helper import config_helper
 
 _filename_scheme = config_helper.get_filename_scheme()

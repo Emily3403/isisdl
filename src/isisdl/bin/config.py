@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 from getpass import getpass
-from typing import Union, Set
+from typing import Union, Set, List, Tuple, Optional
 
 from crontab import CronTab
 
 from isisdl.backend.crypt import encryptor
-from isisdl.backend.database_helper import config_helper
-from isisdl.share.settings import is_first_time, env_var_name_username, env_var_name_password, is_windows
+from isisdl.share.settings import is_first_time, is_windows
+from isisdl.share.utils import config_helper
+
+explanation_depth = 2
+indent = "    "
 
 
 def get_input(message: str, allowed: Set[str]) -> str:
@@ -20,140 +23,185 @@ def get_input(message: str, allowed: Set[str]) -> str:
     return choice
 
 
-def main() -> None:
-    if is_first_time or True:
-        print("""It seams as if this is your first time executing isisdl. Welcome <3
+def generic_prompt(question: str, values: List[Tuple[str, str, str]], default: int, overwrite_output: Optional[str] = None) -> str:
+    if overwrite_output:
+        return overwrite_output
 
-I will guide you through ~2min of configuration.
-There are some powerful features in this library that are opt-in.
-Please read the prompts carefully.
+    print(question + "\n")
+    for i, (val, tldr, detail) in enumerate(values):
+        print(f"{indent}{i}. {val} {' [default]' if i == default else ''}")
+        if explanation_depth > 0:
+            if tldr:
+                for item in tldr.split("\n"):
+                    print(f"{indent * 2}{item}")
 
-You can re-configure me with `isisdl-config`.
-""")
+        if explanation_depth > 1:
+            if detail:
+                print()
+                for item in detail.split("\n"):
+                    print(f"{indent * 2}{item}")
 
-    print(f"""Authentication:
+        print()
 
-There are four ways of storing your password. 
-  1. Encrypted in the database
-       You will have to enter your password every time.
-       
-  2. Clear text in the database
-       No password required, but less security
-  
-  3. Set username and password via environment variables
-       Username = {env_var_name_username} 
-       Password = {env_var_name_password}
+    choice = get_input("", allowed={str(i) for i in range(len(values))} | {""})
+    if choice == "":
+        choice = str(default)
 
-  4. Manually entering the information every time
-       Most secure, but also most annoying
-       """)
+    return choice
 
-    config_helper.delete_config()
 
-    # choice = get_input("Please choose the way of authentication: ", {"1", "2", "3", "4"})
-    choice = "3"
-    config_helper.set_how_user_is_stored(int(choice))
+def explanation_depth_prompt() -> None:
+    if is_first_time:
+        print("It seams as if this is your first time executing isisdl. Welcome <3\n")
 
-    if choice in {"1", "2"}:
+    print("I will guide you through ~2min of configuration.\n")
+
+    choice = generic_prompt("Which level of detail do you want?", [
+        ("None", "Just accept the defaults and be done with it.", ""),
+        ("TLDR", "A very brief summary of what is happening for every point", ""),
+        ("Full details", "I will give you a full explanation of all the points and which choices to choose in certain scenarios.",
+         "If you are reading this the first time it is recommended to use this option when first installing.")
+    ],
+                            2, overwrite_output="")
+
+    global explanation_depth
+    explanation_depth = int(choice)
+
+    print()
+
+
+def authentication_prompt() -> None:
+    choice = generic_prompt("There are four ways of storing your password.", [
+        ("Encrypted in the database", "You will have to enter your password every time.",
+         "This is ideal for a multi-user system where someone knows of `isisdl` and would go ahead and read the database."),
+        ("Clear text in the database", "No password required, but less security",
+         "This is ideal for a private setup where you can be certain nobody will read your data.\nSince the database is hard "
+         "to find and not just a text file it is pretty hard to programmatically analyze and extract passwords from it."),
+        ("Manually entering the information every time", "Most secure, but also most annoying", "Use this when you want maximum security and are paranoid."),
+
+    ], default=0, overwrite_output="")
+
+    config_helper.set_user_store(choice)
+
+    if choice in {"0", "1"}:
         print("Please provide authentication for ISIS.")
         username = input("Username (ISIS): ")
-        password: Union[str, bytes] = getpass("Password (ISIS): ")
-        if choice == "1":
-            enc_password = getpass("Password (Encrypt): ")
-            password = encryptor(enc_password, password)
+        password = getpass("Password (ISIS): ")
+        if choice == "0":
+            enc_password = getpass("Password (Encryption): ")
+            password = encryptor(enc_password, password).decode()
 
         config_helper.set_user(username, password)
 
     else:
         print("Alright, no passwords will be stored.")
 
-    #    Which mode of file name conversion?
-    print(r"""For some applications the file name is important.
+    print()
+
+
+def filename_prompt() -> None:
+    choice = generic_prompt(r"""For some applications the file name is important.
 Some programming languages have restrictions / inconveniences when working with specific characters.
 To combat this you may want to enable a specific file name scheme.
 
-If you already have existing files they will be renamed automatically 
-and transparently with the next startup of `isisdl`.
+If you already have existing files they will be renamed automatically and transparently with the next startup of `isisdl`.""", [
+        ("No replacing.", """All characters except "/" are left as they are.""", ""),
+        ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", """E.g. LaTeX needs escaping of "_" → "\\_"."""),
 
-    1. No replacing.
-         All characters are left as they are.
-    
-    2. Replace and filter not unix safe chars 
-         "ä" → "ae"
-         "ö" → "oe"
-         "ü" → "ue"
-         "/\t\n\r\v\f" → "-"
-    
-    3. Replace all non-url safe characters
-         "#%&/:;<=>@\^`|~-$" → "."
-         "[]{}" → "()"
-    """)
+    ], default=0, overwrite_output="")
 
-    # choice = get_input("Please choose the file naming scheme: ", {"1", "2", "3"})
-    choice = "3"
+    config_helper.set_filename_scheme(choice)
 
-    config_helper.set_filename_scheme(int(choice))
+    print()
 
-    print("""If you wish you can throttle your download speed to a limit.
+def throttler_prompt() -> None:
+    choice = generic_prompt("""If you wish you can throttle your download speed to a limit.
 Do you want to do so?
 
-    1. Yes
-    2. No
-    """)
+You may overwrite this option by setting the `-d, --download-rate` flag.""", [
+        ("Yes", "", ""),
+        ("No", "", ""),
 
-    # choice = get_input("", {"1", "2"})
-    choice = "2"
-    if choice == "1":
+    ], default=1, overwrite_output="")
+
+    amount = None
+    if choice == "0":
         while True:
-            amount = input("How many MiB/s am I allowed to consume? ")
-
             try:
-                int(amount)
+                amount = input("How many MiB/s am I allowed to consume? ")
                 break
             except ValueError:
                 print("\nI did not quite catch that")
 
-    if not is_windows:
-        print("""[Linux only]
-Do you want me to schedule a Cron-Job to run `isisdl` every x hours?
+    config_helper.set_throttle_rate(amount)
 
-    1. No
-    2. 1 Hour
-    3. 24 Hours
-        """)
+    print()
 
-        choice = get_input("", {"1", "2", "3"})
-        # choice = "2"
-        with CronTab(user=True) as cron:
+def cron_prompt() -> None:
+    if is_windows:
+        return
 
-            command = next(cron.find_command("isisdl"), None)
-            if command:
-                print("It seams as if isisdl is already configured to run as a Cron-Job.")
-                if choice == "1":
-                    second = get_input("Should I remove the entry? [y/n] ", {"y", "n"})
-                    if second == "y":
-                        cron.remove(command)
-                else:
+    choice = generic_prompt("""[Linux only]
+Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
+        ("No", "", ""),
+        ("1 Hour", "", "Note: done with the `@hourly` target. Cron must support it."),
+        ("24 Hours", "", "Note: done with the `@daily` target. Cron must support it."),
+
+    ], default=0, overwrite_output="")
+
+    with CronTab(user=True) as cron:
+
+        command = next(cron.find_command("isisdl"), None)
+        if command:
+            print("It seams as if isisdl is already configured to run as a Cron-Job.")
+            if choice == "0":
+                second = get_input("Should I remove the entry? [y/n] ", {"y", "n"})
+                if second == "y":
                     cron.remove(command)
+            else:
+                cron.remove(command)
 
-            if choice in {"2", "3"}:
-                import isisdl.__main__ as __main__
-                job = cron.new(__main__.__file__, f"isisdl autogenerated", user=True)
+        if choice in {"1", "2"}:
+            import isisdl.__main__ as __main__
+            job = cron.new(__main__.__file__, f"isisdl autogenerated", user=True)
 
-                if choice == "2":
-                    job.setall("@hourly")
-                else:
-                    job.setall("@daily")
+            if choice == "1":
+                job.setall("@hourly")
+            else:
+                job.setall("@daily")
 
-                print()
+    print()
 
-    # ISIS Dir
+def telemetry_data_prompt() -> None:
+    choice = generic_prompt("""I would like to collect some data from you.
+The data is primarily used to ensure `isisdl` is working correctly on all platforms and all courses.
 
-    # Black / Whitelist
+Also it is really useful to know for how many users I'm designing this library
+and what requirements they have (runtime of `isisdl`, platform, etc.).
 
-    # Telemetry Data
+I've previously relied on assertions and users reporting these assertions on github.
+This system is really inconvenient for both parties and there would be a lot of time saved when using this version.
+""", [
+        ("No", "No data will be collected.", ""),
+        ("Basic", "This includes all data from the application.", "This is usually stuff like non-blacklisted url, unhandled characters, execution time, etc."),
+        ("Extended", "This includes information about you", "This is usually stuff like your platform / system"),
+
+    ], default=0, overwrite_output="")
+
+    config_helper.set_telemetry(choice)
 
 
+def main() -> None:
+    config_helper.delete_config()
 
-if __name__ == '__main__':
+    explanation_depth_prompt()
+    authentication_prompt()
+    filename_prompt()
+    throttler_prompt()
+    cron_prompt()
+
+    print(config_helper.export_config())
+
+
+if __name__ == "__main__":
     main()

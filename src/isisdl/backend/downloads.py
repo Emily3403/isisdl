@@ -21,10 +21,9 @@ from func_timeout import FunctionTimedOut, func_timeout
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.database_helper import database_helper
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_checksum
+from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_checksum, database_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer

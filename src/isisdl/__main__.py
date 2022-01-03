@@ -40,8 +40,6 @@ def main() -> None:
 #   Auto install new version / detect it
 #
 #   Auto detect files
-#
-#   Cron job
 
 # Maybe TODO:
 #

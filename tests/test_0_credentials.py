@@ -5,7 +5,7 @@ import string
 from typing import Tuple
 
 from isisdl.backend.crypt import get_credentials, store_clear, encryptor
-from isisdl.share.settings import env_var_name_username, env_var_name_password, clear_password_file, encrypted_password_file, env_var_name_encrypted_password, already_prompted_file
+from isisdl.share.settings import env_var_name_username, env_var_name_password, clear_password_file, encrypted_password_file, env_var_name_encrypted_password
 from isisdl.share.utils import path, User
 
 

@@ -14,10 +14,9 @@ from threading import Thread
 from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING, Callable
 from urllib.parse import urlparse, urljoin
 
-from isisdl.backend.database_helper import database_helper
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status
 from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time
-from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill
+from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill, database_helper
 
 
 @dataclass
