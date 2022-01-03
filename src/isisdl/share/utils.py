@@ -425,6 +425,6 @@ OnKill()
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
 
-from database_helper import config_helper
+from isisdl.backend.database_helper import config_helper
 
 _filename_scheme = config_helper.get_filename_scheme()
