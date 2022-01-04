@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import wraps
 from multiprocessing import current_process
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Iterable, cast, Any
+from typing import Union, Callable, Optional, List, Tuple, Dict, Iterable, cast, Any, Set
 from urllib.parse import unquote
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
@@ -248,6 +248,15 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
 
     return decorator
 
+def get_input(message: str, allowed: Set[str]) -> str:
+    while True:
+        choice = input(message)
+        if choice in allowed:
+            break
+
+        print("\nI did not quite catch that.")
+
+    return choice
 
 class OnKill:
     _funcs: PriorityQueue[Tuple[int, Callable[[], None]]] = PriorityQueue()

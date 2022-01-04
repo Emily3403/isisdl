@@ -30,20 +30,13 @@ def main() -> None:
 
 
 # TODO:
-#
 #   isisdl-clean-names
-#
-#   init function
-#
 #   Autolog to server
-#
-#   Auto install new version / detect it
-#
 #   Auto detect files
+#   Status fix whitespace
 
-# Maybe TODO:
-#
-#   Better settings / config
+
+#   Have some prompts upon first activation of function
 
 
 if __name__ == '__main__':

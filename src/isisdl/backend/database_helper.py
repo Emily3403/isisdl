@@ -156,11 +156,7 @@ class ConfigHelper(SQLiteDatabase):
         self._set("filename_scheme", num)
 
     def get_filename_scheme(self) -> str:
-        res = self._get("filename_scheme") or self.default_filename_scheme()
-        # assert isinstance(res, int)
-        return res
-
-        # return cast(int, self._get("filename_scheme", self.default_filename_scheme()))
+        return self._get("filename_scheme") or self.default_filename_scheme()
 
     @staticmethod
     def default_throttle_rate() -> None:
@@ -171,11 +167,7 @@ class ConfigHelper(SQLiteDatabase):
             self._set("throttle_rate", num)
 
     def get_throttle_rate(self) -> Optional[str]:
-        res = self._get("throttle_rate")
-        assert res is None or isinstance(res, str)
-        return res
-
-        # return cast(Optional[int], self._get("throttle_rate"))
+        return self._get("throttle_rate")
 
     @staticmethod
     def default_telemetry() -> str:
@@ -185,11 +177,13 @@ class ConfigHelper(SQLiteDatabase):
         self._set("telemetry", num)
 
     def get_telemetry(self) -> str:
-        res = self._get("telemetry") or self.default_telemetry()
+        return self._get("telemetry") or self.default_telemetry()
 
-        return res
+    def set_last_ignored_version(self, version: str):
+        self._set("last_ignored_version", version)
 
-        # return cast(int, self._get("telemetry", self.default_telemetry()))
+    def get_last_ignored_version(self) -> Optional[str]:
+        return self._get("last_ignored_version")
 
     def delete_config(self) -> None:
         with self.lock:

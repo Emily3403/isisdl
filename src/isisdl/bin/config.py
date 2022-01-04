@@ -6,21 +6,10 @@ from crontab import CronTab
 
 from isisdl.backend.crypt import encryptor
 from isisdl.share.settings import is_first_time, is_windows
-from isisdl.share.utils import config_helper
+from isisdl.share.utils import config_helper, get_input
 
 explanation_depth = 2
 indent = "    "
-
-
-def get_input(message: str, allowed: Set[str]) -> str:
-    while True:
-        choice = input(message)
-        if choice in allowed:
-            break
-
-        print("\nI did not quite catch that.")
-
-    return choice
 
 
 def generic_prompt(question: str, values: List[Tuple[str, str, str]], default: int, overwrite_output: Optional[str] = None) -> str:
@@ -114,6 +103,7 @@ If you already have existing files they will be renamed automatically and transp
 
     print()
 
+
 def throttler_prompt() -> None:
     choice = generic_prompt("""If you wish you can throttle your download speed to a limit.
 Do you want to do so?
@@ -136,6 +126,7 @@ You may overwrite this option by setting the `-d, --download-rate` flag.""", [
     config_helper.set_throttle_rate(amount)
 
     print()
+
 
 def cron_prompt() -> None:
     if is_windows:
@@ -172,19 +163,33 @@ Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
 
     print()
 
+
 def telemetry_data_prompt() -> None:
     choice = generic_prompt("""I would like to collect some data from you.
 The data is primarily used to ensure `isisdl` is working correctly on all platforms and all courses.
+It would be a *huge* benefit for developing if you share the extended data with me. But if you don't want to that is fine as well.
 
 Also it is really useful to know for how many users I'm designing this library
 and what requirements they have (runtime of `isisdl`, platform, etc.).
 
 I've previously relied on assertions and users reporting these assertions on github.
 This system is really inconvenient for both parties and there would be a lot of time saved when using this version.
+
+You will find a detailed breakdown of what data is collected in the "Full details" option.
 """, [
         ("No", "No data will be collected.", ""),
-        ("Basic", "This includes all data from the application.", "This is usually stuff like non-blacklisted url, unhandled characters, execution time, etc."),
-        ("Extended", "This includes information about you", "This is usually stuff like your platform / system"),
+        ("Basic", "This covers all data which is used by `isisdl` itself.",
+         "- Ping on run"
+         "- Wrong blacklisting of urls"),
+        ("Extended", "This covers all additional data e.g. about your system and configuration",
+         f"- Your Platform\n"
+         f"- Average connection speed\n"
+         f"- Your config\n{indent}If multiple users have the same option disabled / enabled it might be useful to update the defaults accordingly."
+         "- General metadata of your subscribed ISIS courses"
+         f"\n{indent}- Number of courses"
+         f"\n{indent}- Number of files"
+
+         ),
 
     ], default=0, overwrite_output="")
 
@@ -199,8 +204,19 @@ def main() -> None:
     filename_prompt()
     throttler_prompt()
     cron_prompt()
+    telemetry_data_prompt()
+
+    # TODO:
+    #   Global update enable / disable
+    #   When executing as a script have a option to install from last working commit
+    #   Nag the user to send at least a ping
+    #   Last commit message
+    #   H265
 
     print(config_helper.export_config())
+
+    # Telemetry TODO:
+    #   Detected wrong files across restarts
 
 
 if __name__ == "__main__":

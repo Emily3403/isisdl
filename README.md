@@ -1,6 +1,8 @@
 # isisdl
 
 ![Tests](https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg)
+![A](https://wakatime.com/badge/github/Emily3403/isisdl.svg?style=flat)
+
 
 A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
 
