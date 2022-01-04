@@ -32,7 +32,7 @@ class PreMediaContainer:
     checksum: Optional[str] = None
 
     @classmethod
-    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "") -> PreMediaContainer:
+    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: Optional[int] = None) -> PreMediaContainer:
         # Sanitize bad names
         if relative_location == "/":
             relative_location = ""
@@ -55,7 +55,7 @@ class PreMediaContainer:
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
             logger.debug(f"Not downloading from pluginfile.php / mod/videoservice/file.php → This has a performance penalty.\n{sanitized_url = }")
 
-        return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video)
+        return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
 
     def dump(self) -> None:
         assert self.checksum is not None
@@ -115,7 +115,10 @@ class Course:
             videos = []
 
         else:
-            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"]) for item in videos_json["data"]["videos"]]
+            def convert_video_length_to_int(length: str):
+                assert False
+
+            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=convert_video_length_to_int(item[""])) for item in videos_json["data"]["videos"]]
 
         return videos
 
@@ -169,7 +172,7 @@ class Course:
                     for item in file["contents"]:
                         file_id = f"{file['id']}_{checksum_algorithm(item['fileurl'].encode()).hexdigest()}"
 
-                        all_content.append(PreMediaContainer.from_course(item["filename"], file_id, item["fileurl"], self, item["timemodified"], item["filepath"]))
+                        all_content.append(PreMediaContainer.from_course(item["filename"], file_id, item["fileurl"], self, item["timemodified"], item["filepath"], item[""]))
 
                 if len(all_content) == prev_len:
                     known_bad_urls = {

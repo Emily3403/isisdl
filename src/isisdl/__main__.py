@@ -18,7 +18,7 @@ def maybe_print_version_and_exit() -> None:
 
 def main() -> None:
     maybe_print_version_and_exit()
-    build_checksums.main()
+    build_checksums.database_subset_files()
 
     user = get_credentials()
 

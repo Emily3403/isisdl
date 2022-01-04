@@ -119,7 +119,7 @@ def test_build_checksums():
     # for file in Path(path()).rglob(checksum_file):
     #     file.unlink()
 
-    build_checksums.main()
+    build_checksums.database_subset_files()
 
     dl = make_dl()
 

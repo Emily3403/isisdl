@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 import os
 import time
 from pathlib import Path
 from typing import List, Tuple
 
+from isisdl.backend.crypt import get_credentials
+from isisdl.backend.request_helper import RequestHelper
 from isisdl.share.settings import download_dir_location
-from isisdl.share.utils import path, logger, calculate_checksum, database_helper
+from isisdl.share.utils import path, logger, calculate_checksum, database_helper, User
 
 
-def main() -> None:
+def database_subset_files() -> None:
     s = time.perf_counter()
     checksums = database_helper.get_checksums_per_course()
 
@@ -35,6 +38,32 @@ def main() -> None:
 
     logger.info(f"Successfully built all checksums in {time.perf_counter() - s:.3f}s.")
 
+def files_subset_database(helper: RequestHelper):
+    for course in helper.courses:
+        available_videos = course.download_videos(helper.sessions[0])
+        available_documents = course.download_documents(helper)
+
+        for file in Path(course.path()).rglob("*"):
+            if not os.path.isfile(file):
+                continue
+
+            if os.path.splitext(file.name)[1] == ".mp4":
+                pass
+            else:
+                pass
+
+    pass
+
+
+def main():
+    user = get_credentials()
+    request_helper = RequestHelper(user)
+
+    files_subset_database(request_helper)
+    database_subset_files()
+
+
 
 if __name__ == '__main__':
     main()
+

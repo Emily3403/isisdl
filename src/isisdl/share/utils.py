@@ -199,20 +199,10 @@ def sanitize_name(name: str) -> str:
     name = name.strip()
     name = unquote(name)
 
-    if _filename_scheme >= 1:
+    if _filename_scheme >= "0":
         name = name.replace("/", "-")
 
-    if _filename_scheme >= 2:
-        char_mapping = {
-            "a": "ä",
-            "o": "ö",
-            "u": "ü",
-            "-": """/\t\n\r\v\f""",
-        }
-        for char, mapping in char_mapping.items():
-            name = name.translate(str.maketrans(mapping, char * len(mapping)))
-
-    if _filename_scheme >= 3:
+    if _filename_scheme >= "1":
         # Now replace any remaining funny symbols with a `?`
         name = name.encode("ascii", errors="replace").decode()
 
