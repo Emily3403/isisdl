@@ -14,9 +14,11 @@ from threading import Thread
 from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING, Callable
 from urllib.parse import urlparse, urljoin
 
+from requests import Response
+
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status
-from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time
-from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill, database_helper
+from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time, checksum_num_bytes
+from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_local_checksum, calculate_online_checksum
 
 
 @dataclass
@@ -65,6 +67,22 @@ class PreMediaContainer:
     def course_name(self) -> str:
         return RequestHelper.course_id_mapping[self.course_id].name
 
+    def calculate_online_checksum(self, s: SessionWithKey) -> str:
+        while True:
+            running_download = s.get_(self.url, params={"token": s.token}, stream=True)
+
+            if running_download is None:
+                continue
+
+            if not running_download.ok:
+                assert False
+
+            break
+
+        return calculate_online_checksum(running_download.raw, running_download.headers["content-length"])
+
+    def __hash__(self):
+        return self.file_id.__hash__()
 
 @dataclass
 class Course:
@@ -115,7 +133,8 @@ class Course:
             videos = []
 
         else:
-            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=item["duration"]) for item in videos_json["data"]["videos"]]
+            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=item["duration"]) for item in
+                      videos_json["data"]["videos"]]
 
         return videos
 

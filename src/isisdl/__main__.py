@@ -34,7 +34,7 @@ def main() -> None:
 #   Autolog to server
 #   Auto detect files
 #   Status fix whitespace
-
+#   Only 1 session
 
 #   Have some prompts upon first activation of function
 

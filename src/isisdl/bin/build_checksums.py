@@ -10,8 +10,8 @@ from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.share.settings import download_dir_location, working_dir_location
-from isisdl.share.utils import path, logger, calculate_checksum, database_helper, User, get_input, config_helper
+from isisdl.share.settings import download_dir_location, working_dir_location, enable_multithread
+from isisdl.share.utils import path, logger, calculate_local_checksum, database_helper, User, get_input, config_helper, calculate_online_checksum, calculate_online_checksum_file
 
 
 def database_subset_files() -> None:
@@ -22,7 +22,7 @@ def database_subset_files() -> None:
         for file in Path(path(download_dir_location, course)).rglob("*"):
             if file.is_file():
                 try:
-                    checksums[course].remove(calculate_checksum(file.as_posix()))
+                    checksums[course].remove(calculate_local_checksum(file.as_posix()))
                 except KeyError:
                     pass
 
@@ -41,6 +41,12 @@ def database_subset_files() -> None:
 
     logger.info(f"Successfully built all checksums in {time.perf_counter() - s:.3f}s.")
 
+def prep_container_and_dump(container: PreMediaContainer, file: Path):
+    container.location, container.name = os.path.split(file)
+    container.checksum = calculate_local_checksum(file.as_posix())
+
+    container.dump()
+
 
 def check_file_equal(file: Path, online_file: PreMediaContainer) -> bool:
     return True
@@ -48,11 +54,13 @@ def check_file_equal(file: Path, online_file: PreMediaContainer) -> bool:
 
 
 def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None:
-    files_to_download: Dict[str, PreMediaContainer] = {}
+    files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
     file_to_course_mapping = defaultdict(list)
+    file_to_posix_mapping: Dict[str, str] = {}
+    s = helper.sessions[0]
 
     for course in helper.courses[2:3]:
-        available_videos = course.download_videos(helper.sessions[0])
+        available_videos = course.download_videos(s)
         available_documents = course.download_documents(helper)
 
         videos, documents = defaultdict(list), defaultdict(list)
@@ -72,24 +80,41 @@ def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None
             if os.path.splitext(file.name)[1] == ".mp4":
                 info = MediaInfo.parse(file)
                 possible = videos[int(info.tracks[0].duration / 1000)]
-                if not possible:
-                    assert False
             else:
                 possible = documents[file.stat().st_size]
 
             if len(possible) == 0:
-                continue
+                assert False
 
             elif len(possible) == 1 and not check_every_file:
-                item = possible[0]
-                item.checksum = calculate_checksum(file.as_posix())
-                item.dump()
+                prep_container_and_dump(possible[0], file)
 
             else:
-                files_to_download.update({item.file_id: item for item in possible})
+                files_to_download[file].extend(possible)
 
+    if enable_multithread and False:
+        online_checksums = {}
+        file_checksums = {}
+        pass
 
+    else:
+        for file, containers in files_to_download.items():
+            file_checksum = calculate_online_checksum_file(file.as_posix())
+            checksums = {item: item.calculate_online_checksum(s) for item in containers}
+            checksums = {k: v for k, v in checksums.items() if v == file_checksum}
 
+            if len(checksums) == 0:
+                assert False
+
+            elif len(checksums) > 1:
+                # Two files with same checksum.
+                # Since there is no heuristic (aside from filename) that is good enough to differentiate these files
+                # they are completely ignored.
+                continue
+
+            prep_container_and_dump(list(checksums.keys())[0], file)
+
+        print()
     pass
 
 
@@ -108,6 +133,7 @@ def main() -> None:
     else:
         choice = prev_asked
 
+    choice = "y"
     user = get_credentials()
     request_helper = RequestHelper(user)
 

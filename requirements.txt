@@ -4,3 +4,4 @@ beautifulsoup4
 coloredlogs
 func_timeout
 python-crontab; sys_platform == 'linux'
+pymediainfo

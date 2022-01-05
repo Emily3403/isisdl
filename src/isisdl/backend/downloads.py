@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_checksum, database_helper
+from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_local_checksum, database_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -286,7 +286,7 @@ class MediaContainer:
         running_download.close()
 
         # Only register the file after successfully downloading it.
-        self.container.checksum = calculate_checksum(self.location)
+        self.container.checksum = calculate_local_checksum(self.location)
         self.container.dump()
         self.done = True
         status.normal_exit_download(self)

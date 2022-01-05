@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import inspect
+import json
 import logging
 import os
 import signal
@@ -20,7 +21,7 @@ from urllib.parse import unquote
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.share.settings import working_dir_location, \
     log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip
+    log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip, checksum_num_bytes
 
 static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
                   "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
@@ -248,6 +249,7 @@ def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable
 
     return decorator
 
+
 def get_input(message: str, allowed: Set[str]) -> str:
     while True:
         choice = input(message)
@@ -257,6 +259,7 @@ def get_input(message: str, allowed: Set[str]) -> str:
         print("\nI did not quite catch that.")
 
     return choice
+
 
 class OnKill:
     _funcs: PriorityQueue[Tuple[int, Callable[[], None]]] = PriorityQueue()
@@ -346,7 +349,8 @@ class User:
         return self.username + "\n" + self.password + "\n"
 
 
-def calculate_checksum(filename: str) -> str:
+# TODO: Migrate to Path?
+def calculate_local_checksum(filename: str) -> str:
     sha = checksum_algorithm()
     sha.update(str(os.path.getsize(filename)).encode())
     curr_char = 0
@@ -354,8 +358,8 @@ def calculate_checksum(filename: str) -> str:
         i = 1
         while True:
             f.seek(curr_char)
-            data = f.read(1024)
-            curr_char += 1024
+            data = f.read(checksum_num_bytes)
+            curr_char += checksum_num_bytes
             if not data:
                 break
             sha.update(data)
@@ -364,6 +368,18 @@ def calculate_checksum(filename: str) -> str:
             i += 1
 
     return sha.hexdigest()
+
+
+def calculate_online_checksum(fp, size: str) -> str:
+    chunk = fp.read(checksum_num_bytes)
+
+    return checksum_algorithm(chunk + size.encode()).hexdigest()
+
+def calculate_online_checksum_file(filename: str) -> str:
+    with open(filename, "rb") as f:
+        return calculate_online_checksum(f, str(os.path.getsize(filename)))
+
+
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
@@ -429,6 +445,5 @@ config_helper = ConfigHelper()
 
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
-
 
 _filename_scheme = config_helper.get_filename_scheme()
