@@ -401,6 +401,7 @@ class Status(Thread):
             if Status.last_len:
                 first_str += f"\033[{Status.last_len}A\r"
 
+            # TODO: Don't sort but have it thread based
             first_str += " -- Status --"
             log_strings.append(first_str)
             curr_download = format_num(throttler.bandwidth_used)

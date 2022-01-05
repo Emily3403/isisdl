@@ -180,7 +180,8 @@ You will find a detailed breakdown of what data is collected in the "Full detail
         ("No", "No data will be collected.", ""),
         ("Basic", "This covers all data which is used by `isisdl` itself.",
          "- Ping on run"
-         "- Wrong blacklisting of urls"),
+         "- Wrong blacklisting of urls"
+         "- If two files have the same size (or for videos the same length)"),
         ("Extended", "This covers all additional data e.g. about your system and configuration",
          f"- Your Platform\n"
          f"- Average connection speed\n"

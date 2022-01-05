@@ -84,14 +84,14 @@ class DatabaseHelper(SQLiteDatabase):
     def add_pre_container(self, file: PreMediaContainer) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
-                INSERT OR IGNORE INTO fileinfo values (?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?)
             """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum))
             self.con.commit()
 
     def add_course(self, course: Course) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
-                INSERT OR IGNORE INTO courseinfo values (?, ?)
+                INSERT OR REPLACE INTO courseinfo values (?, ?)
             """, (course.name, course.course_id))
             self.con.commit()
 
@@ -115,7 +115,7 @@ class ConfigHelper(SQLiteDatabase):
     def _set(self, key: str, value: str) -> None:
         with self.lock:
             self.cur.execute("""
-                INSERT OR IGNORE INTO config values (?, ?)
+                INSERT OR REPLACE INTO config values (?, ?)
             """, (key, value))
             self.con.commit()
 
@@ -179,11 +179,18 @@ class ConfigHelper(SQLiteDatabase):
     def get_telemetry(self) -> str:
         return self._get("telemetry") or self.default_telemetry()
 
-    def set_last_ignored_version(self, version: str):
+    def set_last_ignored_version(self, version: str) -> None:
         self._set("last_ignored_version", version)
 
     def get_last_ignored_version(self) -> Optional[str]:
         return self._get("last_ignored_version")
+
+    def set_other_files_in_working_location(self, value: str) -> None:
+        self._set("other_files", value)
+
+    def get_other_files_in_working_location(self) -> Optional[str]:
+        return self._get("other_files")
+
 
     def delete_config(self) -> None:
         with self.lock:

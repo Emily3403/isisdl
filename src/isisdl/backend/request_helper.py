@@ -115,10 +115,7 @@ class Course:
             videos = []
 
         else:
-            def convert_video_length_to_int(length: str):
-                assert False
-
-            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=convert_video_length_to_int(item[""])) for item in videos_json["data"]["videos"]]
+            videos = [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=item["duration"]) for item in videos_json["data"]["videos"]]
 
         return videos
 
@@ -172,7 +169,7 @@ class Course:
                     for item in file["contents"]:
                         file_id = f"{file['id']}_{checksum_algorithm(item['fileurl'].encode()).hexdigest()}"
 
-                        all_content.append(PreMediaContainer.from_course(item["filename"], file_id, item["fileurl"], self, item["timemodified"], item["filepath"], item[""]))
+                        all_content.append(PreMediaContainer.from_course(item["filename"], file_id, item["fileurl"], self, item["timemodified"], item["filepath"], item["filesize"]))
 
                 if len(all_content) == prev_len:
                     known_bad_urls = {
