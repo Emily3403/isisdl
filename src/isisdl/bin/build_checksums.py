@@ -12,8 +12,8 @@ from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.share.settings import course_dir_location, enable_multithread, sync_database_num_threads
-from isisdl.share.utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
+from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads
+from utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
 
 
 # TODO: Assert sizes

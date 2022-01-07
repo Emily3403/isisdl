@@ -6,8 +6,8 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.share.settings import hash_algorithm, hash_length, hash_iterations, env_var_name_username, env_var_name_password
-from isisdl.share.utils import User, config_helper
+from isisdl.settings import hash_algorithm, hash_length, hash_iterations, env_var_name_username, env_var_name_password
+from utils import User, config_helper
 
 
 def generate_key(password: str) -> bytes:
@@ -50,17 +50,19 @@ def get_credentials() -> User:
         return User(username, password)
 
     # Now query the database
-    username, password = config_helper.get_user()
-    if username is not None and password is not None:
-        # TODO: This is not good. Change it to bytes.
-        if password.startswith("gAAAAA"):
-            user_pass = getpass.getpass("Please enter the password you encrypted your password with: ")
+    username = config_helper.get_user()
+    clear_password = config_helper.get_clear_password()
+    encrypted_password = config_helper.get_encrypted_password()
 
-            password = decryptor(user_pass, password)
-            if password is None:
-                print("Your password is incorrect. Please enter your login information manually (or restart me)!")
-            else:
-                return User(username, password)
+    if username is not None and clear_password is not None:
+        return User(username, clear_password)
+
+    if username is not None and encrypted_password is not None:
+        user_password = getpass.getpass("Please enter the password you encrypted your password with: ")
+
+        password = decryptor(user_password, encrypted_password)
+        if password is None:
+            print("Your password is incorrect. Please enter your login information manually (or restart me)!")
         else:
             return User(username, password)
 

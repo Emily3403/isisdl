@@ -4,8 +4,8 @@ from getpass import getpass
 from typing import List, Tuple, Optional
 
 from isisdl.backend.crypt import encryptor
-from isisdl.share.settings import is_first_time, is_windows
-from isisdl.share.utils import config_helper, get_input
+from isisdl.settings import is_first_time, is_windows
+from utils import config_helper, get_input
 
 explanation_depth = "2"
 indent = "    "
@@ -56,7 +56,7 @@ def explanation_depth_prompt() -> None:
 
 
 def authentication_prompt() -> None:
-    choice = generic_prompt("There are four ways of storing your password.", [
+    choice = generic_prompt("There are three ways of storing your password.", [
         ("Encrypted in the database", "You will have to enter your password every time.",
          "This is ideal for a multi-user system where someone knows of `isisdl` and would go ahead and read the database."),
         ("Clear text in the database", "No password required, but less security",
@@ -70,11 +70,15 @@ def authentication_prompt() -> None:
         print("Please provide authentication for ISIS.")
         username = input("Username (ISIS): ")
         password = getpass("Password (ISIS): ")
+
+        config_helper.set_user(username)
         if choice == "0":
             enc_password = getpass("Password (Encryption): ")
             password = encryptor(enc_password, password)
+            config_helper.set_encrypted_password(password)
 
-        config_helper.set_user(username, password)
+        else:
+            config_helper.set_clear_password(password)
 
     else:
         print("Alright, no passwords will be stored.")
@@ -191,9 +195,6 @@ You will find a detailed breakdown of what data is collected in the "Full detail
          ),
 
     ], default=int(config_helper.default_telemetry()), overwrite_output="")
-
-    # TODO:
-    #   Nag the user to send at least a ping
 
     config_helper.set_telemetry(choice)
 

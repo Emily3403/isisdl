@@ -3,9 +3,9 @@ from hashlib import sha256
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
 
-from isisdl.share.settings import working_dir_location, _working_dir_location, course_dir_location, intern_dir_location, settings_file_location, database_file_location, set_database_to_memory, \
+from isisdl.settings import working_dir_location, _working_dir_location, course_dir_location, intern_dir_location, settings_file_location, database_file_location, set_database_to_memory, \
     checksum_algorithm, checksum_num_bytes, checksum_base_skip, sync_database_num_threads, hash_iterations, hash_algorithm, hash_length, \
-    progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, env_var_name_encrypted_password, enable_multithread, download_chunk_size, \
+    progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, enable_multithread, download_chunk_size, \
     sleep_time_for_isis, num_tries_download, download_timeout, download_timeout_multiplier
 
 
@@ -22,7 +22,6 @@ def test_settings() -> None:
         hash_algorithm: SHA3_512,
         env_var_name_username: "ISISDL_USERNAME",
         env_var_name_password: "ISISDL_PASSWORD",
-        env_var_name_encrypted_password: "ISISDL_ENC_PASSWORD",
         enable_multithread: True,
     }
 

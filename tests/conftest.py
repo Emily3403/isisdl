@@ -6,7 +6,7 @@ from pytest import fixture
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.share.utils import startup, path, User
+from utils import startup, path, User
 
 
 def pytest_configure() -> None:

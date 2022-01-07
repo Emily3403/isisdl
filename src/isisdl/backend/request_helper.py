@@ -15,8 +15,8 @@ from typing import Optional, Dict, List, Any, cast, Callable
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
-from isisdl.share.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing, _course_downloader_transformation
-from isisdl.share.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum
+from isisdl.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing
+from utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum, _course_downloader_transformation
 
 
 @dataclass
@@ -120,7 +120,7 @@ class Course:
         videos_json = videos_res.json()[0]
 
         if videos_json["error"]:
-            # TODO: Mover logger
+            # TODO: Remove logger
             log_level = logger.error
             if "get_in_or_equal() does not accept empty arrays" in videos_json["exception"]["message"]:
                 # This is a ongoing bug in ISIS / Moodle. If a course does not have any videos an exception is raised. Disable this error.
@@ -262,11 +262,19 @@ class RequestHelper:
     }
 
     def __post_init__(self) -> None:
+        s = time.perf_counter()
         self.session = SessionWithKey.from_scratch(self.user)
-        self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
-        self._get_courses()
+        print(f"Session: {time.perf_counter() - s:.3f}")
 
-        if args.verbose:
+        s = time.perf_counter()
+        self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
+        print(f"Meta: {time.perf_counter() - s:.3f}")
+
+        s = time.perf_counter()
+        self._get_courses()
+        print(f"Courses: {time.perf_counter() - s:.3f}")
+
+        if args.verbose and False:
             print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
 
     def _get_courses(self) -> None:
@@ -366,11 +374,11 @@ class CourseDownloader:
         self.make_helper()
 
         pre_containers = self.build_files()
+
+        check_for_conflicts_in_files(pre_containers)
+
         if is_testing:
             pre_containers = _course_downloader_transformation(pre_containers)
-
-        # TODO: When there are too little files a conflict is not recognized (maybe query the database?)
-        check_for_conflicts_in_files(pre_containers)
 
         media_containers = self.make_files(pre_containers)
         global downloading_files
@@ -387,10 +395,12 @@ class CourseDownloader:
         downloader.join()
         status.join(0)
 
-    @with_timing("Creating RequestHelper")
+    # @with_timing("Creating RequestHelper")
     def make_helper(self) -> None:
         # TODO: Make this faster
+        s = time.perf_counter()
         self.helper = RequestHelper(self.user)
+        print(f"Total: {time.perf_counter() - s:.3f}")
 
     @with_timing("Building all files")
     def build_files(self) -> List[PreMediaContainer]:

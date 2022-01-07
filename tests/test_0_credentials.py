@@ -4,8 +4,8 @@ import string
 from typing import Tuple, Any
 
 from isisdl.backend.crypt import get_credentials, encryptor
-from isisdl.share.settings import env_var_name_username, env_var_name_password
-from isisdl.share.utils import config_helper
+from isisdl.settings import env_var_name_username, env_var_name_password
+from utils import config_helper
 
 
 def _generate_random_string() -> str:
@@ -41,7 +41,8 @@ def test_environment_variables(monkeypatch: Any) -> None:
 
 def test_get_user_clean() -> None:
     username, password = generate_user()
-    config_helper.set_user(username, password)
+    config_helper.set_user(username)
+    config_helper.set_clear_password(password)
 
     do_get_credentials(username, password)
 
@@ -52,9 +53,9 @@ def test_get_user_encrypted(monkeypatch: Any) -> None:
     username, password = generate_user()
 
     user_pass = _generate_random_string()
-    enc_password = encryptor(user_pass, password)
+    config_helper.set_encrypted_password(encryptor(user_pass, password))
 
-    config_helper.set_user(username, enc_password)
+    config_helper.set_user(username)
 
     monkeypatch.setattr("getpass.getpass", lambda _: user_pass)
 

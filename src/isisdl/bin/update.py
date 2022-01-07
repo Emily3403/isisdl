@@ -6,21 +6,23 @@ import sys
 from tempfile import TemporaryDirectory
 
 import requests
-from bs4 import BeautifulSoup
 
-from isisdl.share.settings import is_windows
-from isisdl.share.utils import logger, config_helper
+from isisdl.settings import is_windows
+from utils import logger, config_helper
 from isisdl.version import __version__
 
 
 def check_pypi_for_version() -> str:
     # Inspired from https://pypi.org/project/pypi-search
 
-    soup = BeautifulSoup(requests.get("https://pypi.org/project/isisdl/").text, 'html.parser')
-    package_name_header = soup.find('h1', class_='package-header__name')
-    version = package_name_header.text.split()[1]
+    to_search = requests.get("https://pypi.org/project/isisdl/").text
+    version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
+    assert version is not None
+    groups = version.groups()
+    assert groups is not None
+    assert len(groups) == 1
 
-    return str(version)
+    return version[0].split()[1]
 
 
 def check_github_for_version() -> str:

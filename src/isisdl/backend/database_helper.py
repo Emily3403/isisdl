@@ -6,7 +6,7 @@ from collections import defaultdict
 from threading import Lock
 from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any
 
-from isisdl.share.settings import database_file_location, set_database_to_memory
+from isisdl.settings import database_file_location, set_database_to_memory
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, Course
@@ -16,7 +16,7 @@ class SQLiteDatabase(ABC):
     lock: Lock = Lock()
 
     def __init__(self) -> None:
-        from isisdl.share.utils import path
+        from utils import path
         if set_database_to_memory:
             self.con = sqlite3.connect(":memory:", check_same_thread=False)
         else:
@@ -127,12 +127,23 @@ class ConfigHelper(SQLiteDatabase):
             assert isinstance(res[0], str)
             return res[0]
 
-    def set_user(self, username: str, password: str) -> None:
+    def set_user(self, username: str) -> None:
         self._set("username", username)
-        self._set("password", password)
 
-    def get_user(self) -> Tuple[Optional[str], Optional[str]]:
-        return self._get("username"), self._get("password")
+    def set_clear_password(self, password: str) -> None:
+        return self._set("clear_password", password)
+
+    def set_encrypted_password(self, password: str) -> None:
+        return self._set("encrypted_password", password)
+
+    def get_user(self) -> Optional[str]:
+        return self._get("username")
+
+    def get_clear_password(self) -> Optional[str]:
+        return self._get("clear_password")
+
+    def get_encrypted_password(self) -> Optional[str]:
+        return self._get("encrypted_password")
 
     #
 

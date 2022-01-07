@@ -3,7 +3,7 @@
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.bin import build_checksums
-from isisdl.share.utils import logger, args, database_helper
+from utils import logger, args, database_helper
 from isisdl.version import __version__
 
 
@@ -31,10 +31,8 @@ def main() -> None:
 # TODO:
 #   isisdl-clean-names
 #   Autolog to server
-#   Status fix whitespace
-#   Only 1 session
+
 #   H265
-#   Have some prompts upon first activation of function
 
 
 if __name__ == '__main__':

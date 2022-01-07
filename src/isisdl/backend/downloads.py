@@ -15,14 +15,13 @@ from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
 import requests
-from bs4 import BeautifulSoup
 from func_timeout import FunctionTimedOut, func_timeout
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
+from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
+from utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -36,29 +35,36 @@ class SessionWithKey(Session):
 
     @classmethod
     def from_scratch(cls, user: User) -> SessionWithKey:
+        s1 = time.perf_counter()
         s = cls("", "")
         s.headers.update({"User-Agent": "UwU"})
+        print(f"Session 1: {time.perf_counter() - s1:.3f}")
 
+        s1 = time.perf_counter()
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+        print(f"Session 2: {time.perf_counter() - s1:.3f}")
 
+        s1 = time.perf_counter()
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
                data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
                      "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
                      "shib_idp_ls_supported": "", "_eventId_proceed": "", })
+        print(f"Session 3: {time.perf_counter() - s1:.3f}")
 
+        s1 = time.perf_counter()
         response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                           params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
+        print(f"Session 4: {time.perf_counter() - s1:.3f}")
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
             print(f"I had a problem getting the {user = !s}. You have probably entered the wrong credentials.\nBailing out…")
-            os._exit(42)
+            exit(42)
 
         print(f"Credentials for {user} accepted!")
 
         # Extract the session key
-        soup = BeautifulSoup(response.text, features="html.parser")
-        key = soup.find("input", {"name": "sesskey"})["value"]
+        key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
 
         try:
             # This is a somewhat dirty hack.
@@ -67,7 +73,9 @@ class SessionWithKey(Session):
 
             # In [1] this way of obtaining the token is described.
             # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+            #
             # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
+
             s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
             raise InvalidSchema
         except InvalidSchema as ex:

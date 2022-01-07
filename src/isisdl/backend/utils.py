@@ -5,17 +5,22 @@ import argparse
 import atexit
 import logging
 import os
+import random
 import signal
 import string
 import sys
 from dataclasses import dataclass
 from functools import wraps
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set
+from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING
 from urllib.parse import unquote
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
-from isisdl.share.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes
+from isisdl.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
+    testing_download_size
+
+if TYPE_CHECKING:
+    from isisdl.backend.request_helper import PreMediaContainer
 
 static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
                   "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
@@ -92,7 +97,7 @@ def startup() -> None:
             # Sym-linking isn't really supported on Windows / not in a uniform way. Thus, I am not doing that.
             os.symlink(actual_settings_file, other_settings_file)
 
-    actual_settings_file = os.path.abspath(isisdl.share.settings.__file__)
+    actual_settings_file = os.path.abspath(isisdl.settings.__file__)
     other_settings_file = path(settings_file_location)
 
     if os.path.islink(other_settings_file):
@@ -324,6 +329,29 @@ class HumanBytes:
                 num /= unit_step
 
         return num, unit
+
+def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
+    possible_videos = []
+    tot_size = 0
+
+    # Get a random sample of lower half
+    video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)  # type: ignore
+    video_containers = video_containers[:int(len(video_containers) / 2)]
+    random.shuffle(video_containers)
+
+    # Select videos such that the total number of seconds does not overflow.
+    for item in video_containers:
+        maybe_new_size = tot_size + item.size
+        if maybe_new_size > testing_download_size:
+            break
+
+        possible_videos.append(item)
+        tot_size = maybe_new_size
+
+    # We can always download all documents.
+    documents = [item for item in pre_containers if not item.is_video]
+
+    return possible_videos + documents
 
 
 startup()
