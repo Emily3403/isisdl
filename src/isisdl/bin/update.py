@@ -37,6 +37,7 @@ def check_github_for_version() -> str:
 
     return version.group(1)
 
+
 # TODO: Check github test is working
 
 def main() -> None:

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import sys
 from getpass import getpass
-from typing import List, Tuple, Optional, Union, Any
+from typing import List, Tuple, Optional, Union
 
 from isisdl.backend.crypt import encryptor
-from isisdl.settings import is_first_time, is_windows, config_clear_screen, is_testing, database_file_location
 from isisdl.backend.utils import config_helper, get_input, clear, User, path
+from isisdl.settings import is_first_time, is_windows, config_clear_screen, is_testing, database_file_location
 
 explanation_depth = "2"
 indent = "    "
@@ -88,7 +88,6 @@ def authentication_prompt() -> None:
 
     else:
         config_helper.set_clear_password(password)
-
 
 
 def filename_prompt() -> None:
@@ -181,7 +180,7 @@ def cron_prompt() -> None:
 
 
 def telemetry_data_prompt() -> None:
-    choice = generic_prompt("""In order to ensure that all courses are downloaded correctly I would like to 
+    choice = generic_prompt("""In order to ensure that all courses are downloaded correctly I would like to
 collect some metadata from your courses, setup and configuration of isisdl.
 
 I've previously relied on assertions and users reporting these assertions on github.
@@ -218,7 +217,6 @@ def update_policy_prompt() -> None:
 
 
 def main() -> None:
-
     print(f"""I will guide you through a short configuration phase of about 4min.
 It is recommended that you read the options carefully.
 

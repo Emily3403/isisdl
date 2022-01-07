@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
-from subprocess import call
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING
 from urllib.parse import unquote
 
