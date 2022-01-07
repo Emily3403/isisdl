@@ -41,6 +41,7 @@ class SQLiteDatabase(ABC):
 
     def close_connection(self) -> None:
         self.con.close()
+        self.cur.close()
 
 
 class DatabaseHelper(SQLiteDatabase):
