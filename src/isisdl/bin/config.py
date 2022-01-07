@@ -3,8 +3,6 @@ import sys
 from getpass import getpass
 from typing import List, Tuple, Optional
 
-from crontab import CronTab
-
 from isisdl.backend.crypt import encryptor
 from isisdl.share.settings import is_first_time, is_windows
 from isisdl.share.utils import config_helper, get_input
@@ -136,6 +134,8 @@ Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
 
     if "pytest" in sys.modules:
         return
+
+    from crontab import CronTab
 
     with CronTab(user=True) as cron:
 
