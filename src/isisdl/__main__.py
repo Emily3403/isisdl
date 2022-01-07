@@ -2,8 +2,7 @@
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.bin import sync_database
-from isisdl.backend.utils import logger, args, database_helper
+from isisdl.backend.utils import args, database_helper
 from isisdl.version import __version__
 
 

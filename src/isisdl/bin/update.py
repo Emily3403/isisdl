@@ -59,29 +59,29 @@ def main() -> None:
                 print("cd /tmp")
 
             if version_pypi == version_github:
-                print("pip install --upgrade isisdl")
+                print(f"{sys.executable} -m pip install --upgrade isisdl")
             else:
                 print("git clone https://github.com/Emily3403/isisdl")
-                print("pip install ./isisdl")
+                print(f"{sys.executable} -m pip install ./isisdl")
 
             return
 
         if update_policy == "2":
-            if version_pypi == version_github:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "isisdl"])
-            else:
-                old_dir = os.getcwd()
-                with TemporaryDirectory() as tmp:
-                    os.chdir(tmp)
-                    print(f"Cloning the repository into {tmp} ...")
-                    ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
-                    if ret:
-                        print(f"Cloning failed with exit code {ret}")
-                        return
+            subprocess.check_call([sys.executable, "-m", "pip", "install", " --upgrade", "isisdl"])
 
-                    print("Installing with pip ...")
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
-                    os.chdir(old_dir)
+        if update_policy == "3":
+            old_dir = os.getcwd()
+            with TemporaryDirectory() as tmp:
+                os.chdir(tmp)
+                print(f"Cloning the repository into {tmp} ...")
+                ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
+                if ret:
+                    print(f"Cloning failed with exit code {ret}")
+                    return
+
+                print("Installing with pip ...")
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
+                os.chdir(old_dir)
 
 
 if __name__ == '__main__':

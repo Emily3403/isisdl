@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,9 +10,9 @@ from typing import List, Tuple, Dict
 from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, Course
-from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads, is_testing
-from isisdl.backend.utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.utils import path, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
+from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads
 
 
 def delete_missing_files_from_database() -> None:

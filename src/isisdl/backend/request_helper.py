@@ -75,7 +75,6 @@ class PreMediaContainer:
 
         return checksum_algorithm(chunk + str(size).encode()).hexdigest(), size
 
-
     def __hash__(self) -> int:
         return self.file_id.__hash__()
 

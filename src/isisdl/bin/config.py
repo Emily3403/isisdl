@@ -204,7 +204,8 @@ def update_policy_prompt() -> None:
     choice = generic_prompt("""Do you want me to auto-install updates when available?""", [
         ("No", "Do not install any updates.", ""),
         ("Notify me", "Raise a prompt on startup with a message on how to install the update.", ""),
-        ("Automagically install it", "Will automatically install the newest version when detected.", ""),
+        ("Install from pip", "Will install the newest when available from pip.", ""),
+        ("Install from github", "Will automatically install the newest version from github.", ""),
     ], default=int(config_helper.default_update_policy()), overwrite_output="")
 
     config_helper.set_update_policy(choice)
