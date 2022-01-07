@@ -11,38 +11,29 @@ from typing import List, Tuple, Dict
 from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, Course
+from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads, is_testing
 from isisdl.backend.utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
 
 
-# TODO: Assert sizes
-def database_subset_files() -> None:
-    s = time.perf_counter()
+def delete_missing_files_from_database() -> None:
     checksums = database_helper.get_checksums_per_course()
 
     for course in os.listdir(path(course_dir_location)):
         for file in Path(path(course_dir_location, course)).rglob("*"):
             if file.is_file():
+                correct_course = checksums[course]
                 try:
-                    checksums[course].remove(calculate_local_checksum(file))
+                    correct_course.remove(calculate_local_checksum(file))
                 except KeyError:
                     pass
 
-    missed_files = [(item, course) for course, row in checksums.items() for item in row]
+    for row in checksums.values():
+        for item in row:
+            database_helper.delete_by_checksum(item)
 
-    missed_file_names: List[Tuple[str, str]] = [(database_helper.get_name_by_checksum(item), course) for item, course in missed_files]  # type: ignore
-
-    if missed_file_names:
-        max_file_len = max(len(item[0]) for item in missed_file_names)
-
-        logger.warning("Noticied missing files:\n" + "\n".join(f"{item.ljust(max_file_len)} → {course}" for item, course in missed_file_names))
-        logger.warning("I am updating the database accordingly.")
-
-    for item, _ in missed_files:
-        database_helper.delete_by_file_id(item)
-
-    logger.info(f"Successfully built all checksums in {time.perf_counter() - s:.3f}s.")
+    num = sum(len(row) for row in checksums.values())
+    print(f"Deleted {num} entr{'ies' if num == 1 else 'y'} from the database.")
 
 
 def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
@@ -52,16 +43,14 @@ def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
     container.dump()
 
 
-def check_file_equal(file: Path, online_file: PreMediaContainer) -> bool:
-    return True
-    pass
+said_text = False
 
 
-def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None:
+def restore_database_state(helper: RequestHelper, check_every_file: bool) -> None:
     files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
-    file_to_course_mapping = defaultdict(list)
 
     assert helper.session is not None
+    already_checked = 0
 
     for course in helper.courses:
         available_videos = course.download_videos(helper.session)
@@ -74,57 +63,85 @@ def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None
         for item in available_documents:
             documents[item.size].append(item)
 
+        def corrupted_file_prompt(file: Path) -> None:
+            global said_text
+            if check_every_file:
+                if said_text is False:
+                    print("I've found the following corrupted files.\nIf you know that I've downloaded it go ahead and delete them."
+                          "\n\n(This message is here since you have selected that there are other files I have not downloaded)\n\n")
+                    said_text = True
+
+                print(file.as_posix())
+            else:
+                file.unlink()
+
         for file in Path(course.path()).rglob("*"):
             if not os.path.isfile(file):
                 continue
 
-            file_to_course_mapping[course].append(file)
-
             possible: List[PreMediaContainer]
             if os.path.splitext(file.name)[1] == ".mp4":
                 info = MediaInfo.parse(file)
+                if info.tracks[0].duration is None:
+                    corrupted_file_prompt(file)
+                    continue
+
                 possible = videos[int(info.tracks[0].duration / 1000)]
+
             else:
                 possible = documents[file.stat().st_size]
 
             if len(possible) == 0:
-                assert False
+                corrupted_file_prompt(file)
 
             elif len(possible) == 1 and not check_every_file:
                 prep_container_and_dump(possible[0], file)
+                already_checked += 1
 
             else:
                 files_to_download[file].extend(possible)
 
-    def update_container(file: Path, containers: List[PreMediaContainer]) -> int:
+    def check_multiple(file: Path, containers: List[PreMediaContainer]) -> int:
         assert helper.session is not None
 
-        file_checksum = calculate_online_checksum_file(file)
-        checksums = {item: item.calculate_online_checksum(helper.session) for item in containers}
-        checksums = {k: v for k, v in checksums.items() if v == file_checksum}
+        checksums: Dict[str, Tuple[int, PreMediaContainer]] = {}
+        for item in containers:
+            checksum, size = item.calculate_online_checksum(helper.session)
+            checksums[checksum] = size, item
 
-        if len(checksums) == 0:
-            assert False
+        valid_files = []
+        for checksum, (size, item) in checksums.items():
+            if calculate_online_checksum_file(file, size) == checksum:
+                valid_files.append(item)
 
-        elif len(checksums) > 1:
+        if len(valid_files) == 0:
+            return 0
+
+        elif len(valid_files) > 1:
             # Two files with same checksum.
             # Since there is no heuristic (aside from filename) that is good enough to differentiate these files
             # they are completely ignored.
             return 0
 
-        prep_container_and_dump(list(checksums.keys())[0], file)
+        prep_container_and_dump(valid_files[0], file)
 
         return 1
 
     if enable_multithread:
         with ThreadPoolExecutor(sync_database_num_threads) as ex:
-            nums = list(ex.map(update_container, *zip(*list(files_to_download.items()))))
+            nums = list(ex.map(check_multiple, *zip(*list(files_to_download.items()))))
 
     else:
-        nums = [update_container(file, containers) for file, containers in files_to_download.items()]
+        nums = [check_multiple(file, containers) for file, containers in files_to_download.items()]
 
-    logger.info(f"I have recovered {sum(nums)} / {len(files_to_download)} files.")
-    pass
+    if files_to_download:
+        print(f"No unrecognized files (checked {sum(nums) + already_checked})")
+
+    else:
+        print(f"I have recovered {sum(nums) + already_checked} / {len(files_to_download) + already_checked} files.")
+
+        if sum(nums) != len(files_to_download):
+            print("The others have to be downloaded again.")
 
 
 def main() -> None:
@@ -142,12 +159,11 @@ def main() -> None:
     else:
         choice = prev_asked
 
-    choice = "y"
     user = get_credentials()
     request_helper = RequestHelper(user)
 
-    files_subset_database(request_helper, choice == "y")
-    database_subset_files()
+    restore_database_state(request_helper, choice == "y")
+    delete_missing_files_from_database()
 
 
 if __name__ == '__main__':

@@ -89,7 +89,8 @@ def filename_prompt() -> None:
 Some programming languages have restrictions / inconveniences when working with specific characters.
 To combat this you may want to enable a specific file name scheme.
 
-If you already have existing files they will be renamed automatically and transparently with the next startup of `isisdl`.""", [
+If you have existing files you *will* have to re-download them all.
+So stick with one scheme.""", [
         ("No replacing.", """All characters except "/" are left as they are.""", ""),
         ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", """E.g. LaTeX needs escaping of "_" → "\\_"."""),
 

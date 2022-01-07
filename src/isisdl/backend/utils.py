@@ -18,7 +18,7 @@ from urllib.parse import unquote
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    testing_download_size
+    testing_download_video_size, testing_download_documents_size
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -155,15 +155,17 @@ def path(*args: str) -> str:
     return os.path.join(working_dir_location, *args)
 
 
-def sanitize_name(name: str) -> str:
+def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
 
-    if _filename_scheme >= "0":
+    filename_scheme = filename_scheme or config_helper.get_filename_scheme()
+
+    if filename_scheme >= "0":
         name = name.replace("/", "-")
 
-    if _filename_scheme >= "1":
+    if filename_scheme >= "1":
         # Now replace any remaining funny symbols with a `?`
         name = name.encode("ascii", errors="replace").decode()
 
@@ -220,7 +222,7 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig: Optional[int] = None, frame: Any = None) -> None:
-        from isisdl.backend.request_helper import CourseDownloader
+        from isisdl.backend.request_helper import downloading_files
         if OnKill._already_killed and sig is not None:
             logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
             logger.info("This *will* lead to corrupted files!")
@@ -230,7 +232,7 @@ class OnKill:
         if sig is not None:
             sig = signal.Signals(sig)
             logger.debug(f"Noticed signal {sig.name} ({sig.value}).")
-            if CourseDownloader.downloading_files:
+            if downloading_files:
                 logger.debug("If you *really* need to exit please send another signal!")
                 OnKill._already_killed = True
             else:
@@ -274,7 +276,6 @@ class User:
         return f"\"{self.sanitized_username}\""
 
 
-# TODO: Migrate to Path?
 def calculate_local_checksum(filename: Path) -> str:
     sha = checksum_algorithm()
     sha.update(str(os.path.getsize(filename)).encode())
@@ -295,15 +296,13 @@ def calculate_local_checksum(filename: Path) -> str:
     return sha.hexdigest()
 
 
-def calculate_online_checksum(fp: Any, size: str) -> str:
-    chunk = fp.read(checksum_num_bytes)
+def calculate_online_checksum_file(file: Path, size: int) -> str:
+    chunk = b""
+    with file.open("rb") as f:
+        while len(chunk) < size:
+            chunk += f.read(size - len(chunk))
 
-    return checksum_algorithm(chunk + size.encode()).hexdigest()
-
-
-def calculate_online_checksum_file(filename: Path) -> str:
-    with open(filename, "rb") as f:
-        return calculate_online_checksum(f, str(os.path.getsize(filename)))
+    return checksum_algorithm(chunk + str(size).encode()).hexdigest()
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
@@ -333,27 +332,38 @@ class HumanBytes:
 
 
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
-    possible_videos = []
-    tot_size = 0
+    possible_videos: List[PreMediaContainer] = []
+    possible_documents: List[PreMediaContainer] = []
 
     # Get a random sample of lower half
     video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)
     video_containers = video_containers[:int(len(video_containers) / 2)]
+
+    document_containers = [item for item in pre_containers if not item.is_video]
+
     random.shuffle(video_containers)
+    random.shuffle(document_containers)
+
+    def maybe_add(lst: List[Any], file: PreMediaContainer, max_size: int) -> bool:
+        maybe_new_size = sum(item.size for item in lst) + file.size
+        if maybe_new_size > max_size:
+            return True
+
+        lst.append(file)
+        return False
 
     # Select videos such that the total number of seconds does not overflow.
     for item in video_containers:
-        maybe_new_size = tot_size + item.size
-        if maybe_new_size > testing_download_size:
+        if maybe_add(possible_videos, item, testing_download_video_size):
             break
 
-        possible_videos.append(item)
-        tot_size = maybe_new_size
+    for item in document_containers:
+        if maybe_add(possible_documents, item, testing_download_documents_size):
+            break
 
-    # We can always download all documents.
-    documents = [item for item in pre_containers if not item.is_video]
-
-    return possible_videos + documents
+    ret = possible_videos + possible_documents
+    random.shuffle(ret)
+    return ret
 
 
 startup()
@@ -363,5 +373,3 @@ config_helper = ConfigHelper()
 
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
-
-_filename_scheme = config_helper.get_filename_scheme()

@@ -11,12 +11,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import repeat
 from threading import Thread
-from typing import Optional, Dict, List, Any, cast, Callable
+from typing import Optional, Dict, List, Any, cast, Callable, Tuple
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
-from isisdl.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing
-from isisdl.backend.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum, _course_downloader_transformation
+from isisdl.backend.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, _course_downloader_transformation
+from isisdl.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
 
 
 @dataclass
@@ -34,27 +34,22 @@ class PreMediaContainer:
     @classmethod
     def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: int = -1) -> PreMediaContainer:
         # Sanitize bad names
-        if relative_location == "/":
-            relative_location = ""
-
+        relative_location = relative_location.strip("/")
         if relative_location:
-            relative_location = sanitize_name(relative_location)
-
             if database_helper.get_size_from_file_id(file_id) is None:
-                os.makedirs(course.path(relative_location), exist_ok=True)
+                os.makedirs(course.path(sanitize_name(relative_location)), exist_ok=True)
 
         is_video = "mod/videoservice/file.php" in url
         if is_video:
             relative_location = os.path.join(relative_location, "Videos")
 
-        name = sanitize_name(name)
+        name = sanitize_name(name, filename_scheme="0")
         sanitized_url = urljoin(url, urlparse(url).path)
 
         location = course.path(relative_location)
         time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
-            # TODO: Move to server
             logger.debug(f"Not downloading from pluginfile.php / mod/videoservice/file.php → This has a performance penalty.\n{sanitized_url = }")
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
@@ -63,7 +58,7 @@ class PreMediaContainer:
         assert self.checksum is not None
         database_helper.add_pre_container(self)
 
-    def calculate_online_checksum(self, s: SessionWithKey) -> str:
+    def calculate_online_checksum(self, s: SessionWithKey) -> Tuple[str, int]:
         while True:
             running_download = s.get_(self.url, params={"token": s.token}, stream=True)
 
@@ -75,7 +70,11 @@ class PreMediaContainer:
 
             break
 
-        return calculate_online_checksum(running_download.raw, running_download.headers["content-length"])
+        chunk = running_download.raw.read(checksum_num_bytes, decode_content=True)
+        size = len(chunk)
+
+        return checksum_algorithm(chunk + str(size).encode()).hexdigest(), size
+
 
     def __hash__(self) -> int:
         return self.file_id.__hash__()
@@ -94,12 +93,12 @@ class Course:
         return cls(name, id)
 
     def __post_init__(self) -> None:
-        self.name = sanitize_name(self.name)
+        self.name = sanitize_name(self.name, filename_scheme="0")
         self.prepare_dirs()
 
     def prepare_dirs(self) -> None:
         for item in MediaType.list_dirs():
-            os.makedirs(path(course_dir_location, self.name, item), exist_ok=True)
+            os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
         if args.disable_videos:
@@ -120,7 +119,6 @@ class Course:
         videos_json = videos_res.json()[0]
 
         if videos_json["error"]:
-            # TODO: Remove logger
             log_level = logger.error
             if "get_in_or_equal() does not accept empty arrays" in videos_json["exception"]["message"]:
                 # This is a ongoing bug in ISIS / Moodle. If a course does not have any videos an exception is raised. Disable this error.
@@ -172,10 +170,6 @@ class Course:
                 else:
                     logger.debug(f"Non-whitelisted url detected:\n{url = }\nI am following it. Let's see where it leads…")
 
-                if "mod/folder" in url:
-                    for item in file["contents"]:
-                        item["filepath"] = sanitize_name(file["name"])
-
                 if "contents" not in file:
                     logger.error(f"I could not find the field \"contents\" in the file.\n{url = !r}\ncourse.name = {self.name!r}" + static_fail_msg)
                     assert False
@@ -202,7 +196,7 @@ class Course:
         """
         Custom path function that prepends the args with the `download_dir` and course name.
         """
-        return path(course_dir_location, self.name, *args)
+        return path(course_dir_location, sanitize_name(self.name), *args)
 
     @property
     def ok(self) -> bool:
@@ -262,17 +256,11 @@ class RequestHelper:
     }
 
     def __post_init__(self) -> None:
-        s = time.perf_counter()
         self.session = SessionWithKey.from_scratch(self.user)
-        print(f"Session: {time.perf_counter() - s:.3f}")
 
-        s = time.perf_counter()
         self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
-        print(f"Meta: {time.perf_counter() - s:.3f}")
 
-        s = time.perf_counter()
         self._get_courses()
-        print(f"Courses: {time.perf_counter() - s:.3f}")
 
         if args.verbose:
             print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
@@ -365,7 +353,6 @@ class CourseDownloader:
         "Downloading files": 0,
     }
     helper: Optional[RequestHelper] = None
-    downloading_files: List[MediaContainer] = []
 
     def __init__(self, user: User):
         self.user = user
@@ -395,12 +382,9 @@ class CourseDownloader:
         downloader.join()
         status.join(0)
 
-    # @with_timing("Creating RequestHelper")
+    @with_timing("Creating RequestHelper")
     def make_helper(self) -> None:
-        # TODO: Make this faster
-        s = time.perf_counter()
         self.helper = RequestHelper(self.user)
-        print(f"Total: {time.perf_counter() - s:.3f}")
 
     @with_timing("Building all files")
     def build_files(self) -> List[PreMediaContainer]:

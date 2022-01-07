@@ -30,12 +30,12 @@ class SQLiteDatabase(ABC):
     def create_default_tables(self) -> None:
         ...
 
-    def get_state(self) -> List[Tuple[Any]]:
-        res: List[Any] = []
+    def get_state(self) -> Dict[str, List[Any]]:
+        res: Dict[str, List[Any]] = {}
         with self.lock:
             names = self.cur.execute("""SELECT name FROM sqlite_master where type = 'table' """).fetchall()
             for name in names:
-                res.append(self.cur.execute(f"""SELECT * FROM {name[0]}""").fetchall())
+                res[name[0]] = self.cur.execute(f"""SELECT * FROM {name[0]}""").fetchall()
 
         return res
 
@@ -78,9 +78,9 @@ class DatabaseHelper(SQLiteDatabase):
         with DatabaseHelper.lock:
             return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
 
-    def delete_by_file_id(self, file_id: str) -> None:
+    def delete_by_checksum(self, checksum: str) -> None:
         with DatabaseHelper.lock:
-            self.cur.execute("""DELETE FROM fileinfo WHERE file_id = ?""", (file_id,))
+            self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
     def add_pre_container(self, file: PreMediaContainer) -> None:
@@ -104,6 +104,15 @@ class DatabaseHelper(SQLiteDatabase):
                 ret[course_name].add(checksum)
 
         return ret
+
+    def delete_file_table(self) -> None:
+        with self.lock:
+            self.cur.execute("""
+                DROP table fileinfo
+            """)
+
+        self.create_default_tables()
+        pass
 
 
 class ConfigHelper(SQLiteDatabase):

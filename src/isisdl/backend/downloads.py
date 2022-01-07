@@ -22,7 +22,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.backend.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
+from isisdl.backend.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -36,26 +36,18 @@ class SessionWithKey(Session):
 
     @classmethod
     def from_scratch(cls, user: User) -> SessionWithKey:
-        s1 = time.perf_counter()
         s = cls("", "")
         s.headers.update({"User-Agent": "UwU"})
-        print(f"Session 1: {time.perf_counter() - s1:.3f}")
 
-        s1 = time.perf_counter()
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
-        print(f"Session 2: {time.perf_counter() - s1:.3f}")
 
-        s1 = time.perf_counter()
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
                data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
                      "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
                      "shib_idp_ls_supported": "", "_eventId_proceed": "", })
-        print(f"Session 3: {time.perf_counter() - s1:.3f}")
 
-        s1 = time.perf_counter()
         response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                           params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
-        print(f"Session 4: {time.perf_counter() - s1:.3f}")
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -221,7 +213,7 @@ class MediaType(enum.Enum):
 class MediaContainer:
     name: str
     url: str
-    location: Path
+    location: str
     media_type: MediaType
     s: SessionWithKey
     container: PreMediaContainer
@@ -239,7 +231,7 @@ class MediaContainer:
                 return None
 
         media_type = MediaType.video if container.is_video else MediaType.document
-        location = Path(os.path.join(container.location, container.name))
+        location = os.path.join(container.location, sanitize_name(container.name))
 
         return MediaContainer(container.name, container.url, location, media_type, s, container)
 
@@ -260,30 +252,33 @@ class MediaContainer:
             except KeyError:
                 pass
 
-        with self.location.open("wb") as f:
-            # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
-            # Also remember to set the `decode_content=True` kwarg in `.read()`.
-            while True:
-                token = throttler.get()
+        try:
+            with open(self.location, "wb") as f:
+                # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
+                # Also remember to set the `decode_content=True` kwarg in `.read()`.
+                while True:
+                    token = throttler.get()
 
-                new = running_download.raw.read(token.num_bytes, decode_content=True)
-                if len(new) == 0:
-                    # No file left
-                    break
+                    new = running_download.raw.read(token.num_bytes, decode_content=True)
+                    if len(new) == 0:
+                        # No file left
+                        break
 
-                f.write(new)
-                self.curr_size += len(new)
+                    f.write(new)
+                    self.curr_size += len(new)
 
-            f.flush()
+                f.flush()
 
-        running_download.close()
+            running_download.close()
 
-        # Only register the file after successfully downloading it.
-        self.container.checksum = calculate_local_checksum(self.location)
-        self.container.dump()
-        self.done = True
+            # Only register the file after successfully downloading it.
+            self.container.checksum = calculate_local_checksum(Path(self.location))
+            self.container.dump()
+            self.done = True
 
-        return None
+            return None
+        except OSError:
+            print()
 
     def stop(self) -> None:
         self._exit = True
@@ -328,7 +323,7 @@ class Status(Thread):
         self.thread_files[thread_id] = None
 
         if item is None:
-            assert False  # TODO: change this to return
+            return
 
         self.total_downloaded += item.curr_size
         self.finished_files += 1
@@ -377,7 +372,7 @@ class Status(Thread):
                 pass
 
             if self._shutdown:
-                log_strings.extend(["", "Please wait for shutdown…"])
+                log_strings.extend(["", "Please wait for the downloads to finish…"])
 
             # Now sanitize the output
             width = shutil.get_terminal_size().columns

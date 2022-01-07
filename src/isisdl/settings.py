@@ -135,6 +135,9 @@ if is_testing:
     status_time = 2
 
 # This number represent seconds of video.    (ISIS does not offer a better "size" api…)
-testing_download_size = 3600 * 1
+testing_download_video_size = int(3600 * 0.2)
+
+# Number of bytes downloaded for documents.
+testing_download_documents_size = 100_000_000
 
 # </ Miscellaneous options >

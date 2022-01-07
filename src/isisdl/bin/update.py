@@ -14,7 +14,6 @@ from isisdl.version import __version__
 
 def check_pypi_for_version() -> str:
     # Inspired from https://pypi.org/project/pypi-search
-
     to_search = requests.get("https://pypi.org/project/isisdl/").text
     version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
     assert version is not None
@@ -44,7 +43,6 @@ def main() -> None:
     version_pypi = check_pypi_for_version()
 
     update_policy = config_helper.get_update_policy()
-    update_policy = "2"
     if update_policy == "0":
         return
 
