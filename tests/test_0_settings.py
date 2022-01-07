@@ -1,157 +1,50 @@
 import os
 from hashlib import sha256
 
-from isisdl.share.settings import checksum_num_bytes, progress_bar_resolution, download_chunk_size, enable_multithread, sleep_time_for_isis, \
-    num_sessions, working_dir_location, download_dir_location, intern_dir_location, \
-    settings_file_location, log_dir_location, log_file_location, whitelist_file_name_location, blacklist_file_name_location, checksum_algorithm, \
-     password_dir, clear_password_file, encrypted_password_file, already_prompted_file, hash_iterations, hash_length, \
-    env_var_name_username, env_var_name_password, env_var_name_encrypted_password, status_time, token_queue_refresh_rate
+from cryptography.hazmat.primitives.hashes import SHA3_512
+
+from isisdl.share.settings import working_dir_location, _working_dir_location, course_dir_location, intern_dir_location, settings_file_location, database_file_location, set_database_to_memory, \
+    checksum_algorithm, checksum_num_bytes, checksum_base_skip, sync_database_num_threads, hash_iterations, hash_algorithm, hash_length, \
+    progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, env_var_name_encrypted_password, enable_multithread, download_chunk_size, \
+    sleep_time_for_isis, num_tries_download, download_timeout, download_timeout_multiplier
 
 
-def test_working_dir_location():
-    cwd = working_dir_location
-    if working_dir_location == os.path.join(os.path.expanduser("~"), "test_isisdl"):
-        from isisdl.share.settings import _working_dir_location
-        cwd = _working_dir_location
+def test_settings() -> None:
+    fix_items = {
+        working_dir_location: os.path.join(os.path.expanduser("~"), "test_isisdl"),
+        _working_dir_location: os.path.join(os.path.expanduser("~"), "isisdl_downloads"),
+        course_dir_location: "Courses",
+        intern_dir_location: ".intern",
+        settings_file_location: os.path.join(intern_dir_location, "settings.py"),
+        database_file_location: os.path.join(intern_dir_location, "state.db"),
+        set_database_to_memory: False,
+        checksum_algorithm: sha256,
+        hash_algorithm: SHA3_512,
+        env_var_name_username: "ISISDL_USERNAME",
+        env_var_name_password: "ISISDL_PASSWORD",
+        env_var_name_encrypted_password: "ISISDL_ENC_PASSWORD",
+        # enable_multithread: True,
 
-    assert cwd == os.path.join(os.path.expanduser("~"), "isisdl_downloads")
-
-
-def test_download_dir_location():
-    assert download_dir_location == "Courses"
-
-
-def test_intern_dir_location():
-    assert intern_dir_location == ".intern"
-
-
-def test_unpacked_archive_dir_location():
-    assert unpacked_archive_dir_location == "UnpackedArchives"
-
-
-def test_unpacked_archive_suffix():
-    assert unpacked_archive_suffix == ".unpacked"
-
-
-def test_settings_file_location():
-    assert settings_file_location == os.path.join(intern_dir_location, "settings.py")
-
-
-def test_log_dir_location():
-    assert log_dir_location == os.path.join(intern_dir_location, "logs")
-
-
-def test_log_file_location():
-    assert ".log" in log_file_location
-
-
-def test_whitelist_file_name_location():
-    assert whitelist_file_name_location == os.path.join(intern_dir_location, "whitelist.txt")
-
-
-def test_blacklist_file_name_location():
-    assert blacklist_file_name_location == os.path.join(intern_dir_location, "blacklist.txt")
-
-
-def test_course_name_to_id_file_location():
-    assert course_name_to_id_file_location == os.path.join(intern_dir_location, "id_file.json")
-
-
-# def test_checksum_file():
-#     assert checksum_file == ".checksums.json"
-
-
-def test_checksum_algorithm():
-    assert checksum_algorithm == sha256
-
-
-def test_checksum_num_bytes():
-    assert checksum_num_bytes == {
-        ".zip": ExtensionNumBytes(skip_header=512),
-
-        None: ExtensionNumBytes(),
     }
 
+    variable_items = {
+        checksum_num_bytes: (1024 * 3, 1024 * 5),
+        checksum_base_skip: (1.5, 2.5),
+        sync_database_num_threads: (16, 48),
+        hash_iterations: (390_000, 1_000_000),
+        hash_length: (32, 32),
+        progress_bar_resolution: (8, 12),
+        status_chop_off: (3, 3),
+        status_time: (0.1, 0.5),
+        download_chunk_size: (2 ** 13, 2 ** 16),
+        sleep_time_for_isis: (0, 4),
+        num_tries_download: (3, 5),
+        download_timeout: (3, 6),
+        download_timeout_multiplier: (1.5, 2.5),
+    }
 
-def test_checksum_range_parameter_ignored():
-    assert 512 <= checksum_range_parameter_ignored <= 1024
+    for a, b in fix_items.items():
+        assert a == b
 
-
-def test_password_dir():
-    assert password_dir == os.path.join(intern_dir_location, "Passwords")
-
-
-def test_clear_password_file():
-    assert clear_password_file == os.path.join(password_dir, ".pass.clean")
-
-
-def test_encrypted_password_file():
-    assert encrypted_password_file == os.path.join(password_dir, ".pass.encrypted")
-
-
-def test_already_prompted_file():
-    assert already_prompted_file == os.path.join(password_dir, ".pass.prompted")
-
-
-def test_hash_iterations():
-    assert 320_000 <= hash_iterations <= 1_000_000
-
-
-def test_hash_length():
-    assert 32 <= hash_length <= 64
-
-
-def test_progress_bar_resolution():
-    assert 4 <= progress_bar_resolution <= 32
-
-
-def test_num_sessions():
-    assert 1 <= num_sessions <= 8
-
-
-def test_env_var_name_username():
-    assert env_var_name_username == "ISISDL_USERNAME"
-
-
-def test_env_var_name_password():
-    assert env_var_name_password == "ISISDL_PASSWORD"
-
-
-def test_env_var_name_encrypted_password():
-    assert env_var_name_encrypted_password == "ISISDL_ENC_PASSWORD"
-
-
-def test_debug_mode():
-    assert debug_mode is False
-
-
-def test_enable_multithread():
-    assert enable_multithread is True
-
-
-def test_print_status():
-    assert print_status is True
-
-
-def test_log_clear_screen():
-    assert log_clear_screen is True
-
-
-def test_status_time():
-    assert 0.05 <= status_time <= 1
-
-
-def test_download_chunk_size():
-    assert 2 ** 11 <= download_chunk_size <= 2 ** 16
-
-
-def test_sleep_time_for_isis():
-    assert 1 <= sleep_time_for_isis <= 3
-
-
-def test_sleep_time_for_download_interrupt():
-    assert 0.05 <= sleep_time_for_download_interrupt < 1
-
-
-def test_token_queue_refresh_rate():
-    assert 0.001 <= token_queue_refresh_rate <= 1
+    for a, (b, c) in variable_items.items():
+        assert b <= a <= c

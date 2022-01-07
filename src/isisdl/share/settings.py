@@ -1,10 +1,17 @@
+from __future__ import annotations
 import datetime
 import os
 import platform
+import random
 import sys
 from hashlib import sha256
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
+
+from typing import List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from request_helper import PreMediaContainer
 
 # In this file you will find various constants that dictate how isisdl works.
 # First up there are things that you may want to change.
@@ -15,23 +22,25 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 # TODO: Remove
 # The directory where everything lives in.
 # Note: If you want to expand your "~" use `os.path.expanduser("~")`. Otherwise a Directory with the literal `~` will be created in the current working directory.
+
+
 working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl_downloads")
 
-# The directory where files get saved to
-download_dir_location = "Courses"
+# The directory where the courses are listed.
+# In the courses house all the files which are downloadable.
+course_dir_location = "Courses"
 
-# The directory for intern stuff such as passwords
+# The directory of the database and other persistent functionality.
 intern_dir_location = ".intern"
 
-# Will create a symlink in the working_dir.
+# Will create a symlink to the settings file in the intern dir.
 settings_file_location = os.path.join(intern_dir_location, "settings.py")
 
 # Will create the corresponding SQlite Database
 database_file_location = os.path.join(intern_dir_location, "state.db")
 
-# Logs
-log_dir_location = os.path.join(intern_dir_location, "logs")
-log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now().strftime("-%Y-%m-%d-%H:%M:%S") + ".log")
+# Creates a mock database to play on. Done with :memory:
+set_database_to_memory = False
 
 # </ Directory options >
 
@@ -41,23 +50,22 @@ log_file_location = os.path.join(log_dir_location, "log" + datetime.datetime.now
 checksum_algorithm = sha256
 
 # The number of bytes sampled
-checksum_num_bytes = 1024
+checksum_num_bytes = 1024 * 4
 
-# Skips ↓ ** i bytes per calculation → O(log(n)) time :O
+# Skips $`checksum_base_skip` ^ i$ bytes per calculation → O(log(n)) time :O
 checksum_base_skip = 2
+
+# Number of threads to use for the database requests
+sync_database_num_threads = 32
 
 # </ Checksums >
 
 
 # < Password / Cryptography options >
 
-password_dir = os.path.join(intern_dir_location, "Passwords")
-clear_password_file = os.path.join(password_dir, ".pass.clean")
-encrypted_password_file = os.path.join(password_dir, ".pass.encrypted")
-
 # Beware: Changing any of these options means loosing compatibility with the old password file.
-hash_iterations = 320_000  # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py)
-hash_algorithm = SHA3_512()
+hash_iterations = 390_000  # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py#L274)
+hash_algorithm = SHA3_512
 hash_length = 32
 
 # < Password / Cryptography options >
@@ -71,15 +79,12 @@ progress_bar_resolution = 10
 status_chop_off = 3
 
 # The refresh time for the status message
-status_time = 0.1
+status_time = 0.25
 
 # </ Status options >
 
 
 # < Miscellaneous options >
-
-# The number of sessions to open with Shibboleth.
-num_sessions = 1
 
 # It is possible to specify credentials using environment variables.
 # Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`
@@ -131,9 +136,38 @@ token_queue_refresh_rate = 0.1
 # Collect the amount of handed out tokens in the last ↓ secs
 token_queue_download_refresh_rate = 1
 
-if "pytest" in sys.modules:
-    # Yes, this is evil. But I don't want to ruin my isisdl_downloads directory.
+# Yes, this is evil. But I don't want to ruin my isisdl_downloads directory.
+is_testing = "pytest" in sys.modules
+if is_testing:
     _working_dir_location = working_dir_location
     working_dir_location = os.path.join(os.path.expanduser("~"), "test_isisdl")
+    status_time = 2
+
+# This number represent seconds of video.    (ISIS does not offer a better "size" api…)
+testing_download_size = 3600 * 1
+
+
+def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
+    possible_videos = []
+    tot_size = 0
+
+    # Get a random sample of lower half
+    video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)  # type: ignore
+    video_containers = video_containers[:int(len(video_containers) / 2)]
+    random.shuffle(video_containers)
+
+    # Select videos such that the total number of seconds does not overflow.
+    for item in video_containers:
+        maybe_new_size = tot_size + item.size
+        if maybe_new_size > testing_download_size:
+            break
+
+        possible_videos.append(item)
+        tot_size = maybe_new_size
+
+    # We can always download all documents.
+    documents = [item for item in pre_containers if not item.is_video]
+
+    return possible_videos + documents
 
 # </ Miscellaneous options >

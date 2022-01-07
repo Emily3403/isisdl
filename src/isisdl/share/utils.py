@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import atexit
 import inspect
-import json
 import logging
 import os
 import signal
@@ -13,15 +12,14 @@ import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
-from multiprocessing import current_process
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Iterable, cast, Any, Set
+from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set
 from urllib.parse import unquote
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.share.settings import working_dir_location, \
-    log_file_location, is_windows, settings_file_location, download_dir_location, password_dir, intern_dir_location, \
-    log_dir_location, clear_password_file, checksum_algorithm, checksum_base_skip, checksum_num_bytes
+    is_windows, settings_file_location, course_dir_location, intern_dir_location, \
+    checksum_algorithm, checksum_base_skip, checksum_num_bytes
 
 static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
                   "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
@@ -29,37 +27,22 @@ static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(
 
 
 def get_args_main() -> argparse.Namespace:
-    def check_positive(value: str) -> int:
-        ivalue = int(value)
-        if ivalue <= 0:
-            raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
-        return ivalue
-
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all courses from your ISIS page.""")
 
     parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
-    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=check_positive, default=4)
+    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=int, default=6)
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
 
     parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
     parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
 
-    parser.add_argument("-l", "--log", help="Dump the output to the logfile", action="store_true")
-    parser.add_argument("-a", "--enable-assertions", help="Enables all debug assertions. Defaults to true.", action="store_false")
-
     parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos", action="store_true")
     parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
-    # Crypt options
-    parser.add_argument("-p", "--prompt", help="Force the encryption prompt.", action="store_true")  # TODO: Remove
-
     the_args, unknown = parser.parse_known_args()
-
-    if unknown:
-        print("I did not recognize the following arguments:\n" + "\n".join(unknown) + "\nI am going to ignore them.")
 
     course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
@@ -98,40 +81,34 @@ def startup() -> None:
     def prepare_dir(p: str) -> None:
         os.makedirs(path(p), exist_ok=True)
 
-    def prepare_file(p: str) -> None:
-        if not os.path.exists(path(p)):
-            with open(path(p), "w"):
-                pass
+    def restore_link() -> None:
+        try:
+            os.remove(other_settings_file)
+        except OSError:
+            pass
 
-    def create_link_to_settings_file(file: str) -> None:
-        fp = path(settings_file_location)
+        if not is_windows:
+            # Sym-linking isn't really supported on Windows / not in a uniform way. Thus, I am not doing that.
+            os.symlink(actual_settings_file, other_settings_file)
 
-        def restore_link() -> None:
-            try:
-                os.remove(fp)
-            except OSError:
-                pass
 
-            if not is_windows:
-                # Sym-linking isn't really supported on windows / not in a uniform way. I am not doing that.
-                os.symlink(file, fp)
 
-        if os.path.exists(fp):
-            if os.path.realpath(fp) != file:
-                os.remove(fp)
-                restore_link()
-        else:
-            restore_link()
-
-    prepare_dir(download_dir_location)
+    prepare_dir(path())
+    prepare_dir(course_dir_location)
     prepare_dir(intern_dir_location)
-    prepare_dir(password_dir)
-    prepare_dir(log_dir_location)
-
-    prepare_file(clear_password_file)
 
     import isisdl
-    create_link_to_settings_file(os.path.abspath(isisdl.share.settings.__file__))
+
+    actual_settings_file = os.path.abspath(isisdl.share.settings.__file__)
+    other_settings_file = path(settings_file_location)
+
+    if os.path.islink(other_settings_file):
+        if os.path.realpath(other_settings_file) != actual_settings_file:
+            os.remove(other_settings_file)
+            restore_link()
+    else:
+        # Damaged link → Either doesn't exist / broken
+        restore_link()
 
 
 def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
@@ -151,15 +128,6 @@ def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
 
     debug_level = debug_level or logging.DEBUG if args.verbose else logging.INFO
     logger.setLevel(debug_level)
-
-    # File handling
-    if args.log:
-        fh = logging.FileHandler(path(log_file_location))
-        fh.setLevel(debug_level)
-        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        fh.setFormatter(formatter)
-
-        logger.addHandler(fh)
 
     if not is_windows:
         # Add a colored console handler. This only works on UNIX, however I use that. If you don't maybe reconsider using windows :P
@@ -182,13 +150,7 @@ def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
 
         logger.addHandler(ch)
 
-    logger.info("Starting up…")
-
     return logger
-
-
-class CriticalError(Exception):
-    pass
 
 
 def path(*args: str) -> str:
@@ -218,36 +180,6 @@ def sanitize_name(name: str) -> str:
             name = name.translate(str.maketrans(mapping, char * len(mapping)))
 
     return name
-
-
-# Adapted from https://stackoverflow.com/a/5929165 and https://stackoverflow.com/a/36944992
-def debug_time(str_to_put: Optional[str] = None, func_to_call: Optional[Callable[[object], str]] = None, debug_level: int = logging.DEBUG) -> Callable[[Any], Any]:
-    def decorator(function: Any) -> Any:
-        @wraps(function)
-        def _self_impl(self: Any, *method_args: Any, **method_kwargs: Any) -> Any:
-            logger.log(debug_level, f"Starting: {str_to_put if func_to_call is None else func_to_call(self)}")
-            s = time.perf_counter()
-
-            method_output = function(self, *method_args, **method_kwargs)
-            logger.log(debug_level, f"Finished: {str_to_put if func_to_call is None else func_to_call(self)} in {time.perf_counter() - s:.3f}s")
-
-            return method_output
-
-        def _impl(*method_args: Any, **method_kwargs: Any) -> Any:
-            logger.log(debug_level, f"Starting: {str_to_put}")
-            s = time.perf_counter()
-
-            method_output = function(*method_args, **method_kwargs)
-            logger.log(debug_level, f"Finished: {str_to_put} in {time.perf_counter() - s:.3f}s")
-
-            return method_output
-
-        if "self" in inspect.getfullargspec(function).args:
-            return _self_impl
-
-        return _impl
-
-    return decorator
 
 
 def get_input(message: str, allowed: Set[str]) -> str:
@@ -299,7 +231,7 @@ class OnKill:
 
         if sig is not None:
             sig = signal.Signals(sig)
-            logger.warning(f"Noticed signal {sig.name} ({sig.value}).")
+            logger.debug(f"Noticed signal {sig.name} ({sig.value}).")
             if CourseDownloader.downloading_files:
                 logger.debug("If you *really* need to exit please send another signal!")
                 OnKill._already_killed = True
@@ -307,9 +239,7 @@ class OnKill:
                 os._exit(sig.value)
 
         for _ in range(OnKill._funcs.qsize()):
-            func: Callable[[], None]
-            _, func = OnKill._funcs.get_nowait()
-            func()
+            OnKill._funcs.get_nowait()[1]()
 
 
 def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
@@ -370,7 +300,7 @@ def calculate_local_checksum(filename: str) -> str:
     return sha.hexdigest()
 
 
-def calculate_online_checksum(fp, size: str) -> str:
+def calculate_online_checksum(fp: Any, size: str) -> str:
     chunk = fp.read(checksum_num_bytes)
 
     return checksum_algorithm(chunk + size.encode()).hexdigest()

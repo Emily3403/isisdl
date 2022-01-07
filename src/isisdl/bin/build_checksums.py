@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import os
 import time
 from collections import defaultdict
-from pathlib import Path, PosixPath
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import List, Tuple, Dict
 
 from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.share.settings import download_dir_location, working_dir_location, enable_multithread
-from isisdl.share.utils import path, logger, calculate_local_checksum, database_helper, User, get_input, config_helper, calculate_online_checksum, calculate_online_checksum_file
+from isisdl.share.settings import course_dir_location, working_dir_location, enable_multithread, sync_database_num_threads
+from isisdl.share.utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
 
 
+# TODO: Assert sizes
 def database_subset_files() -> None:
     s = time.perf_counter()
     checksums = database_helper.get_checksums_per_course()
 
-    for course in os.listdir(path(download_dir_location)):
-        for file in Path(path(download_dir_location, course)).rglob("*"):
+    for course in os.listdir(path(course_dir_location)):
+        for file in Path(path(course_dir_location, course)).rglob("*"):
             if file.is_file():
                 try:
                     checksums[course].remove(calculate_local_checksum(file.as_posix()))
@@ -37,11 +40,12 @@ def database_subset_files() -> None:
         logger.warning("I am updating the database accordingly.")
 
     for item, _ in missed_files:
-        database_helper.delete_by_checksum(item)
+        database_helper.delete_by_file_id(item)
 
     logger.info(f"Successfully built all checksums in {time.perf_counter() - s:.3f}s.")
 
-def prep_container_and_dump(container: PreMediaContainer, file: Path):
+
+def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
     container.location, container.name = os.path.split(file)
     container.checksum = calculate_local_checksum(file.as_posix())
 
@@ -57,10 +61,11 @@ def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None
     files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
     file_to_course_mapping = defaultdict(list)
     file_to_posix_mapping: Dict[str, str] = {}
-    s = helper.sessions[0]
 
-    for course in helper.courses[2:3]:
-        available_videos = course.download_videos(s)
+    assert helper.session is not None
+
+    for course in helper.courses:
+        available_videos = course.download_videos(helper.session)
         available_documents = course.download_documents(helper)
 
         videos, documents = defaultdict(list), defaultdict(list)
@@ -92,36 +97,41 @@ def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None
             else:
                 files_to_download[file].extend(possible)
 
-    if enable_multithread and False:
-        online_checksums = {}
-        file_checksums = {}
-        pass
+    def update_container(file: Path, containers: List[PreMediaContainer]) -> int:
+        assert helper.session is not None
+
+        file_checksum = calculate_online_checksum_file(file.as_posix())
+        checksums = {item: item.calculate_online_checksum(helper.session) for item in containers}
+        checksums = {k: v for k, v in checksums.items() if v == file_checksum}
+
+        if len(checksums) == 0:
+            assert False
+
+        elif len(checksums) > 1:
+            # Two files with same checksum.
+            # Since there is no heuristic (aside from filename) that is good enough to differentiate these files
+            # they are completely ignored.
+            return 0
+
+        prep_container_and_dump(list(checksums.keys())[0], file)
+
+        return 1
+
+    if enable_multithread:
+        with ThreadPoolExecutor(sync_database_num_threads) as ex:
+            nums = list(ex.map(update_container, *zip(*list(files_to_download.items()))))
 
     else:
-        for file, containers in files_to_download.items():
-            file_checksum = calculate_online_checksum_file(file.as_posix())
-            checksums = {item: item.calculate_online_checksum(s) for item in containers}
-            checksums = {k: v for k, v in checksums.items() if v == file_checksum}
+        nums = [update_container(file, containers) for file, containers in files_to_download.items()]
 
-            if len(checksums) == 0:
-                assert False
-
-            elif len(checksums) > 1:
-                # Two files with same checksum.
-                # Since there is no heuristic (aside from filename) that is good enough to differentiate these files
-                # they are completely ignored.
-                continue
-
-            prep_container_and_dump(list(checksums.keys())[0], file)
-
-        print()
+    logger.info(f"I have recovered {sum(nums)} / {len(files_to_download)} files.")
     pass
 
 
 def main() -> None:
     prev_asked = config_helper.get_other_files_in_working_location()
     if prev_asked is None:
-        choice = get_input(f"Are there other files - which I have not downloaded - in {working_dir_location}? [y/n] ", {"y", "n"})
+        choice = get_input(f"Are there other files - which I have not downloaded - in {path()}? [y/n] ", {"y", "n"})
         if choice == "y":
             print("This is going to greatly slow down the process of synchronizing the database.")
         else:

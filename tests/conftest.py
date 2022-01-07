@@ -1,16 +1,15 @@
 import os
 import shutil
-from typing import cast
 
-import pytest
+from pytest import fixture
 
-from isisdl.share.settings import working_dir_location, _working_dir_location, clear_password_file
+from database_helper import DatabaseHelper
 from isisdl.share.utils import startup, path, User
-from request_helper import CourseDownloader
+from request_helper import RequestHelper
 
 
 def pytest_configure() -> None:
-    assert working_dir_location == os.path.join(os.path.expanduser("~"), "test_isisdl")
+    assert path() == os.path.join(os.path.expanduser("~"), "test_isisdl")
     startup()
 
 
@@ -18,27 +17,21 @@ def pytest_unconfigure() -> None:
     shutil.rmtree(path())
 
 
-@pytest.fixture
-def username() -> str:
-    return cast(str, os.getenv("ISISDL_ACTUAL_USERNAME"))
+def user() -> User:
+    username, password = os.getenv("ISISDL_ACTUAL_USERNAME"), os.getenv("ISISDL_ACTUAL_PASSWORD")
+    assert username is not None
+    assert password is not None
+
+    return User(username, password)
 
 
-@pytest.fixture
-def password() -> str:
-    return cast(str, os.getenv("ISISDL_ACTUAL_USERNAME"))
+@fixture(scope="session")
+def database_helper() -> DatabaseHelper:
+    helper = DatabaseHelper()
+    yield helper
 
 
-def make_dl() -> CourseDownloader:
-    if (usr := os.getenv("ISISDL_ACTUAL_USERNAME")) is not None and (pw := os.getenv("ISISDL_ACTUAL_PASSWORD")) is not None:
-        user = User(usr, pw)
-
-    else:
-        with open(os.path.join(_working_dir_location, clear_password_file)) as f:
-            user = User(*f.read().splitlines())
-
-    return CourseDownloader(user)
-
-
-@pytest.fixture
-def course_downloader() -> CourseDownloader:
-    return make_dl()
+@fixture(scope="session")
+def request_helper() -> RequestHelper:
+    helper = RequestHelper(user())
+    yield helper

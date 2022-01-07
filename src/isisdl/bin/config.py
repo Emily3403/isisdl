@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+import sys
 from getpass import getpass
-from typing import Union, Set, List, Tuple, Optional
+from typing import Union, Set, List, Tuple, Optional, Callable
 
 from crontab import CronTab
 
@@ -8,7 +9,7 @@ from isisdl.backend.crypt import encryptor
 from isisdl.share.settings import is_first_time, is_windows
 from isisdl.share.utils import config_helper, get_input
 
-explanation_depth = 2
+explanation_depth = "2"
 indent = "    "
 
 
@@ -18,13 +19,13 @@ def generic_prompt(question: str, values: List[Tuple[str, str, str]], default: i
 
     print(question + "\n")
     for i, (val, tldr, detail) in enumerate(values):
-        print(f"{indent}{i}. {val} {' [default]' if i == default else ''}")
-        if explanation_depth > 0:
+        print(f"{indent}{i}. {val}{' [default]' if i == default else ''}")
+        if explanation_depth > "0":
             if tldr:
                 for item in tldr.split("\n"):
                     print(f"{indent * 2}{item}")
 
-        if explanation_depth > 1:
+        if explanation_depth > "1":
             if detail:
                 print()
                 for item in detail.split("\n"):
@@ -46,17 +47,14 @@ def explanation_depth_prompt() -> None:
     print("I will guide you through ~2min of configuration.\n")
 
     choice = generic_prompt("Which level of detail do you want?", [
-        ("None", "Just accept the defaults and be done with it.", ""),
+        ("None", "Just accept the defaults where applicable and be done with it.", ""),
         ("TLDR", "A very brief summary of what is happening for every point", ""),
         ("Full details", "I will give you a full explanation of all the points and which choices to choose in certain scenarios.",
          "If you are reading this the first time it is recommended to use this option when first installing.")
-    ],
-                            2, overwrite_output="")
+    ], 2, overwrite_output="")
 
     global explanation_depth
-    explanation_depth = int(choice)
-
-    print()
+    explanation_depth = choice
 
 
 def authentication_prompt() -> None:
@@ -70,22 +68,18 @@ def authentication_prompt() -> None:
 
     ], default=0, overwrite_output="")
 
-    config_helper.set_user_store(choice)
-
     if choice in {"0", "1"}:
         print("Please provide authentication for ISIS.")
         username = input("Username (ISIS): ")
         password = getpass("Password (ISIS): ")
         if choice == "0":
             enc_password = getpass("Password (Encryption): ")
-            password = encryptor(enc_password, password).decode()
+            password = encryptor(enc_password, password)
 
         config_helper.set_user(username, password)
 
     else:
         print("Alright, no passwords will be stored.")
-
-    print()
 
 
 def filename_prompt() -> None:
@@ -97,7 +91,7 @@ If you already have existing files they will be renamed automatically and transp
         ("No replacing.", """All characters except "/" are left as they are.""", ""),
         ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", """E.g. LaTeX needs escaping of "_" → "\\_"."""),
 
-    ], default=0, overwrite_output="")
+    ], default=int(config_helper.default_filename_scheme()), overwrite_output="")
 
     config_helper.set_filename_scheme(choice)
 
@@ -132,6 +126,7 @@ def cron_prompt() -> None:
     if is_windows:
         return
 
+
     choice = generic_prompt("""[Linux only]
 Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
         ("No", "", ""),
@@ -139,6 +134,9 @@ Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
         ("24 Hours", "", "Note: done with the `@daily` target. Cron must support it."),
 
     ], default=0, overwrite_output="")
+
+    if "pytest" in sys.modules:
+        return
 
     with CronTab(user=True) as cron:
 
@@ -181,43 +179,50 @@ You will find a detailed breakdown of what data is collected in the "Full detail
         ("Basic", "This covers all data which is used by `isisdl` itself.",
          "- Ping on run"
          "- Wrong blacklisting of urls"
+         "- If files are missing upon rediscovery"
          "- If two files have the same size (or for videos the same length)"),
         ("Extended", "This covers all additional data e.g. about your system and configuration",
          f"- Your Platform\n"
          f"- Average connection speed\n"
-         f"- Your config\n{indent}If multiple users have the same option disabled / enabled it might be useful to update the defaults accordingly."
+         f"- Your config\n{indent}If multiple users have the same option disabled / enabled it might be useful to update the defaults accordingly.\n"
          "- General metadata of your subscribed ISIS courses"
          f"\n{indent}- Number of courses"
          f"\n{indent}- Number of files"
 
          ),
 
-    ], default=0, overwrite_output="")
+    ], default=int(config_helper.default_telemetry()), overwrite_output="")
+
+    # TODO:
+    #   Nag the user to send at least a ping
 
     config_helper.set_telemetry(choice)
+
+
+def update_policy_prompt() -> None:
+    choice = generic_prompt("""Do you want me to auto-install updates when available?""", [
+        ("No", "Do not install any updates.", ""),
+        ("Notify me", "Raise a prompt on startup with a message on how to install the update.", ""),
+        ("Automagically install it", "Will automatically install the newest version when detected.", ""),
+    ], default=int(config_helper.default_update_policy()), overwrite_output="")
+
+    config_helper.set_update_policy(choice)
 
 
 def main() -> None:
     config_helper.delete_config()
 
     explanation_depth_prompt()
+
+    if explanation_depth == "0":
+        return
+
     authentication_prompt()
+    update_policy_prompt()
     filename_prompt()
     throttler_prompt()
     cron_prompt()
     telemetry_data_prompt()
-
-    # TODO:
-    #   Global update enable / disable
-    #   When executing as a script have a option to install from last working commit
-    #   Nag the user to send at least a ping
-    #   Last commit message
-    #   H265
-
-    print(config_helper.export_config())
-
-    # Telemetry TODO:
-    #   Detected wrong files across restarts
 
 
 if __name__ == "__main__":

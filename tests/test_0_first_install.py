@@ -1,26 +1,59 @@
 import os
 
-from isisdl.share.settings import working_dir_location, intern_dir_location, download_dir_location, settings_file_location, log_dir_location, whitelist_file_name_location, \
-    blacklist_file_name_location, password_dir, clear_password_file, encrypted_password_file, is_windows
-from isisdl.share.utils import path
+import pytest
+
+from isisdl.share.settings import working_dir_location, intern_dir_location, course_dir_location, settings_file_location, is_windows, database_file_location
+from isisdl.share.utils import path, startup
+
+import isisdl
+settings_file = os.path.abspath(isisdl.share.settings.__file__)
+utils_file = os.path.abspath(isisdl.share.utils.__file__)
+
+def test_working_dir_structure() -> None:
+    locations = [
+        working_dir_location,
+        course_dir_location,
+        intern_dir_location,
+        database_file_location,
+    ]
+
+    for item in locations:
+        assert os.path.exists(path(item))
 
 
-def test_working_dir_structrue():
-    assert os.path.exists(path(working_dir_location))
-    assert os.path.exists(path(download_dir_location))
-    assert os.path.exists(path(intern_dir_location))
+def test_settings_link() -> None:
+    if is_windows:
+        return
 
-    assert os.path.exists(path(log_dir_location))
-    assert os.path.exists(path(whitelist_file_name_location))
-    assert os.path.exists(path(blacklist_file_name_location))
-    assert os.path.exists(path(course_name_to_id_file_location))
-
-    assert os.path.exists(path(password_dir))
-    assert os.path.exists(path(clear_password_file))
-    assert not os.path.exists(path(encrypted_password_file))
-    # assert not os.path.exists(path(already_prompted_file))
+    assert settings_file == os.readlink(path(settings_file_location))
 
 
-def test_settings_link():
-    import isisdl
-    assert is_windows or isisdl.share.settings.__file__ == os.readlink(path(settings_file_location))
+def test_settings_link_remove() -> None:
+    os.unlink(path(settings_file_location))
+
+    with pytest.raises(FileNotFoundError):
+        test_settings_link()
+
+    startup()
+
+    test_settings_link()
+
+
+def test_settings_link_wrong_symlink() -> None:
+    os.unlink(path(settings_file_location))
+    os.symlink(utils_file, path(settings_file_location))
+
+    startup()
+
+    test_settings_link()
+
+
+def test_settings_link_broken_symlink() -> None:
+    os.unlink(path(settings_file_location))
+    os.symlink("uwu", path(settings_file_location))
+
+    startup()
+
+    test_settings_link()
+
+

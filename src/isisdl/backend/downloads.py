@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 from base64 import standard_b64decode
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from queue import Full, Queue, Empty
@@ -23,7 +24,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_local_checksum, database_helper
+from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_local_checksum, database_helper, config_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -36,7 +37,7 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User, num: int) -> SessionWithKey:
+    def from_scratch(cls, user: User) -> SessionWithKey:
         s = cls("", "")
         s.headers.update({"User-Agent": "UwU"})
 
@@ -52,11 +53,10 @@ class SessionWithKey(Session):
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
-            logger.error(f"I had a problem getting the {user = !s}. You have probably entered the wrong credentials.\nBailing out…")
-            os._exit(69)
+            print(f"I had a problem getting the {user = !s}. You have probably entered the wrong credentials.\nBailing out…")
+            os._exit(42)
 
-        if num == 0:
-            logger.info(f"Credentials for {user} accepted!")
+        print(f"Credentials for {user} accepted!")
 
         # Extract the session key
         soup = BeautifulSoup(response.text, features="html.parser")
@@ -64,9 +64,12 @@ class SessionWithKey(Session):
 
         try:
             # This is a somewhat dirty hack.
-            # In order to obtain a token one usually calls the `login/token.php` site, however since ISIS handles authentication via SSO, this always results in an invalid password.
-            # In https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login this way of obtaining the token is described.
+            # In order to obtain a token one usually calls the `login/token.php` site.
+            # ISIS handles authentication via SSO, which leads to an invalid password every time.
+
+            # In [1] this way of obtaining the token is described.
             # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+            # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
             s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
             raise InvalidSchema
         except InvalidSchema as ex:
@@ -86,7 +89,6 @@ class SessionWithKey(Session):
 
             except FunctionTimedOut:
                 logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}) {args[0]}")
-                # logger.debug("".join(traceback.format_stack()))
                 i += 1
 
             except requests.exceptions.ConnectionError:
@@ -103,21 +105,11 @@ class SessionWithKey(Session):
     def head_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
         return cast(Optional[Response], self._timeouter(super().head, *args, extra_timeout=extra_timeout, **kwargs))
 
-    def text(self, *args, extra_timeout=0, **kwargs) -> Optional[str]:  # type: ignore
-        res = self.get_(*args, extra_timeout=extra_timeout, **kwargs)
-        if res is None:
-            return None
-
-        if res.ok:
-            return res.text
-
-        return None
-
     def __str__(self) -> str:
-        return f"Session with key={self.key}"
+        return f"~Session~"
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"~Session~"
 
 
 # Represents a granted token. A download may only download as much as defined in num_bytes.
@@ -129,7 +121,8 @@ class Token:
 class DownloadThrottler(Thread):
     """
     This class acts in a way that the download speed is capped at a certain maximum.
-    It does so by handing out tokens, which are limited. With every token you may download a `download_chunk_size`.
+    It does so by handing out tokens, which are limited.
+    With every token you may download a chunk of size `download_chunk_size`.
     """
 
     def __init__(self) -> None:
@@ -137,6 +130,7 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
+        self.download_rate: Optional[int] = config_helper.get_throttle_rate()
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -148,7 +142,7 @@ class DownloadThrottler(Thread):
 
     def run(self) -> None:
         # num has to be distributed over `token_queue_refresh_rate` seconds. We're inserting them all at the beginning.
-        num = DownloadThrottler.max_tokens()
+        num = self.max_tokens()
 
         while True:
             # Clear old timestamps
@@ -159,7 +153,7 @@ class DownloadThrottler(Thread):
                 else:
                     break
 
-            if hasattr(args, "download_rate") and args.download_rate is not None:
+            if self.download_rate is not None:
                 # If a download limit is imposed hand out new tokens
                 try:
                     for _ in range(num):
@@ -168,6 +162,7 @@ class DownloadThrottler(Thread):
                 except (Full, Empty):
                     pass
 
+            # Finally, compute how much time we've spent doing this stuff and sleep the remainder.
             time.sleep(max(token_queue_refresh_rate - (time.perf_counter() - start), 0))
 
     @property
@@ -191,14 +186,14 @@ class DownloadThrottler(Thread):
             # Only append it at exit
             self.timestamps_tokens.append(time.perf_counter())
 
-    @staticmethod
-    def max_tokens() -> int:
-        if not hasattr(args, "download_rate") or args.download_rate is None:
+    def max_tokens(self) -> int:
+        if self.download_rate is None:
             return 1
 
-        return int(args.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
+        return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
 
 
+# This is kinda bloated. Maybe I'll remove it in the future.
 class MediaType(enum.Enum):
     video = enum.auto()
     document = enum.auto()
@@ -232,16 +227,9 @@ class MediaContainer:
     @staticmethod
     def from_pre_container(container: PreMediaContainer, s: SessionWithKey) -> Optional[MediaContainer]:
         if not args.overwrite:
-            other_timestamp = database_helper.get_time_from_file_id(container.file_id)
-            if other_timestamp is not None:
-                # Entry was found → skip if newer or equal to the file.
-                other_time = datetime.fromtimestamp(other_timestamp)
-
-                if other_time <= container.time:
-                    return None
-
-                if other_time != container.time:
-                    logger.warning(f"Different times: {other_time = }, {container.time = }")
+            other_size = database_helper.get_size_from_file_id(container.file_id)
+            if container.size == other_size:
+                return None
 
         media_type = MediaType.video if container.is_video else MediaType.document
         location = os.path.join(container.location, container.name)
@@ -250,30 +238,28 @@ class MediaContainer:
 
     def download(self) -> None:
         if self._exit:
-            status.stop_request_download(self)
             self.done = True
             return
 
         running_download = self.s.get_(self.url, params={"token": self.s.token}, stream=True)
 
         if running_download is None or not running_download.ok:
-            status.timeout_exit_download(self)
             self.done = True
             return
 
-        try:
-            self.size = int(running_download.headers["content-length"])
-        except KeyError:
-            pass
-
-        status.start_download(self)
+        if self.size == -1:
+            try:
+                self.size = int(running_download.headers["content-length"])
+            except KeyError:
+                pass
 
         with open(self.location, "wb") as f:
             # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
+            # Also remember to set the `decode_content=True` kwarg in `.read()`.
             while True:
                 token = throttler.get()
 
-                new = running_download.raw.read(token.num_bytes)
+                new = running_download.raw.read(token.num_bytes, decode_content=True)
                 if len(new) == 0:
                     # No file left
                     break
@@ -289,7 +275,6 @@ class MediaContainer:
         self.container.checksum = calculate_local_checksum(self.location)
         self.container.dump()
         self.done = True
-        status.normal_exit_download(self)
 
         return None
 
@@ -297,13 +282,14 @@ class MediaContainer:
         self._exit = True
 
     @property
-    def percent_done(self) -> float:
-        return self.curr_size / self.size
-
-    @property
     def progress_bar(self) -> str:
-        progress = int(self.percent_done * progress_bar_resolution)
-        return "╶" + "█" * progress + " " * (progress_bar_resolution - progress) + "╴"
+        if self.size in {0, -1}:
+            percent: float = 1
+        else:
+            percent = self.curr_size / self.size
+
+        progress_chars = int(percent * progress_bar_resolution)
+        return "╶" + "█" * progress_chars + " " * (progress_bar_resolution - progress_chars) + "╴"
 
     def __hash__(self) -> int:
         # The url is known and unique. No need to store an extra field "checksum".
@@ -315,159 +301,96 @@ class MediaContainer:
     def __repr__(self) -> str:
         return self.name
 
-    def error_format(self) -> str:
-        lf = "\n" + " " * 8
-        return self.name + ":" + lf + "Name:     " + self.name + lf + "Course:   " + self.container.course_name + lf + "Url:      " + self.url
-
 
 class Status(Thread):
-    _shutdown_requested = False
-    num_files = 0
-    last_len = 0
-    status_file_mapping: Dict[str, Set[MediaContainer]] = {
-        "not_started": set(),
-        "downloading": set(),
-        "succeeded": set(),
-        "timeout": set(),
-        "stopped": set(),
-    }
+    def __init__(self, num_files: int, num_threads: int) -> None:
+        self._shutdown = False
+        self.finished_files = 0
+        self.total_files = num_files
+        self.total_downloaded = 0
+        self.last_text_len = 0
 
-    def __init__(self) -> None:
+        self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
         super().__init__(daemon=True)
-        self.start()
 
-    @staticmethod
-    def add_files(files: List[MediaContainer]) -> None:
-        Status.status_file_mapping["not_started"].update(files)
-        Status.num_files += len(files)
-        # If the status indicator is running disable all logging
-        logger.disabled = True
+    def add(self, thread_id: int, container: MediaContainer) -> None:
+        self.thread_files[thread_id] = container
 
-    @staticmethod
-    def _move_from_to(file: MediaContainer, src: str, dest: str) -> None:
-        Status.status_file_mapping[src].remove(file)
-        Status.status_file_mapping[dest].add(file)
+    def finish(self, thread_id: int) -> None:
+        item = self.thread_files[thread_id]
+        self.thread_files[thread_id] = None
 
-    @staticmethod
-    def start_download(file: MediaContainer) -> None:
-        Status._move_from_to(file, "not_started", "downloading")
+        if item is None:
+            assert False  # TODO: change this to return
 
-    @staticmethod
-    def normal_exit_download(file: MediaContainer) -> None:
-        Status._move_from_to(file, "downloading", "succeeded")
+        self.total_downloaded += item.curr_size
+        self.finished_files += 1
 
-    @staticmethod
-    def timeout_exit_download(file: MediaContainer) -> None:
-        Status._move_from_to(file, "downloading", "timeout")
-
-    @staticmethod
-    def stop_request_download(file: MediaContainer) -> None:
-        Status._move_from_to(file, "not_started", "stopped")
-
-    @staticmethod
-    def total_downloaded() -> int:
-        all_items: Set[MediaContainer] = {item for row in Status.status_file_mapping.values() for item in row}
-        return sum(item.curr_size for item in all_items)
-
-    @staticmethod
-    def request_shutdown() -> None:
-        Status._shutdown_requested = True
+    def shutdown(self) -> None:
+        self._shutdown = True
 
     def run(self) -> None:
-        Status.last_len = 0
         while True:
             time.sleep(status_time)
-            to_download = {item for name, queue in Status.status_file_mapping.items() for item in queue if name != "succeeded" and name != "stopped"}
-            if not to_download:
-                if Status._shutdown_requested:
-                    break
+            if all(item is None for item in self.thread_files.values()):
                 continue
 
-            # Start off by erasing all previous chars
             log_strings: List[str] = []
 
-            def format_int(num: int) -> str:
-                # log_10(num) = number of numbers
-                return f"{num:{' '}>{math.ceil(math.log10(Status.num_files or 1))}}"
-
-            def format_lst(lst: Set[Any]) -> str:
-                return format_int(len(lst)) + " " * (len(format_int(Status.num_files)) + 3)
-
             def format_num(num: float) -> str:
+                # Yes, checking float with `==` is "bad" - but it is passed as an integer in this case.
+                if num == -1:
+                    return " ... "
+
                 a, b = HumanBytes.format(num)
                 return f"{a:.2f} {b}"
 
-            first_str = ""
-            if Status.last_len:
-                first_str += f"\033[{Status.last_len}A\r"
+            curr_bandwidth = format_num(throttler.bandwidth_used)
+            downloaded_bytes = format_num(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
 
-            # TODO: Don't sort but have it thread based
-            first_str += " -- Status --"
-            log_strings.append(first_str)
-            curr_download = format_num(throttler.bandwidth_used)
-            log_strings.append(f"Current bandwidth usage: {curr_download}/s    ")
+            # General meta-info
+            log_strings.extend(["", " -- Status -- ", ""])
+            log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
+            log_strings.append(f"Downloaded {downloaded_bytes}")
+            log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
+            log_strings.append("")
 
-            downloaded_bytes = format_num(sum(item.curr_size for queue in self.status_file_mapping.values() for item in queue))
-            log_strings.append(f"Downloaded {downloaded_bytes}        ")
-            log_strings.append(f"Finished: {format_int(len(Status.status_file_mapping['succeeded']))} / {format_int(Status.num_files)} files")
-            log_strings.append(f"Skipped:  {format_lst(Status.status_file_mapping['stopped'])} files (Exit)")
-            log_strings.append(f"Skipped:  {format_lst(Status.status_file_mapping['timeout'])} files (Timeout)")
+            # Now determine the already downloaded amount and display it
+            thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
+            for thread_id, container in self.thread_files.items():
+                thread_string = f"T{f'{thread_id}:':{' '}<{thread_format + 1}}"
+                if container is None:
+                    log_strings.append(f"{thread_string}")
+                    continue
 
-            # Now determine the the already downloaded amount and display it
-            downloading = Status.status_file_mapping["downloading"]
-            curr_download_strings: List[str] = []
-            if downloading:
-                done: List[Tuple[Union[int, float], str]] = [HumanBytes.format(num.curr_size) for num in downloading]
-                first = e_format([num[0] for num in done])
-                first_units = [item[1] for item in done]
+                curr_size = format_num(container.curr_size)
+                max_size = format_num(container.size)
 
-                max_values: List[Tuple[Union[int, float], str]] = [HumanBytes.format(num.size) for num in downloading]
-                second = e_format([num[0] for num in max_values])
-                second_units = [item[1] if item[0] is not None else '   ' for item in max_values]
+                log_strings.append(f"{thread_string} {container.progress_bar} [{curr_size} / {max_size}] - {container.name}")
+                pass
 
-                progress_str = [item.progress_bar for item in downloading]
-
-                # Use a tuple to sort based on percent done.
-                final_middle = [
-                    (container.percent_done or 0, f"{progress} [{already} {already_unit} / {size} {size_unit}] - {container.name}")
-
-                    for container, already, already_unit, size, size_unit, progress in
-                    zip(downloading, first, first_units, second, second_units, progress_str)
-                ]
-
-                curr_download_strings.extend(item[1] for item in sorted(final_middle, key=lambda x: x[0], reverse=True))
+            if self._shutdown:
+                log_strings.extend(["", "Please wait for shutdown…"])
 
             # Now sanitize the output
             width = shutil.get_terminal_size().columns
-
-            new_log_strings = []
 
             def maybe_chop_off(item: str) -> str:
                 if len(item) > width - status_chop_off + 1:
                     return item[:width - status_chop_off] + "." * status_chop_off
                 return item.ljust(width)
 
-            for item in log_strings:
-                new_log_strings.append(maybe_chop_off(item))
+            for i, item in enumerate(log_strings):
+                log_strings[i] = maybe_chop_off(item)
 
-            if Status._shutdown_requested:
-                new_log_strings.append(maybe_chop_off("\nPlease wait for shutdown…"))
+            if self.last_text_len:
+                # Erase all previous chars
+                print(f"\033[{self.last_text_len}A\r", end="")
 
-            new_log_strings.append(maybe_chop_off(""))
-            for item in curr_download_strings:
-                item = maybe_chop_off(item)
-                new_log_strings.append(item)
-
-            pre_final_string = "\n".join(new_log_strings)
-            new_log_strings.extend([" " * width for _ in range(max(0, Status.last_len - pre_final_string.count("\n") - 1))])
-
-            final_str = "\n".join(new_log_strings)
-            Status.last_len = final_str.count("\n") + 1
+            final_str = "\n".join(log_strings)
+            self.last_text_len = final_str.count("\n") + 1
 
             print(final_str)
 
-        logger.disabled = False
 
-
-status = Status()
 throttler = DownloadThrottler()

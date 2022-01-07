@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 import requests
 from bs4 import BeautifulSoup
 
+from isisdl.share.settings import is_windows
 from isisdl.share.utils import logger, get_input, config_helper
 from isisdl.version import __version__
 
@@ -40,9 +41,9 @@ def main() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
-    last_ignored_version = config_helper.get_last_ignored_version()
-
-    if last_ignored_version == version_github:
+    update_policy = config_helper.get_update_policy()
+    update_policy = "2"
+    if update_policy == "0":
         return
 
     if version_github > __version__:
@@ -52,51 +53,35 @@ def main() -> None:
         else:
             print("Unfortunately the new version is not uploaded to PyPI yet.\n")
 
-        possible_choices = {"i", "g", "s"}
-        message = """Do you want to:
-    [i] ignore this update
-    [g] install the new version from github
-    [s] show me the commands - I'll handle it myself"""
+        if update_policy == "1":
+            print("To install the new version type the following into your favorite shell!\n")
+            if not is_windows:
+                print("cd /tmp")
 
-        if version_pypi == version_github:
-            message += "    [p] install the new version from PyPI"
-            possible_choices.add("p")
+            if version_pypi == version_github:
+                print("pip install --upgrade isisdl")
+            else:
+                print("git clone https://github.com/Emily3403/isisdl")
+                print("pip install ./isisdl")
 
-        message += "\n"
-        print(message)
-
-        choice = get_input("", possible_choices)
-        if choice == "s":
-            print("To install isisdl from github type the following into your favorite shell!")
-            print("cd /tmp")
-            print("git clone https://github.com/Emily3403/isisdl")
-            print("pip install ./isisdl")
             return
 
-        if choice == "i":
-            config_helper.set_last_ignored_version(version_github)
-            return
+        if update_policy == "2":
+            if version_pypi == version_github:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "isisdl"])
+            else:
+                old_dir = os.getcwd()
+                with TemporaryDirectory() as tmp:
+                    os.chdir(tmp)
+                    print(f"Cloning the repository into {tmp} ...")
+                    ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
+                    if ret:
+                        print(f"Cloning failed with exit code {ret}")
+                        return
 
-        if choice == "g":
-            old_dir = os.getcwd()
-            with TemporaryDirectory() as tmp:
-                os.chdir(tmp)
-                print(f"Cloning the repository into {tmp} ...")
-                ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
-                if ret:
-                    print(f"Cloning failed with exit code {ret}")
-                    return
-
-                print("Installing with pip ...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
-                os.chdir(old_dir)
-                return
-
-        if choice == "p":
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "isisdl"])
-            return
-
-    pass
+                    print("Installing with pip ...")
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
+                    os.chdir(old_dir)
 
 
 if __name__ == '__main__':

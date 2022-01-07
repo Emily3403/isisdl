@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import re
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -14,11 +15,9 @@ from threading import Thread
 from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING, Callable
 from urllib.parse import urlparse, urljoin
 
-from requests import Response
-
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, status
-from isisdl.share.settings import num_sessions, download_timeout, download_dir_location, enable_multithread, checksum_algorithm, status_time, checksum_num_bytes
-from isisdl.share.utils import logger, User, debug_time, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_local_checksum, calculate_online_checksum
+from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
+from isisdl.share.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, status_time, is_testing, _course_downloader_transformation
+from isisdl.share.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum
 
 
 @dataclass
@@ -41,7 +40,8 @@ class PreMediaContainer:
 
         if relative_location:
             relative_location = sanitize_name(relative_location)
-            if database_helper.get_time_from_file_id(file_id) is None:
+
+            if database_helper.get_size_from_file_id(file_id) is None:
                 os.makedirs(course.path(relative_location), exist_ok=True)
 
         is_video = "mod/videoservice/file.php" in url
@@ -55,6 +55,7 @@ class PreMediaContainer:
         time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
+            # TODO: Move to server
             logger.debug(f"Not downloading from pluginfile.php / mod/videoservice/file.php → This has a performance penalty.\n{sanitized_url = }")
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
@@ -62,10 +63,6 @@ class PreMediaContainer:
     def dump(self) -> None:
         assert self.checksum is not None
         database_helper.add_pre_container(self)
-
-    @property
-    def course_name(self) -> str:
-        return RequestHelper.course_id_mapping[self.course_id].name
 
     def calculate_online_checksum(self, s: SessionWithKey) -> str:
         while True:
@@ -81,8 +78,9 @@ class PreMediaContainer:
 
         return calculate_online_checksum(running_download.raw, running_download.headers["content-length"])
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.file_id.__hash__()
+
 
 @dataclass
 class Course:
@@ -102,7 +100,7 @@ class Course:
 
     def prepare_dirs(self) -> None:
         for item in MediaType.list_dirs():
-            os.makedirs(path(download_dir_location, self.name, item), exist_ok=True)
+            os.makedirs(path(course_dir_location, self.name, item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
         if args.disable_videos:
@@ -123,6 +121,7 @@ class Course:
         videos_json = videos_res.json()[0]
 
         if videos_json["error"]:
+            # TODO: Mover logger
             log_level = logger.error
             if "get_in_or_equal() does not accept empty arrays" in videos_json["exception"]["message"]:
                 # This is a ongoing bug in ISIS / Moodle. If a course does not have any videos an exception is raised. Disable this error.
@@ -178,10 +177,9 @@ class Course:
                     for item in file["contents"]:
                         item["filepath"] = sanitize_name(file["name"])
 
-                if args.enable_assertions:
-                    if "contents" not in file:
-                        logger.error(f"I could not find the field \"contents\" in the file.\n{url = !r}\ncourse.name = {self.name!r}" + static_fail_msg)
-                        assert False
+                if "contents" not in file:
+                    logger.error(f"I could not find the field \"contents\" in the file.\n{url = !r}\ncourse.name = {self.name!r}" + static_fail_msg)
+                    assert False
 
                 prev_len = len(all_content)
                 if "contents" in file:
@@ -201,21 +199,11 @@ class Course:
 
         return all_content
 
-    @property
-    def url(self) -> str:
-        return f"https://isis.tu-berlin.de/course/view.php?id={self.course_id}"
-
     def path(self, *args: str) -> str:
         """
         Custom path function that prepends the args with the `download_dir` and course name.
         """
-        return path(download_dir_location, self.name, *args)
-
-    def list_files(self) -> Iterable[Path]:
-        for directory in Path(path(download_dir_location, self.name)).glob("*"):
-            for file in directory.rglob("*"):
-                if not file.is_dir():
-                    yield file
+        return path(course_dir_location, self.name, *args)
 
     @property
     def ok(self) -> bool:
@@ -246,6 +234,7 @@ class Course:
         return self.course_id
 
 
+# This is kinda bloated. It is a cut-down version of a even more powerful function.
 def with_timing(course_downloader_entry: str) -> Callable[[Any], Any]:
     def decorator(function: Any) -> Any:
         def _impl(*method_args: Any, **method_kwargs: Any) -> Any:
@@ -263,7 +252,7 @@ def with_timing(course_downloader_entry: str) -> Callable[[Any], Any]:
 @dataclass
 class RequestHelper:
     user: User
-    sessions: List[SessionWithKey] = field(default_factory=lambda: [])
+    session: Optional[SessionWithKey] = None
     courses: List[Course] = field(default_factory=lambda: [])
     course_id_mapping: Dict[int, Course] = field(default_factory=lambda: {})
     _meta_info: Dict[str, str] = field(default_factory=lambda: {})
@@ -274,24 +263,12 @@ class RequestHelper:
     }
 
     def __post_init__(self) -> None:
-        self.make_sessions()
-        self._get_meta_info()
+        self.session = SessionWithKey.from_scratch(self.user)
+        self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
         self._get_courses()
 
-        logger.info("Downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
-
-        if TYPE_CHECKING or args.enable_assertions:
-            assert self.sessions is not None
-            assert self.courses is not None
-
-    @debug_time("Creating RequestHelper")
-    def make_sessions(self) -> None:
-        if not self.sessions:
-            with ThreadPoolExecutor(num_sessions) as ex:
-                self.sessions = list(ex.map(SessionWithKey.from_scratch, repeat(self.user), range(num_sessions)))
-
-    def _get_meta_info(self) -> None:
-        self._meta_info = cast(Dict[str, str], self.post_REST('core_webservice_get_site_info'))
+        if args.verbose:
+            print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
 
     def _get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST('core_enrol_get_users_courses', {"userid": self.userid}))
@@ -302,62 +279,75 @@ class RequestHelper:
             database_helper.add_course(course)
 
             if course.ok:
-                os.makedirs(course.path(), exist_ok=True)
                 self.courses.append(course)
+                if not os.path.exists(course.path()):
+                    os.makedirs(course.path(), exist_ok=True)
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
 
-        if TYPE_CHECKING:
-            assert self.sessions is not None
+        assert self.session is not None
 
-        s: SessionWithKey = random.choice(self.sessions)
         data.update({
             "moodlewssettingfilter": "true",
             "moodlewssettingfileurl": "true",
             "moodlewsrestformat": "json",
             'wsfunction': function,
-            'wstoken': s.token
+            'wstoken': self.session.token
         })
 
         url = "https://isis.tu-berlin.de/webservice/rest/server.php"
 
-        response = s.post_(url, data=data, headers=self.default_headers, timeout=download_timeout)
+        response = self.session.post_(url, data=data, headers=self.default_headers, timeout=download_timeout)
 
-        if response is not None and response.ok:
-            return response.json()
+        if response is None or not response.ok:
+            return None
 
-        return None
+        return response.json()
 
     def download_content(self) -> List[PreMediaContainer]:
-        if TYPE_CHECKING:
-            assert self.courses is not None
-            assert self.sessions is not None
+        assert self.courses is not None
+        assert self.session is not None
 
-        sessions = self.get_sessions(len(self.courses))
-
-        def download_all(course: Course, s: SessionWithKey, helper: RequestHelper) -> List[PreMediaContainer]:
-            return course.download_videos(s) + course.download_documents(helper)
+        def download_all(course: Course, helper: RequestHelper) -> List[PreMediaContainer]:
+            assert helper.session is not None
+            return course.download_videos(helper.session) + course.download_documents(helper)
 
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                video_lists = list(ex.map(download_all, self.courses, sessions, repeat(self)))
+                video_lists = list(ex.map(download_all, self.courses, repeat(self)))
         else:
-            video_lists = [download_all(course, s, self) for course, s in zip(self.courses, sessions)]
+            video_lists = [download_all(course, self) for course in self.courses]
 
         # Flatten 2d list into 1d
-        return [item for row in video_lists for item in row]
+        ret = [item for row in video_lists for item in row]
+
+        # Finally, shuffle the list to guarantee a nice mix of video + documents + courses
+        random.shuffle(ret)
+        return ret
 
     @property
     def userid(self) -> str:
         return self._meta_info["userid"]
 
-    def get_sessions(self, num: int) -> Iterable[SessionWithKey]:
-        if num <= len(self.sessions):
-            # Ensure all sessions are unique if there are enough available
-            return random.sample(self.sessions, k=num)
-        else:
-            return random.choices(self.sessions, k=num)
+
+def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
+    conflicts = defaultdict(list)
+    for item in files:
+        conflicts[item.name].append(item)
+
+    items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]
+    for row in items:
+        locations: Dict[str, List[PreMediaContainer]] = defaultdict(list)
+        for item in row:
+            locations[item.location].append(item)
+
+        locations = {k: v for k, v in locations.items() if len(v) > 1}
+
+        for new_row in locations.values():
+            for i, item in enumerate(new_row):
+                basename, ext = os.path.splitext(item.name)
+                item.name = basename + f"({i}-{len(new_row) - 1})" + ext
 
 
 class CourseDownloader:
@@ -377,41 +367,44 @@ class CourseDownloader:
         self.make_helper()
 
         pre_containers = self.build_files()
-        self.check_for_conflicts_in_files(pre_containers)
+        if is_testing:
+            pre_containers = _course_downloader_transformation(pre_containers)
+
+        # TODO: When there are too little files a conflict is not recognized (maybe query the database?)
+        check_for_conflicts_in_files(pre_containers)
 
         media_containers = self.make_files(pre_containers)
-        CourseDownloader.downloading_files = media_containers
-
-        status.add_files(media_containers)
+        global downloading_files
+        downloading_files = media_containers
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
+        global status
+        status = Status(len(media_containers), args.num_threads)
         downloader = Thread(target=self.download_files, args=(media_containers,))
-        downloader.start()
-        downloader.join()
 
-        status.request_shutdown()
-        while status.is_alive():
-            time.sleep(status_time / 5)
+        downloader.start()
+        status.start()
+
+        downloader.join()
+        status.join(0)
 
     @with_timing("Creating RequestHelper")
     def make_helper(self) -> None:
+        # TODO: Make this faster
         self.helper = RequestHelper(self.user)
 
     @with_timing("Building all files")
     def build_files(self) -> List[PreMediaContainer]:
-        if TYPE_CHECKING:
-            assert self.helper is not None
+        assert self.helper is not None
 
         return self.helper.download_content()
 
     @with_timing("Instantiating & Calculating file object")
     def make_files(self, files: List[PreMediaContainer]) -> List[MediaContainer]:
-        if TYPE_CHECKING:
-            assert self.helper is not None
+        assert self.helper is not None
+        assert self.helper.session is not None
 
-        sessions = self.helper.get_sessions(len(files))
-
-        new_files = [MediaContainer.from_pre_container(file, s) for file, s in zip(files, sessions)]
+        new_files = [MediaContainer.from_pre_container(file, self.helper.session) for file in files]
         filtered_files = [item for item in new_files if item is not None]
 
         return filtered_files
@@ -419,43 +412,39 @@ class CourseDownloader:
     @with_timing("Downloading files")
     def download_files(self, files: List[MediaContainer]) -> None:
         def download(file: MediaContainer) -> None:
+            assert status is not None
+            if enable_multithread:
+                thread_id = int(threading.current_thread().name.split("T_")[-1])
+            else:
+                thread_id = 0
+
+            status.add(thread_id, file)
             file.download()
+            status.finish(thread_id)
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.num_threads) as ex:
+            with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
                 list(ex.map(download, files))
         else:
             for file in files:
                 download(file)
 
-    def check_for_conflicts_in_files(self, files: List[PreMediaContainer]) -> None:
-        conflicts = defaultdict(list)
-        for item in files:
-            conflicts[item.name].append(item)
-
-        items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]
-        for row in items:
-            locations: Dict[str, List[PreMediaContainer]] = defaultdict(list)
-            for item in row:
-                locations[item.location].append(item)
-
-            locations = {k: v for k, v in locations.items() if len(v) > 1}
-
-            for new_row in locations.values():
-                for i, item in enumerate(new_row):
-                    basename, ext = os.path.splitext(item.name)
-                    item.name = basename + f"({i}-{len(new_row) - 1})" + ext
-
     @staticmethod
     @on_kill()
     def shutdown_running_downloads(*_: Any) -> None:
-        to_download = CourseDownloader.downloading_files
+        if downloading_files is None:
+            return
 
-        status.request_shutdown()
-
-        for item in to_download:
+        for item in downloading_files:
             item.stop()
 
+        if status is not None:
+            status.shutdown()
+
         # Now wait for the downloads to finish
-        while not all(item.done for item in to_download):
-            time.sleep(status_time / 5)
+        while not all(item.done for item in downloading_files):
+            time.sleep(0.25)
+
+
+status: Optional[Status] = None
+downloading_files: Optional[List[MediaContainer]] = None

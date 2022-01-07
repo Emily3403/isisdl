@@ -1,143 +1,73 @@
-import getpass
+import os
 import os
 import random
 import string
-from typing import Tuple
+from typing import Tuple, Any
 
-from isisdl.backend.crypt import get_credentials, store_clear, encryptor
-from isisdl.share.settings import env_var_name_username, env_var_name_password, clear_password_file, encrypted_password_file, env_var_name_encrypted_password
-from isisdl.share.utils import path, User
+from isisdl.backend.crypt import get_credentials, encryptor
+from isisdl.share.settings import env_var_name_username, env_var_name_password
+from isisdl.share.utils import config_helper, User
 
 
-def generate_random_string(alphabet: str):
+def _generate_random_string() -> str:
+    alphabet = string.digits + string.ascii_letters + string.punctuation
     return alphabet + "".join(random.choice(alphabet) for _ in range(32))
 
 
-def generate_full_random_string():
-    return generate_random_string(string.printable)
+def generate_user() -> Tuple[str, str]:
+    return _generate_random_string(), _generate_random_string()
 
 
-def generate_partial_random_string():
-    return generate_random_string(string.printable[:96])
-
-
-def do_get_credentials(random_username, random_password):
+def do_get_credentials(username: str, password: str) -> None:
     user = get_credentials()
 
-    assert user.username == random_username
-    assert user.password == random_password
+    assert user.username == username
+    assert user.password == password
 
 
-def setup_env_var() -> Tuple[str, str]:
-    random_username, random_password = generate_full_random_string(), generate_full_random_string()
+def test_environment_variables(monkeypatch: Any) -> None:
+    """
+    Verifies that the environment is capable of handling all ascii characters
+    """
 
-    os.environ[env_var_name_username] = random_username
-    os.environ[env_var_name_password] = random_password
+    username, password = generate_user()
+    os.environ[env_var_name_username] = username
+    os.environ[env_var_name_password] = password
 
-    return random_username, random_password
+    do_get_credentials(username, password)
 
-
-def cleanup_env_var():
     del os.environ[env_var_name_username]
     del os.environ[env_var_name_password]
 
 
-def test_get_credentials_environment_variables():
-    random_username, random_password = setup_env_var()
+def test_get_user_clean() -> None:
+    username, password = generate_user()
+    config_helper.set_user(username, password)
 
-    do_get_credentials(random_username, random_password)
+    do_get_credentials(username, password)
 
-    cleanup_env_var()
-
-
-def setup_clean_file() -> Tuple[str, str]:
-    random_username, random_password = generate_partial_random_string(), generate_partial_random_string()
-
-    user = User(random_username, random_password)
-    store_clear(user)
-
-    return random_username, random_password
+    config_helper.delete_config()
 
 
-def cleanup_clean_file():
-    with open(path(clear_password_file), "w"):
-        pass  # Erase the content
+def test_get_user_encrypted(monkeypatch: Any) -> None:
+    username, password = generate_user()
+
+    user_pass = _generate_random_string()
+    enc_password = encryptor(user_pass, password)
+
+    config_helper.set_user(username, enc_password)
+
+    monkeypatch.setattr("getpass.getpass", lambda _: user_pass)
+
+    do_get_credentials(username, password)
+
+    config_helper.delete_config()
 
 
-def test_get_credentials_clear_file():
-    random_username, random_password = setup_clean_file()
+def test_manual_input(monkeypatch: Any) -> None:
+    username, password = generate_user()
 
-    do_get_credentials(random_username, random_password)
+    monkeypatch.setattr("builtins.input", lambda _: username)
+    monkeypatch.setattr("getpass.getpass", lambda _: password)
 
-    cleanup_clean_file()
-
-
-def setup_encrypted_file() -> Tuple[str, str, str]:
-    random_username, random_password = generate_full_random_string(), generate_full_random_string()
-
-    password = generate_full_random_string()
-
-    user = User(random_username, random_password)
-    encryptor(password, user)
-
-    return random_username, random_password, password
-
-
-def cleanup_encrypted_file():
-    os.remove(path(encrypted_password_file))
-
-
-def test_get_credentials_encrypted_file(monkeypatch):
-    random_username, random_password, password = setup_encrypted_file()
-
-    monkeypatch.setattr(getpass, "getpass", lambda _: password)
-
-    do_get_credentials(random_username, random_password)
-
-    cleanup_encrypted_file()
-
-
-def cleanup_encrypted_file_with_env_var():
-    cleanup_encrypted_file()
-    del os.environ[env_var_name_encrypted_password]
-
-
-def test_get_credentials_encrypted_file_with_env_var(monkeypatch):
-    random_username, random_password, password = setup_encrypted_file()
-
-    os.environ[env_var_name_encrypted_password] = password
-
-    do_get_credentials(random_username, random_password)
-
-    cleanup_encrypted_file_with_env_var()
-
-
-def test_get_credentials_input(monkeypatch):
-    random_username, random_password = generate_full_random_string(), generate_full_random_string()
-
-    monkeypatch.setattr("builtins.input", lambda _: random_username)
-    monkeypatch.setattr(getpass, "getpass", lambda _: random_password)
-
-    do_get_credentials(random_username, random_password)
-
-
-def test_get_credentials_save_password(monkeypatch):
-    random_username, random_password = setup_env_var()
-    password = generate_full_random_string()
-
-    os.remove(path(already_prompted_file))
-
-    responses = iter([random_username, "y"])
-    passwords = iter([random_password, password, password])
-
-    monkeypatch.setattr("builtins.input", lambda _: next(responses))
-    monkeypatch.setattr("getpass.getpass", lambda _: next(passwords))
-
-    do_get_credentials(random_username, random_password)
-
-    cleanup_env_var()
-
-    # Now, recover the information
-    do_get_credentials(random_username, random_password)
-
-    os.remove(path(encrypted_password_file))
+    do_get_credentials(username, password)

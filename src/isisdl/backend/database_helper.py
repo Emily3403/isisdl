@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Union, Any
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Union, Any, NoReturn
 
-from isisdl.share.settings import database_file_location
+from isisdl.share.settings import database_file_location, set_database_to_memory
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, Course
@@ -18,8 +19,11 @@ class SQLiteDatabase(ABC):
 
     def __init__(self) -> None:
         from isisdl.share.utils import path
-        self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
-        # self.con = sqlite3.connect(":memory:", check_same_thread=False)
+        if set_database_to_memory:
+            self.con = sqlite3.connect(":memory:", check_same_thread=False)
+        else:
+            self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
+
         self.cur = self.con.cursor()
 
         self.create_default_tables()
@@ -43,7 +47,7 @@ class DatabaseHelper(SQLiteDatabase):
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
-                (name text, file_id text primary key, url text, time int, course_id int, checksum text)
+                (name text, file_id text primary key unique, url text, time int, course_id int, checksum text, size int)
             """)
 
             self.cur.execute("""
@@ -60,38 +64,29 @@ class DatabaseHelper(SQLiteDatabase):
 
         return res[0]
 
-    def get_checksum_from_file_id(self, file_id: str) -> Optional[str]:
-        return cast(Optional[str], self._get_attr_by_equal("checksum", file_id))
-
-    def get_time_from_file_id(self, file_id: str) -> Optional[int]:
-        return cast(Optional[int], self._get_attr_by_equal("time", file_id))
-
-    def get_name_by_checksum(self, checksum: str) -> Optional[str]:
-        return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
-
-    def get_course_id_by_name(self, course_name: str) -> Optional[int]:
-        return cast(Optional[int], self._get_attr_by_equal("id", course_name, "name", "courseinfo"))
+    def get_size_from_file_id(self, file_id: str) -> Optional[int]:
+        return cast(Optional[int], self._get_attr_by_equal("size", file_id))
 
     def get_course_name_and_ids(self) -> List[Tuple[str, int]]:
         with DatabaseHelper.lock:
             return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
 
-    def delete_by_checksum(self, checksum: str) -> None:
+    def delete_by_file_id(self, file_id: str) -> None:
         with DatabaseHelper.lock:
-            self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
+            self.cur.execute("""DELETE FROM fileinfo WHERE file_id = ?""", (file_id,))
             self.con.commit()
 
     def add_pre_container(self, file: PreMediaContainer) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?)
-            """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum))
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
+            """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size))
             self.con.commit()
 
     def add_course(self, course: Course) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""
-                INSERT OR REPLACE INTO courseinfo values (?, ?)
+                INSERT OR IGNORE INTO courseinfo values (?, ?)
             """, (course.name, course.course_id))
             self.con.commit()
 
@@ -109,7 +104,7 @@ class ConfigHelper(SQLiteDatabase):
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS config
-                (key text unique, value text)
+                (key text unique, value text);
             """)
 
     def _set(self, key: str, value: str) -> None:
@@ -128,25 +123,14 @@ class ConfigHelper(SQLiteDatabase):
             assert isinstance(res[0], str)
             return res[0]
 
-    @staticmethod
-    def default_user_store() -> str:
-        return "0"
-
-    def set_user_store(self, num: str) -> None:
-        self._set("user_store", num)
-
-    def get_user_store(self) -> str:
-        return self._get("user_store") or self.default_user_store()
-
     def set_user(self, username: str, password: str) -> None:
         self._set("username", username)
         self._set("password", password)
 
-    def get_user(self) -> Tuple[str, Union[str, bytes]]:
-        username = cast(str, self._get("username"))
-        password = cast(Union[str, bytes], self._get("password"))
+    def get_user(self) -> Tuple[Optional[str], Optional[str]]:
+        return self._get("username"), self._get("password")
 
-        return username, password
+    #
 
     @staticmethod
     def default_filename_scheme() -> str:
@@ -158,6 +142,8 @@ class ConfigHelper(SQLiteDatabase):
     def get_filename_scheme(self) -> str:
         return self._get("filename_scheme") or self.default_filename_scheme()
 
+    #
+
     @staticmethod
     def default_throttle_rate() -> None:
         return None
@@ -166,12 +152,30 @@ class ConfigHelper(SQLiteDatabase):
         if num is not None:
             self._set("throttle_rate", num)
 
-    def get_throttle_rate(self) -> Optional[str]:
-        return self._get("throttle_rate")
+    def get_throttle_rate(self) -> Optional[int]:
+        value = self._get("throttle_rate") or self.default_throttle_rate()
+        if value is not None:
+            return int(value)
+
+        return None
+
+    #
+
+    @staticmethod
+    def default_update_policy() -> str:
+        return "0"
+
+    def get_update_policy(self) -> str:
+        return self._get("update_policy") or self.default_update_policy()
+
+    def set_update_policy(self, value: str) -> None:
+        self._set("update_policy", value)
+
+    #
 
     @staticmethod
     def default_telemetry() -> str:
-        return "0"
+        return "1"
 
     def set_telemetry(self, num: str) -> None:
         self._set("telemetry", num)
@@ -179,11 +183,7 @@ class ConfigHelper(SQLiteDatabase):
     def get_telemetry(self) -> str:
         return self._get("telemetry") or self.default_telemetry()
 
-    def set_last_ignored_version(self, version: str) -> None:
-        self._set("last_ignored_version", version)
-
-    def get_last_ignored_version(self) -> Optional[str]:
-        return self._get("last_ignored_version")
+    #
 
     def set_other_files_in_working_location(self, value: str) -> None:
         self._set("other_files", value)
@@ -191,6 +191,7 @@ class ConfigHelper(SQLiteDatabase):
     def get_other_files_in_working_location(self) -> Optional[str]:
         return self._get("other_files")
 
+    #
 
     def delete_config(self) -> None:
         with self.lock:
@@ -199,14 +200,3 @@ class ConfigHelper(SQLiteDatabase):
             """)
 
         self.create_default_tables()
-
-    def export_config(self) -> str:
-        username, password = self.get_user()
-        return json.dumps({
-            "user_store": self.get_user_store(),
-            "username": username,
-            "password": password,
-            "filename_scheme": self.get_filename_scheme(),
-            "throttle_rate": self.get_throttle_rate(),
-            "telemetry": self.get_telemetry(),
-        }, indent=4)
