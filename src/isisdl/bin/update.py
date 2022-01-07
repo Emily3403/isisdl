@@ -37,12 +37,13 @@ def check_github_for_version() -> str:
 
     return version.group(1)
 
+# TODO: Check github test is working
 
 def main() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
-    update_policy = config_helper.get_update_policy()
+    update_policy = config_helper.get_or_default_update_policy()
     if update_policy == "0":
         return
 

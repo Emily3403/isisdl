@@ -13,8 +13,11 @@ from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
+from subprocess import call
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING
 from urllib.parse import unquote
+
+import colorama
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
@@ -160,7 +163,7 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     name = name.strip()
     name = unquote(name)
 
-    filename_scheme = filename_scheme or config_helper.get_filename_scheme()
+    filename_scheme = filename_scheme or config_helper.get_or_default_filename_scheme()
 
     if filename_scheme >= "0":
         name = name.replace("/", "-")
@@ -261,13 +264,17 @@ class User:
     username: str
     password: str
 
+    @staticmethod
+    def sanitize_name(name: str) -> str:
+        # uwu
+        if name == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
+            return "".join(chr(item) for item in [101, 109, 105, 108, 121, 51, 52, 48, 51])
+
+        return name
+
     @property
     def sanitized_username(self) -> str:
-        # Remove the deadname
-        if self.username == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
-            return "emily3403"
-
-        return self.username
+        return self.sanitize_name(self.username)
 
     def __repr__(self) -> str:
         return f"{self.sanitized_username}: {self.password}"
@@ -331,6 +338,13 @@ class HumanBytes:
         return num, unit
 
 
+def clear() -> None:
+    if is_windows:
+        os.system('cls')
+    else:
+        os.system('clear')
+
+
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
     possible_videos: List[PreMediaContainer] = []
     possible_documents: List[PreMediaContainer] = []
@@ -373,3 +387,6 @@ config_helper = ConfigHelper()
 
 args = get_args(os.path.basename(sys.argv[0]))
 logger = get_logger()
+
+# Windows specific color codes…
+colorama.init()

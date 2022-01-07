@@ -139,6 +139,11 @@ class ConfigHelper(SQLiteDatabase):
             assert isinstance(res[0], str)
             return res[0]
 
+    def _delete(self, key: str) -> None:
+        with self.lock:
+            self.cur.execute("DELETE FROM config where key = ?", (key,))
+            self.con.commit()
+
     def set_user(self, username: str) -> None:
         self._set("username", username)
 
@@ -166,34 +171,36 @@ class ConfigHelper(SQLiteDatabase):
     def set_filename_scheme(self, num: str) -> None:
         self._set("filename_scheme", num)
 
-    def get_filename_scheme(self) -> str:
-        return self._get("filename_scheme") or self.default_filename_scheme()
+    def get_filename_scheme(self) -> Optional[str]:
+        return self._get("filename_scheme")
 
-    #
-
-    @staticmethod
-    def default_throttle_rate() -> None:
-        return None
+    def get_or_default_filename_scheme(self) -> str:
+        return self.get_filename_scheme() or self.default_filename_scheme()
 
     def set_throttle_rate(self, num: Optional[str]) -> None:
-        if num is not None:
+        if num is None:
+            self._delete("throttle_rate")
+        else:
             self._set("throttle_rate", num)
 
     def get_throttle_rate(self) -> Optional[int]:
-        value = self._get("throttle_rate") or self.default_throttle_rate()
-        if value is not None:
-            return int(value)
+        value = self._get("throttle_rate")
+        if value is None:
+            return None
 
-        return None
+        return int(value)
 
     #
 
     @staticmethod
     def default_update_policy() -> str:
-        return "0"
+        return "2"
 
-    def get_update_policy(self) -> str:
-        return self._get("update_policy") or self.default_update_policy()
+    def get_update_policy(self) -> Optional[str]:
+        return self._get("update_policy")
+
+    def get_or_default_update_policy(self) -> str:
+        return self.get_update_policy() or self.default_update_policy()
 
     def set_update_policy(self, value: str) -> None:
         self._set("update_policy", value)
@@ -201,14 +208,18 @@ class ConfigHelper(SQLiteDatabase):
     #
 
     @staticmethod
-    def default_telemetry() -> str:
-        return "1"
+    def default_telemetry() -> bool:
+        return True
 
     def set_telemetry(self, num: str) -> None:
         self._set("telemetry", num)
 
-    def get_telemetry(self) -> str:
-        return self._get("telemetry") or self.default_telemetry()
+    def get_telemetry(self) -> bool:
+        value = self._get("telemetry")
+        if value is None:
+            return self.default_telemetry()
+
+        return value != "0"
 
     #
 

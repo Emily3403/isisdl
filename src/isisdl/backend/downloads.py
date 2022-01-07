@@ -54,8 +54,6 @@ class SessionWithKey(Session):
             print(f"I had a problem getting the {user = !s}. You have probably entered the wrong credentials.\nBailing out…")
             exit(42)
 
-        print(f"Credentials for {user} accepted!")
-
         # Extract the session key
         key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
 
@@ -117,6 +115,7 @@ class Token:
     num_bytes: int = download_chunk_size
 
 
+# TODO: is args.download_rate relly overwriting?
 class DownloadThrottler(Thread):
     """
     This class acts in a way that the download speed is capped at a certain maximum.
@@ -284,9 +283,9 @@ class MediaContainer:
         self._exit = True
 
     @property
-    def progress_bar(self) -> str:
+    def percent_done(self) -> str:
         if self.size in {0, -1}:
-            percent: float = 1
+            percent: float = 0
         else:
             percent = self.curr_size / self.size
 
@@ -342,16 +341,16 @@ class Status(Thread):
             def format_num(num: float) -> str:
                 # Yes, checking float with `==` is "bad" - but it is passed as an integer in this case.
                 if num == -1:
-                    return " ... "
+                    return "  ...     "
 
                 a, b = HumanBytes.format(num)
-                return f"{a:.2f} {b}"
+                return f"{a: >6.2f} {b}"
 
             curr_bandwidth = format_num(throttler.bandwidth_used)
             downloaded_bytes = format_num(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
 
             # General meta-info
-            log_strings.extend(["", " -- Status -- ", ""])
+            log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
             log_strings.append(f"Downloaded {downloaded_bytes}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
@@ -360,15 +359,15 @@ class Status(Thread):
             # Now determine the already downloaded amount and display it
             thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
             for thread_id, container in self.thread_files.items():
-                thread_string = f"T{f'{thread_id}:':{' '}<{thread_format + 1}}"
+                thread_string = f"Thread {f'{thread_id}:':{' '}<{thread_format + 1}}"
                 if container is None:
-                    log_strings.append(f"{thread_string}")
+                    log_strings.append(thread_string)
                     continue
 
                 curr_size = format_num(container.curr_size)
                 max_size = format_num(container.size)
 
-                log_strings.append(f"{thread_string} {container.progress_bar} [{curr_size} / {max_size}] - {container.name}")
+                log_strings.append(f"{thread_string} {container.percent_done} [{curr_size} | {max_size}] - {container.name}")
                 pass
 
             if self._shutdown:

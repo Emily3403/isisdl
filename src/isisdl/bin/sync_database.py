@@ -32,7 +32,7 @@ def delete_missing_files_from_database() -> None:
             database_helper.delete_by_checksum(item)
 
     num = sum(len(row) for row in checksums.values())
-    print(f"Deleted {num} entr{'ies' if num == 1 else 'y'} from the database.")
+    print(f"Deleted {num} entr{'ies' if num != 1 else 'y'} from the database.")
 
 
 def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
@@ -151,6 +151,7 @@ def main() -> None:
             print("This is going to greatly slow down the process of synchronizing the database.")
         else:
             print("Nice. This will greatly speed up the process of synchronizing the database.")
+        print()
 
         second_choice = get_input("Do you want me to remember this option? [y/n] ", {"y", "n"})
         if second_choice == "y":

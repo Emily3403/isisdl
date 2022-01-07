@@ -88,6 +88,9 @@ status_time = 0.25
 env_var_name_username = "ISISDL_USERNAME"
 env_var_name_password = "ISISDL_PASSWORD"
 
+# Output os.
+config_clear_screen = True
+
 # </ Miscellaneous options >
 
 # Begin second part.

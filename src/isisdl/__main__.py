@@ -3,7 +3,9 @@
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.utils import args, database_helper
+from isisdl.settings import is_first_time
 from isisdl.version import __version__
+import isisdl.bin.config as config
 
 
 def maybe_print_version_and_exit() -> None:
@@ -16,6 +18,10 @@ def maybe_print_version_and_exit() -> None:
 
 def main() -> None:
     maybe_print_version_and_exit()
+
+    if is_first_time:
+        print("It seams as if this is your first time executing isisdl. Welcome <3\n")
+        config.main()
 
     user = get_credentials()
 

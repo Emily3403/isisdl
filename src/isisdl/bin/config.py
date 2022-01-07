@@ -1,100 +1,110 @@
 #!/usr/bin/env python3
 import sys
 from getpass import getpass
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union, Any
 
 from isisdl.backend.crypt import encryptor
-from isisdl.settings import is_first_time, is_windows
-from isisdl.backend.utils import config_helper, get_input
+from isisdl.settings import is_first_time, is_windows, config_clear_screen, is_testing, database_file_location
+from isisdl.backend.utils import config_helper, get_input, clear, User, path
 
 explanation_depth = "2"
 indent = "    "
 
 
-def generic_prompt(question: str, values: List[Tuple[str, str, str]], default: int, overwrite_output: Optional[str] = None) -> str:
+def generic_prompt(question: str, values: List[Tuple[str, str, str]], default: int, overwrite_output: Optional[str] = None, allow_stored: Optional[Union[str, int]] = None) -> str:
     if overwrite_output:
         return overwrite_output
+
+    if config_clear_screen:
+        clear()
 
     print(question + "\n")
     for i, (val, tldr, detail) in enumerate(values):
         print(f"{indent}{i}. {val}{' [default]' if i == default else ''}")
         if explanation_depth > "0":
             if tldr:
+                print()
                 for item in tldr.split("\n"):
-                    print(f"{indent * 2}{item}")
+                    print(f"{indent * 2} {item}")
 
         if explanation_depth > "1":
             if detail:
                 print()
                 for item in detail.split("\n"):
-                    print(f"{indent * 2}{item}")
+                    print(f"{indent * 2} {item}")
 
+        print("\n")
+
+    allowed = {str(i) for i in range(len(values))} | {""}
+    if allow_stored is not None:
+        allowed |= {"s"}
+        print(f"{indent[:-1]}[s] Use the stored value {allow_stored}")
         print()
 
-    choice = get_input("", allowed={str(i) for i in range(len(values))} | {""})
+    choice = get_input("", allowed)
     if choice == "":
         choice = str(default)
+
+    elif choice == "s" and allow_stored is not None:
+        return str(allow_stored)
 
     return choice
 
 
-def explanation_depth_prompt() -> None:
-    if is_first_time:
-        print("It seams as if this is your first time executing isisdl. Welcome <3\n")
-
-    print("I will guide you through ~2min of configuration.\n")
-
-    choice = generic_prompt("Which level of detail do you want?", [
-        ("None", "Just accept the defaults where applicable and be done with it.", ""),
-        ("TLDR", "A very brief summary of what is happening for every point", ""),
-        ("Full details", "I will give you a full explanation of all the points and which choices to choose in certain scenarios.",
-         "If you are reading this the first time it is recommended to use this option when first installing.")
-    ], 2, overwrite_output="")
-
-    global explanation_depth
-    explanation_depth = choice
-
-
 def authentication_prompt() -> None:
+    prev_choice = config_helper.get_user()
+
+    if prev_choice is not None:
+        prev_choice = User.sanitize_name(prev_choice)
+
+    if prev_choice == "":
+        prev_choice = None
+
     choice = generic_prompt("There are three ways of storing your password.", [
-        ("Encrypted in the database", "You will have to enter your password every time.",
-         "This is ideal for a multi-user system where someone knows of `isisdl` and would go ahead and read the database."),
-        ("Clear text in the database", "No password required, but less security",
-         "This is ideal for a private setup where you can be certain nobody will read your data.\nSince the database is hard "
-         "to find and not just a text file it is pretty hard to programmatically analyze and extract passwords from it."),
-        ("Manually entering the information every time", "Most secure, but also most annoying", "Use this when you want maximum security and are paranoid."),
+        ("Encrypted in the database", "Uses the password or an optional additional password to encrypt your login information.",
+         "If you like entering your password this option is for you."),
+        ("Clear text in the database", "Your login information is stored in a SQLite Database.",
+         f"The password is stored in {path(database_file_location)}\n"
+         "It is pretty hard to find and then programmatically extract passwords from a database.\n"
+         "So your passwords should be safe."),
+        ("Manually entering the information every time", "No passwords are stored. Enter your username every time on demand.", "Use this when you want maximum security and are paranoid."),
+    ], default=0, overwrite_output="", allow_stored=prev_choice)
 
-    ], default=0, overwrite_output="")
+    if choice == "2" or choice == prev_choice:
+        return
 
-    if choice in {"0", "1"}:
-        print("Please provide authentication for ISIS.")
-        username = input("Username (ISIS): ")
-        password = getpass("Password (ISIS): ")
+    print("Please provide authentication for ISIS.")
+    username = input("Username: ")
+    password = getpass("Password: ")
 
-        config_helper.set_user(username)
-        if choice == "0":
-            enc_password = getpass("Password (Encryption): ")
-            password = encryptor(enc_password, password)
-            config_helper.set_encrypted_password(password)
+    config_helper.set_user(username)
+    if choice == "0":
+        enc_password = getpass("Additional Password (may be empty): ")
+        if enc_password == "":
+            enc_password = password
 
-        else:
-            config_helper.set_clear_password(password)
+        password = encryptor(enc_password, password)
+        config_helper.set_encrypted_password(password)
 
     else:
-        print("Alright, no passwords will be stored.")
+        config_helper.set_clear_password(password)
+
 
 
 def filename_prompt() -> None:
-    choice = generic_prompt(r"""For some applications the file name is important.
-Some programming languages have restrictions / inconveniences when working with specific characters.
-To combat this you may want to enable a specific file name scheme.
+    prev_choice = config_helper.get_filename_scheme()
 
-If you have existing files you *will* have to re-download them all.
-So stick with one scheme.""", [
+    choice = generic_prompt(r"""Some programs and programming languages have restrictions
+or inconveniences when working with specific characters.
+
+To combat this you can enable a "safe"-mode for the file names.
+
+Once enabled it is not possible to switch back without re-downloading every file.
+""", [
         ("No replacing.", """All characters except "/" are left as they are.""", ""),
-        ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", """E.g. LaTeX needs escaping of "_" → "\\_"."""),
+        ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", ""),
 
-    ], default=int(config_helper.default_filename_scheme()), overwrite_output="")
+    ], default=int(config_helper.default_filename_scheme()), overwrite_output="", allow_stored=prev_choice)
 
     config_helper.set_filename_scheme(choice)
 
@@ -102,18 +112,21 @@ So stick with one scheme.""", [
 
 
 def throttler_prompt() -> None:
+    prev_choice = config_helper.get_throttle_rate()
+
     choice = generic_prompt("""If you wish you can throttle your download speed to a limit.
 Do you want to do so?
 
-You may overwrite this option by setting the `-d, --download-rate` flag.""", [
-        ("Yes", "", ""),
+Note: You may overwrite this option by setting the `-d, --download-rate` flag.""", [
         ("No", "", ""),
+        ("Yes", "", ""),
 
-    ], default=1, overwrite_output="")
+    ], default=0, overwrite_output="", allow_stored=prev_choice)
 
     amount = None
-    if choice == "0":
+    if choice == "1":
         while True:
+            print()
             try:
                 amount = input("How many MiB/s am I allowed to consume? ")
                 break
@@ -129,94 +142,93 @@ def cron_prompt() -> None:
     if is_windows:
         return
 
-    choice = generic_prompt("""[Linux only]
-Do you want me to schedule a Cron-Job to run `isisdl` every x hours?""", [
+    values = [
         ("No", "", ""),
-        ("1 Hour", "", "Note: done with the `@hourly` target. Cron must support it."),
-        ("24 Hours", "", "Note: done with the `@daily` target. Cron must support it."),
-
-    ], default=0, overwrite_output="")
-
-    if "pytest" in sys.modules:
-        return
+        ("1 Hour", "", ""),
+        ("24 Hours", "", ""),
+    ]
 
     from crontab import CronTab
 
     with CronTab(user=True) as cron:
-
         command = next(cron.find_command("isisdl"), None)
-        if command:
-            print("It seams as if isisdl is already configured to run as a Cron-Job.")
-            if choice == "0":
-                second = get_input("Should I remove the entry? [y/n] ", {"y", "n"})
-                if second == "y":
-                    cron.remove(command)
-            else:
-                cron.remove(command)
+        if command is not None:
+            values.append(("No, but remove the Cron-Job", "", ""))
 
-        if choice in {"1", "2"}:
-            import isisdl.__main__ as __main__
-            job = cron.new(__main__.__file__, "isisdl autogenerated", user=True)
+        choice = generic_prompt("[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?", values, default=0, overwrite_output="")
 
-            if choice == "1":
-                job.setall("@hourly")
-            else:
-                job.setall("@daily")
+        if is_testing:
+            return
+
+        if choice == "3" and command is not None:
+            cron.remove(command)
+            print("Cron-Job erased!")
+            return
+
+        if command is not None:
+            cron.remove(command)
+
+        import isisdl.__main__
+        # Use the executable to have the environment "baked into the interpreter"
+        job = cron.new(sys.executable + " " + isisdl.__main__.__file__, "isisdl autogenerated", user=True)
+
+        if choice == "1":
+            job.setall("@hourly")
+        else:
+            job.setall("@daily")
 
     print()
 
 
 def telemetry_data_prompt() -> None:
-    choice = generic_prompt("""I would like to collect some data from you.
-The data is primarily used to ensure `isisdl` is working correctly on all platforms and all courses.
-It would be a *huge* benefit for developing if you share the extended data with me. But if you don't want to that is fine as well.
-
-Also it is really useful to know for how many users I'm designing this library
-and what requirements they have (runtime of `isisdl`, platform, etc.).
+    choice = generic_prompt("""In order to ensure that all courses are downloaded correctly I would like to 
+collect some metadata from your courses, setup and configuration of isisdl.
 
 I've previously relied on assertions and users reporting these assertions on github.
-This system is really inconvenient for both parties and there would be a lot of time saved when using this version.
+This system is really inconvenient for both parties and wasts a lot of time.
 
-You will find a detailed breakdown of what data is collected in the "Full details" option.
+If you allow it, the program `isisdl` will automatically contact a server when it can report something.
+
+I collect the following:
+- Wrong blacklisting of urls
+- If files are missing upon rediscovery
+- If two files have the same size (or for videos the same length)
+- Your Platform
+- Your configuration
 """, [
-        ("No", "No data will be collected.", ""),
-        ("Basic", "This covers all data which is used by `isisdl` itself.",
-         "- Ping on run"
-         "- Wrong blacklisting of urls"
-         "- If files are missing upon rediscovery"
-         "- If two files have the same size (or for videos the same length)"),
-        ("Extended", "This covers all additional data e.g. about your system and configuration",
-         f"- Your Platform\n"
-         f"- Average connection speed\n"
-         f"- Your config\n{indent}If multiple users have the same option disabled / enabled it might be useful to update the defaults accordingly.\n"
-         "- General metadata of your subscribed ISIS courses"
-         f"\n{indent}- Number of courses"
-         f"\n{indent}- Number of files"
+        ("No", "", ""),
+        ("Yes", "", ""),
 
-         ),
-
-    ], default=int(config_helper.default_telemetry()), overwrite_output="")
+    ], default=config_helper.default_telemetry(), overwrite_output="")
 
     config_helper.set_telemetry(choice)
 
 
 def update_policy_prompt() -> None:
+    prev_choice = config_helper.get_update_policy()
     choice = generic_prompt("""Do you want me to auto-install updates when available?""", [
         ("No", "Do not install any updates.", ""),
-        ("Notify me", "Raise a prompt on startup with a message on how to install the update.", ""),
-        ("Install from pip", "Will install the newest when available from pip.", ""),
-        ("Install from github", "Will automatically install the newest version from github.", ""),
-    ], default=int(config_helper.default_update_policy()), overwrite_output="")
+        ("Install from github", "",
+         "The version of Github is by design always more recent than the one on pip.\n"
+         "It should have no stability issues since the update is only downloaded once it passes the tests."),
+        ("Install from pip", "", "This build should be always working. Usually pushed ~7-14 days after github release."),
+    ], default=int(config_helper.default_update_policy()), overwrite_output="", allow_stored=prev_choice)
 
     config_helper.set_update_policy(choice)
 
 
 def main() -> None:
-    config_helper.delete_config()
 
-    explanation_depth_prompt()
+    print(f"""I will guide you through a short configuration phase of about 4min.
+It is recommended that you read the options carefully.
 
-    if explanation_depth == "0":
+If you want to {'accept' if is_first_time else 'reset to'} the default press [d] and [enter].
+Otherwise just press [enter].
+    """)
+    choice = input("")
+
+    if choice.lower() == "d":
+        print(f"\n{'Accepted' if is_first_time else 'Reset to'} the defaults!")
         return
 
     authentication_prompt()
@@ -226,6 +238,10 @@ def main() -> None:
     cron_prompt()
     telemetry_data_prompt()
 
+    print("Thank you for your time - everything is saved!")
+
 
 if __name__ == "__main__":
     main()
+
+# TODO:
