@@ -39,6 +39,9 @@ class SQLiteDatabase(ABC):
 
         return res
 
+    def close_connection(self) -> None:
+        self.con.close()
+
 
 class DatabaseHelper(SQLiteDatabase):
     def create_default_tables(self) -> None:

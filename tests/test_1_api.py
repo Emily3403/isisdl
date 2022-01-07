@@ -21,4 +21,6 @@ def test_course_downloader(request_helper: RequestHelper, monkeypatch: Any) -> N
     course_downloader = CourseDownloader(user())
     course_downloader.start()
 
+def
+
 # TODO: Check file name scheme

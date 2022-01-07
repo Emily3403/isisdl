@@ -6,7 +6,7 @@ from pytest import fixture
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import startup, path, User
+from isisdl.backend.utils import startup, path, User, config_helper
 
 
 def pytest_configure() -> None:
@@ -15,6 +15,8 @@ def pytest_configure() -> None:
 
 
 def pytest_unconfigure() -> None:
+    config_helper.close_connection()
+    database_helper().close_connection()
     shutil.rmtree(path())
 
 
