@@ -5,7 +5,7 @@ from typing import Tuple, Any
 
 from isisdl.backend.crypt import get_credentials, encryptor
 from isisdl.settings import env_var_name_username, env_var_name_password
-from utils import config_helper
+from isisdl.backend.utils import config_helper
 
 
 def _generate_random_string() -> str:

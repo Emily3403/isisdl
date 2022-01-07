@@ -10,6 +10,7 @@ import shutil
 import time
 from base64 import standard_b64decode
 from dataclasses import dataclass
+from pathlib import Path
 from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
@@ -21,7 +22,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
+from isisdl.backend.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -220,7 +221,7 @@ class MediaType(enum.Enum):
 class MediaContainer:
     name: str
     url: str
-    location: str
+    location: Path
     media_type: MediaType
     s: SessionWithKey
     container: PreMediaContainer
@@ -238,7 +239,7 @@ class MediaContainer:
                 return None
 
         media_type = MediaType.video if container.is_video else MediaType.document
-        location = os.path.join(container.location, container.name)
+        location = Path(os.path.join(container.location, container.name))
 
         return MediaContainer(container.name, container.url, location, media_type, s, container)
 
@@ -259,7 +260,7 @@ class MediaContainer:
             except KeyError:
                 pass
 
-        with open(self.location, "wb") as f:
+        with self.location.open("wb") as f:
             # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
             # Also remember to set the `decode_content=True` kwarg in `.read()`.
             while True:

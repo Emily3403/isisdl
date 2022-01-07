@@ -3,7 +3,7 @@ import os
 from typing import List
 
 from isisdl.settings import course_dir_location
-from utils import path, sanitize_name, logger
+from isisdl.backend.utils import path, sanitize_name, logger
 
 
 def main() -> None:

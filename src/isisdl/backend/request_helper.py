@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
 from isisdl.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing
-from utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum, _course_downloader_transformation
+from isisdl.backend.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum, _course_downloader_transformation
 
 
 @dataclass
@@ -28,11 +28,11 @@ class PreMediaContainer:
     time: datetime
     course_id: int
     is_video: bool
-    size: Optional[int] = None
+    size: int = -1
     checksum: Optional[str] = None
 
     @classmethod
-    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: Optional[int] = None) -> PreMediaContainer:
+    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: int = -1) -> PreMediaContainer:
         # Sanitize bad names
         if relative_location == "/":
             relative_location = ""
@@ -274,7 +274,7 @@ class RequestHelper:
         self._get_courses()
         print(f"Courses: {time.perf_counter() - s:.3f}")
 
-        if args.verbose and False:
+        if args.verbose:
             print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
 
     def _get_courses(self) -> None:

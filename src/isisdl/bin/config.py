@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 
 from isisdl.backend.crypt import encryptor
 from isisdl.settings import is_first_time, is_windows
-from utils import config_helper, get_input
+from isisdl.backend.utils import config_helper, get_input
 
 explanation_depth = "2"
 indent = "    "

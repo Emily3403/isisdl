@@ -1,7 +1,7 @@
 from typing import Any
 
 from isisdl.backend.database_helper import DatabaseHelper
-from utils import args
+from isisdl.backend.utils import args
 from isisdl.backend.request_helper import CourseDownloader, RequestHelper
 from tests.conftest import user
 

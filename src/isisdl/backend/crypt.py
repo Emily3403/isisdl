@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from isisdl.settings import hash_algorithm, hash_length, hash_iterations, env_var_name_username, env_var_name_password
-from utils import User, config_helper
+from isisdl.backend.utils import User, config_helper
 
 
 def generate_key(password: str) -> bytes:

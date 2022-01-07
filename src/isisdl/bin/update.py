@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import requests
 
 from isisdl.settings import is_windows
-from utils import logger, config_helper
+from isisdl.backend.utils import logger, config_helper
 from isisdl.version import __version__
 
 

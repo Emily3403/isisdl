@@ -3,12 +3,13 @@ import os
 import pytest
 
 from isisdl.settings import working_dir_location, intern_dir_location, course_dir_location, settings_file_location, is_windows, database_file_location
-from utils import path, startup
+from isisdl.backend.utils import path, startup
 
 import isisdl.__main__
 
 settings_file = os.path.abspath(isisdl.settings.__file__)
 main_file = os.path.abspath(isisdl.__main__.__file__)
+
 
 def test_working_dir_structure() -> None:
     locations = [

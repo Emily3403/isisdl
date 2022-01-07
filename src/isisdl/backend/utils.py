@@ -331,12 +331,13 @@ class HumanBytes:
 
         return num, unit
 
+
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
     possible_videos = []
     tot_size = 0
 
     # Get a random sample of lower half
-    video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)  # type: ignore
+    video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)
     video_containers = video_containers[:int(len(video_containers) / 2)]
     random.shuffle(video_containers)
 

@@ -16,7 +16,7 @@ class SQLiteDatabase(ABC):
     lock: Lock = Lock()
 
     def __init__(self) -> None:
-        from utils import path
+        from isisdl.backend.utils import path
         if set_database_to_memory:
             self.con = sqlite3.connect(":memory:", check_same_thread=False)
         else:

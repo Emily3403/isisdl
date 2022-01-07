@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 import isisdl.bin.config as config
-from utils import config_helper
+from isisdl.backend.utils import config_helper
 
 
 def assert_config_expected(username: Optional[str], clean_pw: Optional[str], encrypted_pw: Optional[str], filename_scheme: str, throttle_rate: Optional[int], update_policy: str,
