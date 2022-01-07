@@ -16,7 +16,6 @@ def pytest_configure() -> None:
 
 def pytest_unconfigure() -> None:
     config_helper.close_connection()
-    database_helper().close_connection()
     shutil.rmtree(path())
 
 
@@ -32,6 +31,8 @@ def user() -> User:
 def database_helper() -> Any:
     helper = DatabaseHelper()
     yield helper
+
+    helper.close_connection()
 
 
 @fixture(scope="session")
