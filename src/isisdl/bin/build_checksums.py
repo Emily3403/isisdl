@@ -25,7 +25,7 @@ def database_subset_files() -> None:
         for file in Path(path(course_dir_location, course)).rglob("*"):
             if file.is_file():
                 try:
-                    checksums[course].remove(calculate_local_checksum(file.as_posix()))
+                    checksums[course].remove(calculate_local_checksum(file))
                 except KeyError:
                     pass
 
@@ -47,7 +47,7 @@ def database_subset_files() -> None:
 
 def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
     container.location, container.name = os.path.split(file)
-    container.checksum = calculate_local_checksum(file.as_posix())
+    container.checksum = calculate_local_checksum(file)
 
     container.dump()
 
@@ -99,7 +99,7 @@ def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None
     def update_container(file: Path, containers: List[PreMediaContainer]) -> int:
         assert helper.session is not None
 
-        file_checksum = calculate_online_checksum_file(file.as_posix())
+        file_checksum = calculate_online_checksum_file(file)
         checksums = {item: item.calculate_online_checksum(helper.session) for item in containers}
         checksums = {k: v for k, v in checksums.items() if v == file_checksum}
 

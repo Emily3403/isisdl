@@ -11,6 +11,7 @@ import string
 import sys
 from dataclasses import dataclass
 from functools import wraps
+from pathlib import Path
 from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING
 from urllib.parse import unquote
@@ -274,7 +275,7 @@ class User:
 
 
 # TODO: Migrate to Path?
-def calculate_local_checksum(filename: str) -> str:
+def calculate_local_checksum(filename: Path) -> str:
     sha = checksum_algorithm()
     sha.update(str(os.path.getsize(filename)).encode())
     curr_char = 0
@@ -300,7 +301,7 @@ def calculate_online_checksum(fp: Any, size: str) -> str:
     return checksum_algorithm(chunk + size.encode()).hexdigest()
 
 
-def calculate_online_checksum_file(filename: str) -> str:
+def calculate_online_checksum_file(filename: Path) -> str:
     with open(filename, "rb") as f:
         return calculate_online_checksum(f, str(os.path.getsize(filename)))
 
