@@ -1,11 +1,12 @@
 import os
 import shutil
+from typing import Any
 
 from pytest import fixture
 
-from database_helper import DatabaseHelper
+from isisdl.backend.database_helper import DatabaseHelper
+from isisdl.backend.request_helper import RequestHelper
 from isisdl.share.utils import startup, path, User
-from request_helper import RequestHelper
 
 
 def pytest_configure() -> None:
@@ -26,12 +27,12 @@ def user() -> User:
 
 
 @fixture(scope="session")
-def database_helper() -> DatabaseHelper:
+def database_helper() -> Any:
     helper = DatabaseHelper()
     yield helper
 
 
 @fixture(scope="session")
-def request_helper() -> RequestHelper:
+def request_helper() -> Any:
     helper = RequestHelper(user())
     yield helper

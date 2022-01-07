@@ -1,8 +1,8 @@
 from typing import Any
 
-from database_helper import DatabaseHelper
+from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.share.utils import args
-from request_helper import check_for_conflicts_in_files, CourseDownloader, RequestHelper
+from isisdl.backend.request_helper import check_for_conflicts_in_files, CourseDownloader, RequestHelper
 from tests.conftest import user
 
 
@@ -22,3 +22,5 @@ def test_course_downloader(request_helper: RequestHelper, monkeypatch: Any) -> N
 
     course_downloader = CourseDownloader(user())
     course_downloader.start()
+
+# TODO: Check file name scheme

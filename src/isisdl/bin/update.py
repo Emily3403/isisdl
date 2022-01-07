@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from isisdl.share.settings import is_windows
-from isisdl.share.utils import logger, get_input, config_helper
+from isisdl.share.utils import logger, config_helper
 from isisdl.version import __version__
 
 

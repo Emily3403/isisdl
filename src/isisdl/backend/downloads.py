@@ -9,12 +9,10 @@ import os
 import shutil
 import time
 from base64 import standard_b64decode
-from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, Tuple, Union, TYPE_CHECKING, cast, Set
+from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,7 +22,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.share.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.share.utils import HumanBytes, args, logger, e_format, User, calculate_local_checksum, database_helper, config_helper
+from isisdl.share.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -106,10 +104,10 @@ class SessionWithKey(Session):
         return cast(Optional[Response], self._timeouter(super().head, *args, extra_timeout=extra_timeout, **kwargs))
 
     def __str__(self) -> str:
-        return f"~Session~"
+        return "~Session~"
 
     def __repr__(self) -> str:
-        return f"~Session~"
+        return "~Session~"
 
 
 # Represents a granted token. A download may only download as much as defined in num_bytes.

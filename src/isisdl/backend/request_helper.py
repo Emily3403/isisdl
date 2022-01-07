@@ -10,13 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import repeat
-from pathlib import Path
 from threading import Thread
-from typing import Optional, Dict, List, Iterable, Any, cast, TYPE_CHECKING, Callable
+from typing import Optional, Dict, List, Any, cast, Callable
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
-from isisdl.share.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, status_time, is_testing, _course_downloader_transformation
+from isisdl.share.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing, _course_downloader_transformation
 from isisdl.share.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, calculate_online_checksum
 
 

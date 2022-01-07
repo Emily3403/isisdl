@@ -1,1 +1,0 @@
-mypy --disallow-untyped-defs --warn-redundant-casts --warn-unused-ignores --warn-return-any --warn-unreachable --strict-equality --strict --show-error-context --pretty --soft-error-limit 10 src

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from typing import NoReturn
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader

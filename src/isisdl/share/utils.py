@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import inspect
 import logging
 import os
 import signal
 import string
 import sys
-import time
 from dataclasses import dataclass
 from functools import wraps
 from queue import PriorityQueue
@@ -17,9 +15,7 @@ from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set
 from urllib.parse import unquote
 
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
-from isisdl.share.settings import working_dir_location, \
-    is_windows, settings_file_location, course_dir_location, intern_dir_location, \
-    checksum_algorithm, checksum_base_skip, checksum_num_bytes
+from isisdl.share.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes
 
 static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
                   "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
@@ -81,6 +77,11 @@ def startup() -> None:
     def prepare_dir(p: str) -> None:
         os.makedirs(path(p), exist_ok=True)
 
+    prepare_dir(course_dir_location)
+    prepare_dir(intern_dir_location)
+
+    import isisdl
+
     def restore_link() -> None:
         try:
             os.remove(other_settings_file)
@@ -91,20 +92,11 @@ def startup() -> None:
             # Sym-linking isn't really supported on Windows / not in a uniform way. Thus, I am not doing that.
             os.symlink(actual_settings_file, other_settings_file)
 
-
-
-    prepare_dir(path())
-    prepare_dir(course_dir_location)
-    prepare_dir(intern_dir_location)
-
-    import isisdl
-
     actual_settings_file = os.path.abspath(isisdl.share.settings.__file__)
     other_settings_file = path(settings_file_location)
 
     if os.path.islink(other_settings_file):
         if os.path.realpath(other_settings_file) != actual_settings_file:
-            os.remove(other_settings_file)
             restore_link()
     else:
         # Damaged link → Either doesn't exist / broken
@@ -263,7 +255,7 @@ class User:
 
     @property
     def sanitized_username(self) -> str:
-        # Remove the deadname ^^
+        # Remove the deadname
         if self.username == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
             return "emily3403"
 
@@ -274,9 +266,6 @@ class User:
 
     def __str__(self) -> str:
         return f"\"{self.sanitized_username}\""
-
-    def dump(self) -> str:
-        return self.username + "\n" + self.password + "\n"
 
 
 # TODO: Migrate to Path?
@@ -305,11 +294,10 @@ def calculate_online_checksum(fp: Any, size: str) -> str:
 
     return checksum_algorithm(chunk + size.encode()).hexdigest()
 
+
 def calculate_online_checksum_file(filename: str) -> str:
     with open(filename, "rb") as f:
         return calculate_online_checksum(f, str(os.path.getsize(filename)))
-
-
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
@@ -336,36 +324,6 @@ class HumanBytes:
                 num /= unit_step
 
         return num, unit
-
-
-def e_format(
-        nums: List[Union[int, float, str, None]],
-        precision: int = 2,
-        ab: Optional[bool] = None,  # True = Remove - from output | False = Space others accordingly
-        direction: str = ">",
-
-        convert_func: Callable[[str], str] = lambda _: str(_)
-) -> List[str]:
-    #
-    if ab is True:
-        nums = [n if type(n) == str else abs(n) for n in nums]  # type: ignore
-
-    # Convert the nums → strings
-    final = []
-    for num in nums:
-        if num is None:
-            final.append("None")
-        if isinstance(num, str):
-            final.append(convert_func(num))
-        elif isinstance(num, (float, int)):
-            final.append(f"{num:.{precision}f}")
-
-    max_len = max([len(item) for item in final])
-
-    # Pad the strings
-    final = [f"{item:{' '}{direction}{max_len}}" for item in final]
-
-    return final
 
 
 startup()

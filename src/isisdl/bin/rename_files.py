@@ -3,7 +3,7 @@ import os
 from typing import List
 
 from isisdl.share.settings import course_dir_location
-from isisdl.share.utils import path, args, sanitize_name, logger
+from isisdl.share.utils import path, sanitize_name, logger
 
 
 def main() -> None:

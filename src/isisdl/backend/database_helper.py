@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
 import sqlite3
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Union, Any, NoReturn
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any
 
 from isisdl.share.settings import database_file_location, set_database_to_memory
 
@@ -63,6 +61,12 @@ class DatabaseHelper(SQLiteDatabase):
             return None
 
         return res[0]
+
+    def get_name_by_checksum(self, checksum: str) -> Optional[str]:
+        return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
+
+    def get_course_id_by_name(self, course_name: str) -> Optional[int]:
+        return cast(Optional[int], self._get_attr_by_equal("id", course_name, "name", "courseinfo"))
 
     def get_size_from_file_id(self, file_id: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))

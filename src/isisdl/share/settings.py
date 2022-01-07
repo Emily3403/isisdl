@@ -1,14 +1,13 @@
 from __future__ import annotations
-import datetime
+
 import os
 import platform
 import random
 import sys
 from hashlib import sha256
+from typing import List, TYPE_CHECKING
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
-
-from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from request_helper import PreMediaContainer

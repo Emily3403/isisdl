@@ -1,12 +1,11 @@
 import os
-import os
 import random
 import string
 from typing import Tuple, Any
 
 from isisdl.backend.crypt import get_credentials, encryptor
 from isisdl.share.settings import env_var_name_username, env_var_name_password
-from isisdl.share.utils import config_helper, User
+from isisdl.share.utils import config_helper
 
 
 def _generate_random_string() -> str:

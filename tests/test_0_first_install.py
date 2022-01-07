@@ -6,8 +6,10 @@ from isisdl.share.settings import working_dir_location, intern_dir_location, cou
 from isisdl.share.utils import path, startup
 
 import isisdl
+
 settings_file = os.path.abspath(isisdl.share.settings.__file__)
 utils_file = os.path.abspath(isisdl.share.utils.__file__)
+
 
 def test_working_dir_structure() -> None:
     locations = [
@@ -21,7 +23,7 @@ def test_working_dir_structure() -> None:
         assert os.path.exists(path(item))
 
 
-def test_settings_link() -> None:
+def assert_settings_works() -> None:
     if is_windows:
         return
 
@@ -32,11 +34,11 @@ def test_settings_link_remove() -> None:
     os.unlink(path(settings_file_location))
 
     with pytest.raises(FileNotFoundError):
-        test_settings_link()
+        assert_settings_works()
 
     startup()
 
-    test_settings_link()
+    assert_settings_works()
 
 
 def test_settings_link_wrong_symlink() -> None:
@@ -45,7 +47,7 @@ def test_settings_link_wrong_symlink() -> None:
 
     startup()
 
-    test_settings_link()
+    assert_settings_works()
 
 
 def test_settings_link_broken_symlink() -> None:
@@ -54,6 +56,4 @@ def test_settings_link_broken_symlink() -> None:
 
     startup()
 
-    test_settings_link()
-
-
+    assert_settings_works()

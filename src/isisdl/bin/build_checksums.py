@@ -12,7 +12,7 @@ from pymediainfo import MediaInfo
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.share.settings import course_dir_location, working_dir_location, enable_multithread, sync_database_num_threads
+from isisdl.share.settings import course_dir_location, enable_multithread, sync_database_num_threads
 from isisdl.share.utils import path, logger, calculate_local_checksum, database_helper, get_input, config_helper, calculate_online_checksum_file
 
 
@@ -60,7 +60,6 @@ def check_file_equal(file: Path, online_file: PreMediaContainer) -> bool:
 def files_subset_database(helper: RequestHelper, check_every_file: bool) -> None:
     files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
     file_to_course_mapping = defaultdict(list)
-    file_to_posix_mapping: Dict[str, str] = {}
 
     assert helper.session is not None
 

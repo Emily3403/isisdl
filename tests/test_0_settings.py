@@ -23,8 +23,7 @@ def test_settings() -> None:
         env_var_name_username: "ISISDL_USERNAME",
         env_var_name_password: "ISISDL_PASSWORD",
         env_var_name_encrypted_password: "ISISDL_ENC_PASSWORD",
-        # enable_multithread: True,
-
+        enable_multithread: True,
     }
 
     variable_items = {
