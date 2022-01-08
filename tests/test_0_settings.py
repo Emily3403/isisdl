@@ -32,12 +32,12 @@ def test_settings() -> None:
         hash_iterations: (390_000, 1_000_000),
         hash_length: (32, 32),
         progress_bar_resolution: (8, 12),
-        status_chop_off: (3, 3),
+        status_chop_off: (2, 3),
         status_time: (0.1, 0.5),
         download_chunk_size: (2 ** 13, 2 ** 16),
         sleep_time_for_isis: (0, 4),
         num_tries_download: (3, 5),
-        download_timeout: (3, 6),
+        download_timeout: (1, 4),
         download_timeout_multiplier: (1.5, 2.5),
     }
 
