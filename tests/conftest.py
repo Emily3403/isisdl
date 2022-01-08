@@ -7,6 +7,7 @@ from pytest import fixture
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper
 from isisdl.backend.utils import startup, path, User, config_helper
+from isisdl.settings import is_windows, course_dir_location
 
 
 def pytest_configure() -> None:
@@ -16,7 +17,10 @@ def pytest_configure() -> None:
 
 def pytest_unconfigure() -> None:
     config_helper.close_connection()
-    shutil.rmtree(path())
+    if is_windows:
+        shutil.rmtree(path(course_dir_location))
+    else:
+        shutil.rmtree(path())
 
 
 def user() -> User:
