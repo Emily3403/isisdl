@@ -36,7 +36,7 @@ def get_args_main() -> argparse.Namespace:
 
     parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
-    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=int, default=6)
+    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=int, default=3)
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
     parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
 
@@ -47,6 +47,9 @@ def get_args_main() -> argparse.Namespace:
     parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
     the_args, unknown = parser.parse_known_args()
+
+    if the_args.disable_videos:
+        the_args.num_threads *= 2
 
     course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
 
@@ -129,26 +132,13 @@ def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
     debug_level = debug_level or logging.DEBUG if args.verbose else logging.INFO
     logger.setLevel(debug_level)
 
-    if not is_windows:
-        # Add a colored console handler. This only works on UNIX, however I use that. If you don't maybe reconsider using windows :P
-        import coloredlogs
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(debug_level)
 
-        coloredlogs.install(level=debug_level, logger=logger, fmt="%(asctime)s - [%(levelname)s] - %(message)s")
+    console_formatter = logging.Formatter("[%(levelname)s] %(message)s")
+    ch.setFormatter(console_formatter)
 
-    else:
-        # Windows users don't have colorful logs :(
-        # Legacy solution that should work for windows.
-        #
-        # Warning: This is untested.
-        #   I think it should work but if not, feel free to submit a bug report!
-
-        ch = logging.StreamHandler(stream=sys.stdout)
-        ch.setLevel(debug_level)
-
-        console_formatter = logging.Formatter("[%(levelname)s] %(message)s")
-        ch.setFormatter(console_formatter)
-
-        logger.addHandler(ch)
+    logger.addHandler(ch)
 
     return logger
 
@@ -190,7 +180,7 @@ def get_input(message: str, allowed: Set[str]) -> str:
         if choice in allowed:
             break
 
-        print("\nI did not quite catch that.")
+        print(f"\nUnhandled character: {choice!r} is not in the expected: {allowed}.\nPlease try again:\n\n")
 
     return choice
 
@@ -218,18 +208,16 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig: Optional[int] = None, frame: Any = None) -> None:
-        from isisdl.backend.request_helper import downloading_files
+        import isisdl.backend.request_helper as request_helper
         if OnKill._already_killed and sig is not None:
-            logger.info("Alright, stay calm. I am skipping cleanup and exiting!")
-            logger.info("This *will* lead to corrupted files!")
+            print("Alright, stay calm. I am skipping cleanup and exiting!")
+            print("This *will* lead to corrupted files!")
 
             os._exit(sig)
 
         if sig is not None:
             sig = signal.Signals(sig)
-            logger.debug(f"Noticed signal {sig.name} ({sig.value}).")
-            if downloading_files:
-                logger.debug("If you *really* need to exit please send another signal!")
+            if request_helper.downloading_files:
                 OnKill._already_killed = True
             else:
                 os._exit(sig.value)

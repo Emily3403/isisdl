@@ -69,9 +69,6 @@ class DatabaseHelper(SQLiteDatabase):
     def get_name_by_checksum(self, checksum: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
 
-    def get_course_id_by_name(self, course_name: str) -> Optional[int]:
-        return cast(Optional[int], self._get_attr_by_equal("id", course_name, "name", "courseinfo"))
-
     def get_size_from_file_id(self, file_id: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))
 
@@ -84,12 +81,19 @@ class DatabaseHelper(SQLiteDatabase):
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
-    def add_pre_container(self, file: PreMediaContainer) -> None:
+    def add_pre_container(self, file: PreMediaContainer) -> bool:
+        """
+        Returns true iff the element already existed
+        """
         with DatabaseHelper.lock:
+            already_exists = self.cur.execute("SELECT * FROM fileinfo WHERE checksum = ?", (file.checksum, )).fetchone() is not None
+
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
             """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size))
             self.con.commit()
+
+            return already_exists
 
     def add_course(self, course: Course) -> None:
         with DatabaseHelper.lock:

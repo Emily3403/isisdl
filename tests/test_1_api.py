@@ -86,6 +86,7 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
         new_files.append(new_name)
         item.rename(os.path.join(item.parent, new_name))
 
+    database_helper.delete_file_table()
     restore_database_state(request_helper, False)
 
     for csum, new_name in zip(checksums, new_files):

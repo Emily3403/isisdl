@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from typing import Optional
 
 import requests
 
@@ -24,7 +25,11 @@ def check_pypi_for_version() -> str:
     return version[0].split()[1]
 
 
-def check_github_for_version() -> str:
+def check_github_for_version() -> Optional[str]:
+    badge = requests.get("https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg").text
+    if "passing" not in badge:
+        return None
+
     res = requests.get("https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/version.py")
     if not res.ok:
         logger.error("I could not obtain the latest version. Probably the link, which is hard-coded, is wrong.")
@@ -38,11 +43,12 @@ def check_github_for_version() -> str:
     return version.group(1)
 
 
-# TODO: Check github test is working
-
-def main() -> None:
+def install_latest_version() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
+
+    if version_github is None:
+        return
 
     update_policy = config_helper.get_or_default_update_policy()
     if update_policy == "0":
@@ -55,7 +61,7 @@ def main() -> None:
         else:
             print("Unfortunately the new version is not uploaded to PyPI yet.\n")
 
-        if update_policy == "1":
+        if update_policy == "0":
             print("To install the new version type the following into your favorite shell!\n")
             if not is_windows:
                 print("cd /tmp")
@@ -68,10 +74,12 @@ def main() -> None:
 
             return
 
+        print("According to your update policy I will auto-install it.\n\n")
         if update_policy == "2":
-            subprocess.check_call([sys.executable, "-m", "pip", "install", " --upgrade", "isisdl"])
+            if version_pypi > __version__:
+                subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
-        if update_policy == "3":
+        if update_policy == "1":
             old_dir = os.getcwd()
             with TemporaryDirectory() as tmp:
                 os.chdir(tmp)
@@ -84,7 +92,3 @@ def main() -> None:
                 print("Installing with pip ...")
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
                 os.chdir(old_dir)
-
-
-if __name__ == '__main__':
-    main()

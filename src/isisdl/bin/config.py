@@ -98,6 +98,7 @@ or inconveniences when working with specific characters.
 
 To combat this you can enable a "safe"-mode for the file names.
 
+
 Once enabled it is not possible to switch back without re-downloading every file.
 """, [
         ("No replacing.", """All characters except "/" are left as they are.""", ""),
@@ -130,7 +131,8 @@ Note: You may overwrite this option by setting the `-d, --download-rate` flag.""
                 amount = input("How many MiB/s am I allowed to consume? ")
                 break
             except ValueError:
-                print("\nI did not quite catch that")
+                clear()
+                print("I did not quite catch that\n")
 
     config_helper.set_throttle_rate(amount)
 
@@ -154,7 +156,13 @@ def cron_prompt() -> None:
         if command is not None:
             values.append(("No, but remove the Cron-Job", "", ""))
 
-        choice = generic_prompt("[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?", values, default=0, overwrite_output="")
+        throttle_rate = config_helper.get_throttle_rate()
+
+        prompt = "[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?"
+        if throttle_rate is None:
+            prompt += "\n\nIt seams as if you haven't set a download limit. It is recommended that you set one if you are using a Cron-Job."
+
+        choice = generic_prompt(prompt, values, default=0, overwrite_output="")
 
         if is_testing:
             return
@@ -241,5 +249,3 @@ Otherwise just press [enter].
 
 if __name__ == "__main__":
     main()
-
-# TODO:

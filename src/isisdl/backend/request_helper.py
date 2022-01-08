@@ -14,9 +14,9 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Callable, Tuple
 from urllib.parse import urlparse, urljoin
 
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status
+from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler
 from isisdl.backend.utils import logger, User, path, sanitize_name, args, static_fail_msg, on_kill, database_helper, _course_downloader_transformation
-from isisdl.settings import download_timeout, course_dir_location, enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
+from isisdl.settings import course_dir_location, enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
 
 
 @dataclass
@@ -30,6 +30,12 @@ class PreMediaContainer:
     is_video: bool
     size: int = -1
     checksum: Optional[str] = None
+
+    @classmethod
+    def from_api(cls, file_dict: Dict[str, Any], file_id: str, course: Course) -> PreMediaContainer:
+        file_id = f"{file_id}_{checksum_algorithm(file_dict['fileurl'].encode()).hexdigest()}"
+
+        return cls.from_course(file_dict["filename"], file_id, file_dict["fileurl"], course, file_dict["timemodified"], file_dict["filepath"], file_dict["filesize"])
 
     @classmethod
     def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: int = -1) -> PreMediaContainer:
@@ -54,9 +60,9 @@ class PreMediaContainer:
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
 
-    def dump(self) -> None:
+    def dump(self) -> bool:
         assert self.checksum is not None
-        database_helper.add_pre_container(self)
+        return database_helper.add_pre_container(self)
 
     def calculate_online_checksum(self, s: SessionWithKey) -> Tuple[str, int]:
         while True:
@@ -170,15 +176,13 @@ class Course:
                     logger.debug(f"Non-whitelisted url detected:\n{url = }\nI am following it. Let's see where it leads…")
 
                 if "contents" not in file:
-                    logger.error(f"I could not find the field \"contents\" in the file.\n{url = !r}\ncourse.name = {self.name!r}" + static_fail_msg)
-                    assert False
+                    logger.debug(f"I could not find the field \"contents\" in the file.\n{url = !r}\ncourse.name = {self.name!r}" + static_fail_msg)
+                    continue
 
                 prev_len = len(all_content)
                 if "contents" in file:
                     for item in file["contents"]:
-                        file_id = f"{file['id']}_{checksum_algorithm(item['fileurl'].encode()).hexdigest()}"
-
-                        all_content.append(PreMediaContainer.from_course(item["filename"], file_id, item["fileurl"], self, item["timemodified"], item["filepath"], item["filesize"]))
+                        all_content.append(PreMediaContainer.from_api(item, file["id"], self))
 
                 if len(all_content) == prev_len:
                     known_bad_urls = {
@@ -277,7 +281,7 @@ class RequestHelper:
                 if not os.path.exists(course.path()):
                     os.makedirs(course.path(), exist_ok=True)
 
-    def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+    def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
 
         assert self.session is not None
@@ -292,7 +296,7 @@ class RequestHelper:
 
         url = "https://isis.tu-berlin.de/webservice/rest/server.php"
 
-        response = self.session.post_(url, data=data, headers=self.default_headers, timeout=download_timeout)
+        response = self.session.post_(url, data=data, params=params, headers=self.default_headers)
 
         if response is None or not response.ok:
             return None
@@ -303,22 +307,56 @@ class RequestHelper:
         assert self.courses is not None
         assert self.session is not None
 
+        mod_assign: List[PreMediaContainer] = []
+        mod_assign_thread = Thread(target=self.download_mod_assign, args=(mod_assign,))
+        mod_assign_thread.start()
+
         def download_all(course: Course, helper: RequestHelper) -> List[PreMediaContainer]:
             assert helper.session is not None
             return course.download_videos(helper.session) + course.download_documents(helper)
 
+        # TODO: Split every request into a single thread
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                video_lists = list(ex.map(download_all, self.courses, repeat(self)))
+                course_container_list = list(ex.map(download_all, self.courses, repeat(self)))
+
         else:
-            video_lists = [download_all(course, self) for course in self.courses]
+            course_container_list = [download_all(course, self) for course in self.courses]
+
+        mod_assign_thread.join()
 
         # Flatten 2d list into 1d
-        ret = [item for row in video_lists for item in row]
+        ret = [item for row in course_container_list for item in row]
+        ret.extend(mod_assign)
 
         # Finally, shuffle the list to guarantee a nice mix of video + documents + courses
         random.shuffle(ret)
         return ret
+
+    def download_mod_assign(self, res: List[PreMediaContainer]) -> None:
+        if args.disable_documents:
+            return
+
+        all_content = []
+        _assignments = self.post_REST('mod_assign_get_assignments')
+        if _assignments is None:
+            return
+
+        assignments = cast(Dict[str, Any], _assignments)
+
+        allowed_ids = {item.course_id for item in self.courses}
+        for course in assignments["courses"]:
+            if course["id"] in allowed_ids:
+                for assignment in course["assignments"]:
+                    for file in assignment["introattachments"]:
+                        file["filepath"] = assignment["name"]
+                        all_content.append(PreMediaContainer.from_api(file, assignment["id"], self.course_id_mapping[course["id"]]))
+
+                    if assignment["introfiles"]:
+                        assert False
+
+        # TODO: Also get the submission contents.
+        res.extend(all_content)
 
     @property
     def userid(self) -> str:
@@ -372,8 +410,9 @@ class CourseDownloader:
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         global status
-        status = Status(len(media_containers), args.num_threads)
-        downloader = Thread(target=self.download_files, args=(media_containers,))
+        throttler = DownloadThrottler()
+        status = Status(len(media_containers), args.num_threads, throttler)
+        downloader = Thread(target=self.download_files, args=(media_containers, throttler))
 
         downloader.start()
         status.start()
@@ -402,7 +441,7 @@ class CourseDownloader:
         return filtered_files
 
     @with_timing("Downloading files")
-    def download_files(self, files: List[MediaContainer]) -> None:
+    def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
         def download(file: MediaContainer) -> None:
             assert status is not None
             if enable_multithread:
@@ -411,7 +450,7 @@ class CourseDownloader:
                 thread_id = 0
 
             status.add(thread_id, file)
-            file.download()
+            file.download(throttler)
             status.finish(thread_id)
 
         if enable_multithread:

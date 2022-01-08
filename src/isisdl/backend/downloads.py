@@ -4,7 +4,6 @@ This file is concerned with how to download an actual file given an url.
 from __future__ import annotations
 
 import enum
-import math
 import os
 import shutil
 import time
@@ -15,14 +14,14 @@ from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
+import math
 import requests
-from func_timeout import FunctionTimedOut, func_timeout
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name, logger
 from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
-from isisdl.backend.utils import HumanBytes, args, logger, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -78,29 +77,25 @@ class SessionWithKey(Session):
         return s
 
     @staticmethod
-    def _timeouter(func, *args: Iterable[Any], extra_timeout, **kwargs: Dict[Any, Any]) -> Any:  # type: ignore
+    def _timeouter(func: Any, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
         i = 0
         while i < num_tries_download:
             try:
-                return func_timeout(download_timeout + extra_timeout + download_timeout_multiplier ** (0.5 * i), func, args, kwargs)
+                return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
-            except FunctionTimedOut:
-                logger.debug(f"Timed out getting url ({i} / {num_tries_download - 1}) {args[0]}")
-                i += 1
-
-            except requests.exceptions.ConnectionError:
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                 logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
                 time.sleep(sleep_time_for_isis)
                 i += 1
 
-    def get_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
-        return cast(Optional[Response], self._timeouter(super().get, *args, extra_timeout=extra_timeout, **kwargs))
+    def get_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().get, *args, **kwargs))
 
-    def post_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
-        return cast(Optional[Response], self._timeouter(super().post, *args, extra_timeout=extra_timeout, **kwargs))
+    def post_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().post, *args, **kwargs))
 
-    def head_(self, *args, extra_timeout=0, **kwargs) -> Optional[Response]:  # type: ignore
-        return cast(Optional[Response], self._timeouter(super().head, *args, extra_timeout=extra_timeout, **kwargs))
+    def head_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().head, *args, **kwargs))
 
     def __str__(self) -> str:
         return "~Session~"
@@ -115,7 +110,6 @@ class Token:
     num_bytes: int = download_chunk_size
 
 
-# TODO: is args.download_rate relly overwriting?
 class DownloadThrottler(Thread):
     """
     This class acts in a way that the download speed is capped at a certain maximum.
@@ -128,7 +122,7 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
-        self.download_rate: Optional[int] = config_helper.get_throttle_rate()
+        self.download_rate: Optional[int] = args.download_rate or config_helper.get_throttle_rate()
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -155,7 +149,7 @@ class DownloadThrottler(Thread):
                 # If a download limit is imposed hand out new tokens
                 try:
                     for _ in range(num):
-                        self.active_tokens.put(self.used_tokens.get())
+                        self.active_tokens.put(self.used_tokens.get(block=False))
 
                 except (Full, Empty):
                     pass
@@ -172,7 +166,7 @@ class DownloadThrottler(Thread):
 
     def get(self) -> Token:
         try:
-            if args.download_rate is None:
+            if self.download_rate is None:
                 return self.token
 
             token = self.active_tokens.get()
@@ -234,7 +228,7 @@ class MediaContainer:
 
         return MediaContainer(container.name, container.url, location, media_type, s, container)
 
-    def download(self) -> None:
+    def download(self, throttler: DownloadThrottler) -> None:
         if self._exit:
             self.done = True
             return
@@ -251,33 +245,30 @@ class MediaContainer:
             except KeyError:
                 pass
 
-        try:
-            with open(self.location, "wb") as f:
-                # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
-                # Also remember to set the `decode_content=True` kwarg in `.read()`.
-                while True:
-                    token = throttler.get()
+        with open(self.location, "wb") as f:
+            # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
+            # Also remember to set the `decode_content=True` kwarg in `.read()`.
+            while True:
+                token = throttler.get()
 
-                    new = running_download.raw.read(token.num_bytes, decode_content=True)
-                    if len(new) == 0:
-                        # No file left
-                        break
+                new = running_download.raw.read(token.num_bytes, decode_content=True)
+                if len(new) == 0:
+                    # No file left
+                    break
 
-                    f.write(new)
-                    self.curr_size += len(new)
+                f.write(new)
+                self.curr_size += len(new)
 
-                f.flush()
+            f.flush()
 
-            running_download.close()
+        running_download.close()
 
-            # Only register the file after successfully downloading it.
-            self.container.checksum = calculate_local_checksum(Path(self.location))
-            self.container.dump()
-            self.done = True
+        # Only register the file after successfully downloading it.
+        self.container.checksum = calculate_local_checksum(Path(self.location))
+        self.container.dump()
+        self.done = True
 
-            return None
-        except OSError:
-            print()
+        return None
 
     def stop(self) -> None:
         self._exit = True
@@ -304,12 +295,13 @@ class MediaContainer:
 
 
 class Status(Thread):
-    def __init__(self, num_files: int, num_threads: int) -> None:
+    def __init__(self, num_files: int, num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
         self.finished_files = 0
         self.total_files = num_files
         self.total_downloaded = 0
         self.last_text_len = 0
+        self.throttler = throttler
 
         self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
         super().__init__(daemon=True)
@@ -346,8 +338,12 @@ class Status(Thread):
                 a, b = HumanBytes.format(num)
                 return f"{a: >6.2f} {b}"
 
-            curr_bandwidth = format_num(throttler.bandwidth_used)
-            downloaded_bytes = format_num(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
+            def format_quick(num: float) -> str:
+                a, b = HumanBytes.format(num)
+                return f"{a:.2f} {b}"
+
+            curr_bandwidth = format_quick(self.throttler.bandwidth_used)
+            downloaded_bytes = format_quick(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
 
             # General meta-info
             log_strings.append("")
@@ -367,7 +363,7 @@ class Status(Thread):
                 curr_size = format_num(container.curr_size)
                 max_size = format_num(container.size)
 
-                log_strings.append(f"{thread_string} {container.percent_done} [{curr_size} | {max_size}] - {container.name}")
+                log_strings.append(f"{thread_string} {container.percent_done} [ {curr_size} | {max_size} ] - {container.name}")
                 pass
 
             if self._shutdown:
@@ -392,6 +388,3 @@ class Status(Thread):
             self.last_text_len = final_str.count("\n") + 1
 
             print(final_str)
-
-
-throttler = DownloadThrottler()

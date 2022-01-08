@@ -1,6 +1,4 @@
 cryptography
 requests
-coloredlogs
-func_timeout
-python-crontab; sys_platform == 'linux'
 pymediainfo
+python-crontab; sys_platform == 'linux'

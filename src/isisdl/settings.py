@@ -71,7 +71,7 @@ hash_length = 32
 progress_bar_resolution = 10
 
 # Chop off the last ↓ characters of the status message for a ...
-status_chop_off = 3
+status_chop_off = 2
 
 # The refresh time for the status message
 status_time = 0.25
@@ -100,16 +100,16 @@ config_clear_screen = True
 enable_multithread = True
 
 # Sets the chunk size for a download.
-download_chunk_size = 2 ** 15
+download_chunk_size = 2 ** 16
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
-sleep_time_for_isis = 3
+sleep_time_for_isis = 1
 
 # Will retry downloading an url ↓ times. If it fails, that MediaContainer will not get downloaded.
 num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 6
+download_timeout = 1
 
 # Adds `download_timeout_multiplier ** (0.5 * i)` of timeout every iteration
 download_timeout_multiplier = 2
@@ -128,7 +128,7 @@ is_first_time = not os.path.exists(os.path.join(working_dir_location, database_f
 token_queue_refresh_rate = 0.1
 
 # Collect the amount of handed out tokens in the last ↓ secs
-token_queue_download_refresh_rate = 1
+token_queue_download_refresh_rate = 3
 
 # Yes, changing behaviour when tested is evil. But I'm doing so in order to protect my `~/isisdl_downloads` directory.
 is_testing = "pytest" in sys.modules

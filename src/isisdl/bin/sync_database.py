@@ -32,14 +32,14 @@ def delete_missing_files_from_database() -> None:
             database_helper.delete_by_checksum(item)
 
     num = sum(len(row) for row in checksums.values())
-    print(f"Deleted {num} entr{'ies' if num != 1 else 'y'} from the database.")
+    print(f"Deleted {num} corruped entr{'ies' if num != 1 else 'y'} from the database to be redownloaded.")
 
 
-def prep_container_and_dump(container: PreMediaContainer, file: Path) -> None:
+def prep_container_and_dump(container: PreMediaContainer, file: Path) -> bool:
     container.location, container.name = os.path.split(file)
     container.checksum = calculate_local_checksum(file)
 
-    container.dump()
+    return container.dump()
 
 
 said_text = False
@@ -49,7 +49,7 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
     files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
 
     assert helper.session is not None
-    already_checked = 0
+    added_num_step_1 = 0
 
     for course in helper.courses:
         available_videos = course.download_videos(helper.session)
@@ -67,7 +67,7 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
             if check_every_file:
                 if said_text is False:
                     print("I've found the following corrupted files.\nIf you know that I've downloaded it go ahead and delete them."
-                          "\n\n(This message is here since you have selected that there are other files I have not downloaded)\n\n")
+                          "\n\n(If you select the option that files your personal files are not part of Courses they are automatically deleted.)\n\n")
                     said_text = True
 
                 print(file.as_posix())
@@ -76,6 +76,9 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
 
         for file in Path(course.path()).rglob("*"):
             if not os.path.isfile(file):
+                continue
+
+            if database_helper.get_name_by_checksum(calculate_local_checksum(file)) is not None:
                 continue
 
             possible: List[PreMediaContainer]
@@ -94,8 +97,7 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
                 corrupted_file_prompt(file)
 
             elif len(possible) == 1 and not check_every_file:
-                prep_container_and_dump(possible[0], file)
-                already_checked += 1
+                added_num_step_1 += not prep_container_and_dump(possible[0], file)
 
             else:
                 files_to_download[file].extend(possible)
@@ -128,31 +130,25 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
 
     if enable_multithread:
         with ThreadPoolExecutor(sync_database_num_threads) as ex:
-            nums = list(ex.map(check_multiple, *zip(*list(files_to_download.items()))))
+            added_num_step_2 = sum(list(ex.map(check_multiple, *zip(*list(files_to_download.items())))))
 
     else:
-        nums = [check_multiple(file, containers) for file, containers in files_to_download.items()]
+        added_num_step_2 = sum([check_multiple(file, containers) for file, containers in files_to_download.items()])
 
-    if files_to_download:
-        print(f"No unrecognized files (checked {sum(nums) + already_checked})")
+    recovered_num = added_num_step_1 + added_num_step_2
+    total_num = len([item for course in helper.courses for item in Path(course.path()).rglob("*") if item.is_file()])
+    if recovered_num == 0:
+        print(f"No unrecognized files (checked {total_num})")
 
     else:
-        print(f"I have recovered {sum(nums) + already_checked} / {len(files_to_download) + already_checked} files.")
-
-        if sum(nums) != len(files_to_download):
-            print("The others have to be downloaded again.")
+        print(f"I have recovered {recovered_num} / {total_num} possible files.")
 
 
 def main() -> None:
     prev_asked = config_helper.get_other_files_in_working_location()
     if prev_asked is None:
-        choice = get_input(f"Are there other files - which I have not downloaded - in {path()}? [y/n] ", {"y", "n"})
-        if choice == "y":
-            print("This is going to greatly slow down the process of synchronizing the database.")
-        else:
-            print("Nice. This will greatly speed up the process of synchronizing the database.")
+        choice = get_input(f"Are your personal files part of the directory {path(course_dir_location)!r}\n(Choosing yes will slow down the process of synchronizing)\n\n[y/n] ", {"y", "n"})
         print()
-
         second_choice = get_input("Do you want me to remember this option? [y/n] ", {"y", "n"})
         if second_choice == "y":
             config_helper.set_other_files_in_working_location(choice)
