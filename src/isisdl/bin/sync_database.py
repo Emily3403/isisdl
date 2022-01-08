@@ -54,6 +54,7 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
     for course in helper.courses:
         available_videos = course.download_videos(helper.session)
         available_documents = course.download_documents(helper)
+        helper.download_mod_assign(available_documents)
 
         videos, documents = defaultdict(list), defaultdict(list)
         for item in available_videos:

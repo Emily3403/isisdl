@@ -211,7 +211,7 @@ class OnKill:
         import isisdl.backend.request_helper as request_helper
         if OnKill._already_killed and sig is not None:
             print("Alright, stay calm. I am skipping cleanup and exiting!")
-            print("This *will* lead to corrupted files!")
+            print("I will redownload the files that are partially downloaded.")
 
             os._exit(sig)
 

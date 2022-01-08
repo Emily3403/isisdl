@@ -136,6 +136,7 @@ if is_testing:
     _working_dir_location = working_dir_location
     working_dir_location = os.path.join(os.path.expanduser("~"), "test_isisdl")
     status_time = 2
+    download_timeout = 3
 
 # This number represent seconds of video.    (ISIS does not offer a better "size" api…)
 testing_download_video_size = 3600 * 1

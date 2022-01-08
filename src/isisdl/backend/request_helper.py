@@ -352,9 +352,6 @@ class RequestHelper:
                         file["filepath"] = assignment["name"]
                         all_content.append(PreMediaContainer.from_api(file, assignment["id"], self.course_id_mapping[course["id"]]))
 
-                    if assignment["introfiles"]:
-                        assert False
-
         # TODO: Also get the submission contents.
         res.extend(all_content)
 
