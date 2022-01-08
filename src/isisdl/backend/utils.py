@@ -205,12 +205,6 @@ class OnKill:
         signal.signal(signal.SIGABRT, OnKill.exit)
         signal.signal(signal.SIGTERM, OnKill.exit)
 
-        if is_windows:
-            pass
-        else:
-            signal.signal(signal.SIGQUIT, OnKill.exit)
-            signal.signal(signal.SIGHUP, OnKill.exit)
-
     @staticmethod
     def add(func: Any, priority: Optional[int] = None) -> None:
         if priority is None:
