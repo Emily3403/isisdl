@@ -44,7 +44,6 @@ class SQLiteDatabase(ABC):
         self.con.close()
 
 
-
 class DatabaseHelper(SQLiteDatabase):
     def create_default_tables(self) -> None:
         with self.lock:
