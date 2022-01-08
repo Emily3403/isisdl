@@ -102,7 +102,7 @@ def test_delete_files(database_helper: DatabaseHelper) -> None:
 
     delete_missing_files_from_database()
 
-    assert len([database_helper.get_name_by_checksum(item) for item in checksums]) < 8
+    assert len([item for item in checksums if database_helper.get_name_by_checksum(item)]) < 8
 
     # for csum in checksums:
     #     assert database_helper.get_name_by_checksum(csum) is None
