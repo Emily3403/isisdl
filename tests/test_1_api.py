@@ -89,7 +89,7 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
     database_helper.delete_file_table()
     restore_database_state(request_helper, False)
 
-    assert len([item for item in checksums if database_helper.get_name_by_checksum(item)]) < 8
+    assert len([item for item in checksums if database_helper.get_name_by_checksum(item)]) > 2
 
     # for csum, new_name in zip(checksums, new_files):
     #     assert database_helper.get_name_by_checksum(csum) == new_name
