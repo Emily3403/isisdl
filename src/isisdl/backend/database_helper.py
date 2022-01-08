@@ -40,8 +40,9 @@ class SQLiteDatabase(ABC):
         return res
 
     def close_connection(self) -> None:
-        self.con.close()
         self.cur.close()
+        self.con.close()
+
 
 
 class DatabaseHelper(SQLiteDatabase):
