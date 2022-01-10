@@ -96,7 +96,7 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
 
 
 def test_delete_files(database_helper: DatabaseHelper) -> None:
-    to_delete = sample_files(100)
+    to_delete = sample_files(10)
     checksums = get_checksums_of_files(to_delete)
 
     for item in to_delete:

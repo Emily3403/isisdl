@@ -2,6 +2,7 @@ from typing import Any, Optional
 
 import isisdl.bin.config as config
 from isisdl.backend.utils import config_helper
+from isisdl.settings import is_windows
 
 
 def assert_config_expected(username: Optional[str], clean_pw: Optional[str], encrypted_pw: Optional[str], filename_scheme: str, throttle_rate: Optional[int], update_policy: str,
@@ -38,7 +39,11 @@ def test_config_default_no_prompt(monkeypatch: Any) -> None:
 
 
 def test_config_input(monkeypatch: Any) -> None:
-    choices = iter(["", "2", "1", "0", "1", "55", "1", "0"])
+    if is_windows:
+        choices = iter(["", "2", "1", "1", "55", "1", "0"])
+    else:
+        choices = iter(["", "2", "1", "0", "1", "55", "1", "0"])
+
     monkeypatch.setattr("builtins.input", lambda _: next(choices))
 
     config.main()
