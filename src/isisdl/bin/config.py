@@ -61,7 +61,7 @@ def authentication_prompt() -> None:
         prev_choice = None
 
     choice = generic_prompt("There are three ways of storing your password.", [
-        ("Encrypted in the database", "Uses the password or an optional additional password to encrypt your login information.",
+        ("Encrypted in the database", "Uses the password itself or an optional, additional, password to encrypt your login information.",
          "If you like entering your password this option is for you."),
         ("Clear text in the database", "Your login information is stored in a SQLite Database.",
          f"The password is stored in {path(database_file_location)}\n"
@@ -79,6 +79,7 @@ def authentication_prompt() -> None:
 
     config_helper.set_user(username)
     if choice == "0":
+        print()
         enc_password = getpass("Additional Password (may be empty): ")
         if enc_password == "":
             enc_password = password
@@ -93,6 +94,10 @@ def authentication_prompt() -> None:
 def filename_prompt() -> None:
     prev_choice = config_helper.get_filename_scheme()
 
+    forbidden_chars = "/"
+    if is_windows:
+        forbidden_chars = "<>:\"/\\|?*"
+
     choice = generic_prompt(r"""Some programs and programming languages have restrictions
 or inconveniences when working with specific characters.
 
@@ -101,7 +106,7 @@ To combat this you can enable a "safe"-mode for the file names.
 
 Once enabled it is not possible to switch back without re-downloading every file.
 """, [
-        ("No replacing.", """All characters except "/" are left as they are.""", ""),
+        ("No replacing.", f"All characters except {forbidden_chars!r} are left as they are.", ""),
         ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", ""),
 
     ], default=int(config_helper.default_filename_scheme()), overwrite_output="", allow_stored=prev_choice)
@@ -160,7 +165,7 @@ def cron_prompt() -> None:
 
         prompt = "[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?"
         if throttle_rate is None:
-            prompt += "\n\nIt seams as if you haven't set a download limit. It is recommended that you set one if you are using a Cron-Job."
+            prompt += "\n\nOn the next page there is a option to throttle your download speed.\nIt is recommended that, if you select a Cron-Job also select a throttle rate."
 
         choice = generic_prompt(prompt, values, default=0, overwrite_output="")
 
@@ -238,10 +243,10 @@ Otherwise just press [enter].
         return
 
     authentication_prompt()
-    update_policy_prompt()
     filename_prompt()
-    throttler_prompt()
     cron_prompt()
+    throttler_prompt()
+    update_policy_prompt()
     telemetry_data_prompt()
 
     print("Thank you for your time - everything is saved!")

@@ -163,7 +163,10 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     char_string = ""
 
     if filename_scheme >= "0":
-        char_string += "/"
+        if is_windows:
+            char_string += "<>:\"/\\|?*"
+        else:
+            char_string += "/"
 
     if filename_scheme >= "1":
         # Now replace any remaining funny symbols with a `?`
