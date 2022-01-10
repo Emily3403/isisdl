@@ -163,7 +163,6 @@ def cron_prompt() -> None:
             if command is not None:
                 values.append(("No, but remove the Cron-Job", "", ""))
 
-
     except Exception:
         cron_works = False
         values = [
