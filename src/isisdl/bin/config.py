@@ -149,27 +149,41 @@ def cron_prompt() -> None:
     if is_windows:
         return
 
-    values = [
-        ("No", "", ""),
-        ("1 Hour", "", ""),
-        ("24 Hours", "", ""),
-    ]
-
     from crontab import CronTab
+
+    cron_works = True
+    try:
+        with CronTab(user=True) as cron:
+            values = [
+                ("No", "", ""),
+                ("1 Hour", "", ""),
+                ("24 Hours", "", ""),
+            ]
+            command = next(cron.find_command("isisdl"), None)
+            if command is not None:
+                values.append(("No, but remove the Cron-Job", "", ""))
+
+    except Exception:
+        cron_works = False
+        values = [
+            ("No", "", ""),
+        ]
+
+    prompt = "[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?"
+
+    if not cron_works:
+        prompt += "\n\nERROR: I could not detect a working Cron-installation.\nThis feature is currently limited to Cron only.\nIn the future there might be support for Systemd timers."
+
+    elif config_helper.get_throttle_rate() is None:
+        prompt += "\n\nOn the next page there is a option to throttle your download speed.\nIt is recommended that, if you select a Cron-Job also select a throttle rate."
+
+    choice = generic_prompt(prompt, values, default=0, overwrite_output="")
+
+    if choice == "0":
+        return
 
     with CronTab(user=True) as cron:
         command = next(cron.find_command("isisdl"), None)
-        if command is not None:
-            values.append(("No, but remove the Cron-Job", "", ""))
-
-        throttle_rate = config_helper.get_throttle_rate()
-
-        prompt = "[Linux only]\n\nDo you want me to schedule a Cron-Job to run `isisdl` every x hours?"
-        if throttle_rate is None:
-            prompt += "\n\nOn the next page there is a option to throttle your download speed.\nIt is recommended that, if you select a Cron-Job also select a throttle rate."
-
-        choice = generic_prompt(prompt, values, default=0, overwrite_output="")
-
         if is_testing:
             return
 
