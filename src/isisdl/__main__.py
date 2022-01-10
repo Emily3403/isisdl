@@ -44,6 +44,8 @@ def main() -> None:
 #       → delete logger
 #   H265
 #   Prioritize documents over videos
+#
+#   Maybe systemd timer
 
 
 if __name__ == '__main__':
