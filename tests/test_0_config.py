@@ -17,7 +17,7 @@ def assert_config_expected(username: Optional[str], clean_pw: Optional[str], enc
     }
 
     for a, b in items.items():
-        assert a == b
+        assert b == a
 
 
 def test_config_default(monkeypatch: Any) -> None:
@@ -38,7 +38,7 @@ def test_config_default_no_prompt(monkeypatch: Any) -> None:
 
 
 def test_config_input(monkeypatch: Any) -> None:
-    choices = iter(["", "2", "1", "1", "1", "55", "0", "0"])
+    choices = iter(["", "2", "1", "0", "1", "55", "1", "0"])
     monkeypatch.setattr("builtins.input", lambda _: next(choices))
 
     config.main()

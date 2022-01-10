@@ -181,10 +181,11 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
 
     i = 0
     while i < len(name_lst):
-        while i < len(name_lst) and name_lst[i] == "\0":
+        if name_lst[i] == "\0":
             name_lst.pop(i)
             if i < len(name_lst):
                 name_lst[i] = name_lst[i].upper()
+            continue
 
         i += 1
 
