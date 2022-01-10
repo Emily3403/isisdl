@@ -49,10 +49,9 @@ class PreMediaContainer:
         if is_video:
             relative_location = os.path.join(relative_location, "Videos")
 
-        name = sanitize_name(name, filename_scheme="0")
         sanitized_url = urljoin(url, urlparse(url).path)
 
-        location = course.path(relative_location)
+        location = course.path(sanitize_name(relative_location))
         time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
@@ -98,7 +97,6 @@ class Course:
         return cls(name, id)
 
     def __post_init__(self) -> None:
-        self.name = sanitize_name(self.name, filename_scheme="0")
         self.prepare_dirs()
 
     def prepare_dirs(self) -> None:
@@ -372,6 +370,8 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
             locations[item.location].append(item)
 
         locations = {k: v for k, v in locations.items() if len(v) > 1}
+
+        # TODO: Maybe filter out duplicates by file size
 
         for new_row in locations.values():
             for i, item in enumerate(new_row):

@@ -37,7 +37,7 @@ def test_settings() -> None:
         download_chunk_size: (2 ** 13, 2 ** 16),
         sleep_time_for_isis: (0, 4),
         num_tries_download: (3, 5),
-        download_timeout: (1, 4),
+        download_timeout: (1, 10),
         download_timeout_multiplier: (1.5, 2.5),
     }
 

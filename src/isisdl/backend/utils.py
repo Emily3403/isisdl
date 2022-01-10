@@ -154,24 +154,38 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
 
     filename_scheme = filename_scheme or config_helper.get_or_default_filename_scheme()
 
+    # First replace umlaute
+    for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
+        name = name.replace(a, b)
+        name = name.replace(a.upper(), b.upper())
+
+    # Now start to add chars that don't fit.
+    char_string = ""
+
     if filename_scheme >= "0":
-        name = name.replace("/", "-")
+        char_string += "/"
 
     if filename_scheme >= "1":
         # Now replace any remaining funny symbols with a `?`
         name = name.encode("ascii", errors="replace").decode()
 
-        # Now replace all known "bad" ascii chars with a symbol
-        char_mapping = {
-            ".": string.whitespace + "_" + r"""#%&/:;<=>@\^`|~-$"'?""",
-            "(": "[{",
-            ")": "]}",
-        }
+        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^_`{|}~""" + string.whitespace
 
-        for char, mapping in char_mapping.items():
-            name = name.translate(str.maketrans(mapping, char * len(mapping)))
+    name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
-    return name
+    # This is probably a suboptimal solution, but it works…
+    name_lst = list(name)
+
+    i = 0
+    while i < len(name_lst):
+        while i < len(name_lst) and name_lst[i] == "\0":
+            name_lst.pop(i)
+            if i < len(name_lst):
+                name_lst[i] = name_lst[i].upper()
+
+        i += 1
+
+    return "".join(name_lst)
 
 
 def get_input(message: str, allowed: Set[str]) -> str:

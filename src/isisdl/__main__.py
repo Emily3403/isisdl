@@ -43,6 +43,7 @@ def main() -> None:
 #   Autolog to server
 #       → delete logger
 #   H265
+#   Prioritize documents over videos
 
 
 if __name__ == '__main__':

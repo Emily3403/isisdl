@@ -103,13 +103,13 @@ enable_multithread = True
 download_chunk_size = 2 ** 16
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
-sleep_time_for_isis = 1
+sleep_time_for_isis = 3
 
 # Will retry downloading an url ↓ times. If it fails, that MediaContainer will not get downloaded.
 num_tries_download = 5
 
 # Will fail a download if ISIS is not responding in ↓ amount of s
-download_timeout = 1
+download_timeout = 6
 
 # Adds `download_timeout_multiplier ** (0.5 * i)` of timeout every iteration
 download_timeout_multiplier = 2
@@ -142,6 +142,6 @@ if is_testing:
 testing_download_video_size = 3600 * 1
 
 # Number of bytes downloaded for documents.
-testing_download_documents_size = 600_000_000
+testing_download_documents_size = 1_000_000_000
 
 # </ Miscellaneous options >

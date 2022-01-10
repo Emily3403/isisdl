@@ -14,7 +14,9 @@ Once the database is established and downloaded it takes ~5s to synchronize with
 
 ### Compatibility
 
-This library will run with any python interpreter that is ≥ 3.8. Every operating system is supported.
+This library will run with any python interpreter that is ≥ 3.8.
+
+Every operating system is supported.
 
 ### Multithreaded
 

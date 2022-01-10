@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, List
@@ -36,6 +37,7 @@ def test_remove_database_and_rediscover(database_helper: DatabaseHelper, request
     for course in request_helper.courses:
         available_videos = course.download_videos(request_helper.session)
         available_documents = course.download_documents(request_helper)
+        request_helper.download_mod_assign(available_documents)
 
         videos, documents = defaultdict(list), defaultdict(list)
         for item in available_videos:
@@ -55,13 +57,13 @@ def test_remove_database_and_rediscover(database_helper: DatabaseHelper, request
             pass
 
     database_helper.delete_file_table()
-    restore_database_state(request_helper, True)
+    restore_database_state(request_helper, False)
 
     # Now check if everything is restored (except `possible_duplicates`)
     recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
 
     # state ⊇ prev_ids
-    assert len(prev_ids - recovered_ids) <= 20
+    assert prev_ids.intersection(recovered_ids) == prev_ids
 
 
 def sample_files(num: int) -> List[Path]:
@@ -89,14 +91,12 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
     database_helper.delete_file_table()
     restore_database_state(request_helper, False)
 
-    assert len([item for item in checksums if database_helper.get_name_by_checksum(item)]) > 2
-
-    # for csum, new_name in zip(checksums, new_files):
-    #     assert database_helper.get_name_by_checksum(csum) == new_name
+    for csum, new_name in zip(checksums, new_files):
+        assert database_helper.get_name_by_checksum(csum)
 
 
 def test_delete_files(database_helper: DatabaseHelper) -> None:
-    to_delete = sample_files(10)
+    to_delete = sample_files(100)
     checksums = get_checksums_of_files(to_delete)
 
     for item in to_delete:
@@ -104,7 +104,10 @@ def test_delete_files(database_helper: DatabaseHelper) -> None:
 
     delete_missing_files_from_database()
 
-    assert len([item for item in checksums if database_helper.get_name_by_checksum(item)]) < 8
+    for csum in checksums:
+        name = database_helper.get_name_by_checksum(csum)
+        if name is not None:
+            assert re.match(r".*\(\d*-\d*\)\.", name)
+            continue
 
-    # for csum in checksums:
-    #     assert database_helper.get_name_by_checksum(csum) is None
+        assert name is None
