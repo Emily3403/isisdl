@@ -67,7 +67,7 @@ def test_remove_database_and_rediscover(database_helper: DatabaseHelper, request
 
 
 def sample_files(num: int) -> List[Path]:
-    files = [item for item in Path(path(course_dir_location)).rglob("*") if item.is_file()]
+    files = [item for item in Path(path(course_dir_location)).rglob("*") if item.is_file() and not re.match(r".*\(\d*-\d*\)\.", item.name)]
     random.shuffle(files)
 
     return files[:num]
@@ -105,9 +105,4 @@ def test_delete_files(database_helper: DatabaseHelper) -> None:
     delete_missing_files_from_database()
 
     for csum in checksums:
-        name = database_helper.get_name_by_checksum(csum)
-        if name is not None:
-            assert re.match(r".*\(\d*-\d*\)\.", name)
-            continue
-
-        assert name is None
+        assert database_helper.get_name_by_checksum(csum) is None
