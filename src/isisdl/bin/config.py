@@ -107,7 +107,8 @@ To combat this you can enable a "safe"-mode for the file names.
 Once enabled it is not possible to switch back without re-downloading every file.
 """, [
         ("No replacing.", f"All characters except {forbidden_chars!r} are left as they are.", ""),
-        ("Replace all non-url safe characters", """"#%&/:;<=>@\\^`|~-$" → "."\n"[]{}" → "()""""", ""),
+        ("Delete all special characters.",
+         "Only ASCII letters + digits + \".\" + \"-\" are allowed. .\n", "When deleting spaces the next character is capitalized."),
 
     ], default=int(config_helper.default_filename_scheme()), overwrite_output="", allow_stored=prev_choice)
 

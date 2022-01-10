@@ -172,24 +172,30 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
         # Now replace any remaining funny symbols with a `?`
         name = name.encode("ascii", errors="replace").decode()
 
-        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^_`{|}~""" + string.whitespace
+        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
 
     name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
     # This is probably a suboptimal solution, but it works…
-    name_lst = list(name)
+    final = list(name)
 
+    whitespaces = set(string.whitespace + "_")
     i = 0
-    while i < len(name_lst):
-        if name_lst[i] == "\0":
-            name_lst.pop(i)
-            if i < len(name_lst):
-                name_lst[i] = name_lst[i].upper()
+    while i < len(final):
+        char = final[i]
+
+        if char == "\0" or char in whitespaces:
+            final.pop(i)
+
+            if char in whitespaces:
+                if i < len(final):
+                    final[i] = final[i].upper()
+
             continue
 
         i += 1
 
-    return "".join(name_lst)
+    return "".join(final)
 
 
 def get_input(message: str, allowed: Set[str]) -> str:
