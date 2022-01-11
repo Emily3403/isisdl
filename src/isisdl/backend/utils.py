@@ -18,6 +18,7 @@ from urllib.parse import unquote
 
 import colorama
 
+import isisdl
 from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
 from isisdl.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size
@@ -232,7 +233,6 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig: Optional[int] = None, frame: Any = None) -> None:
-        import isisdl.backend.request_helper as request_helper
         if OnKill._already_killed and sig is not None:
             print("Alright, stay calm. I am skipping cleanup and exiting!")
             print("I will redownload the files that are partially downloaded.")
@@ -241,7 +241,7 @@ class OnKill:
 
         if sig is not None:
             sig = signal.Signals(sig)
-            if request_helper.downloading_files:
+            if isisdl.backend.request_helper.downloading_files:
                 OnKill._already_killed = True
             else:
                 os._exit(sig.value)

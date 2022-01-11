@@ -90,4 +90,6 @@ corrupted files.
 
 The compressing of videos is something I would love in the future. These are saved and distributed from a central
 server. The access is restricted, so we don't have any copyright infringement. If you want to participate in that you
-can request access [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ). 
+can request access [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
+
+retrieval
