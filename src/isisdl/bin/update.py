@@ -8,7 +8,6 @@ from typing import Optional
 
 import requests
 
-from isisdl.settings import is_windows
 from isisdl.backend.utils import logger, config_helper
 from isisdl.version import __version__
 
@@ -22,7 +21,7 @@ def check_pypi_for_version() -> str:
     assert groups is not None
     assert len(groups) == 1
 
-    return version[0].split()[1]
+    return groups[0].split()[1]
 
 
 def check_github_for_version() -> Optional[str]:
@@ -54,41 +53,26 @@ def install_latest_version() -> None:
     if update_policy == "0":
         return
 
-    if version_github > __version__:
-        print(f"\nThere is a new version available: {version_github} (current: {__version__}).")
-        if version_pypi == version_github:
-            print("You're in luck: The new version is already available on PyPI.\n")
-        else:
-            print("Unfortunately the new version is not uploaded to PyPI yet.\n")
+    correct_version = version_github if update_policy == "1" else version_pypi
 
-        if update_policy == "0":
-            print("To install the new version type the following into your favorite shell!\n")
-            if not is_windows:
-                print("cd /tmp")
-
-            if version_pypi == version_github:
-                print(f"{sys.executable} -m pip install --upgrade isisdl")
-            else:
-                print("git clone https://github.com/Emily3403/isisdl")
-                print(f"{sys.executable} -m pip install ./isisdl")
-
-            return
-
+    if correct_version > __version__:
+        print(f"\nThere is a new version available: {correct_version} (current: {__version__}).")
         print("According to your update policy I will auto-install it.\n\n")
-        if update_policy == "2":
-            if version_pypi > __version__:
-                subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
-        if update_policy == "1":
-            old_dir = os.getcwd()
-            with TemporaryDirectory() as tmp:
-                os.chdir(tmp)
-                print(f"Cloning the repository into {tmp} ...")
-                ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
-                if ret:
-                    print(f"Cloning failed with exit code {ret}")
-                    return
+    if update_policy == "1":
+        old_dir = os.getcwd()
+        with TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            print(f"Cloning the repository into {tmp} ...")
+            ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
+            if ret:
+                print(f"Cloning failed with exit code {ret}")
+                return
 
-                print("Installing with pip ...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
-                os.chdir(old_dir)
+            print("Installing with pip ...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
+            os.chdir(old_dir)
+
+    if update_policy == "2":
+        if version_pypi > __version__:
+            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
