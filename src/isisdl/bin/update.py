@@ -57,9 +57,12 @@ def install_latest_version() -> None:
 
     if correct_version > __version__:
         print(f"\nThere is a new version available: {correct_version} (current: {__version__}).")
-        print("According to your update policy I will auto-install it.\n\n")
+        print("According to your update policy I will auto-install it.\n")
 
-    if update_policy == "1":
+    else:
+        return
+
+    if update_policy == "1" and correct_version > __version__:
         old_dir = os.getcwd()
         with TemporaryDirectory() as tmp:
             os.chdir(tmp)
@@ -74,5 +77,4 @@ def install_latest_version() -> None:
             os.chdir(old_dir)
 
     if update_policy == "2":
-        if version_pypi > __version__:
-            subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
+        subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
