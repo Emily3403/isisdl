@@ -63,7 +63,7 @@ def install_latest_version() -> None:
     else:
         return
 
-    if update_policy == "1" and correct_version > __version__:
+    if update_policy == "1":
         old_dir = os.getcwd()
         with TemporaryDirectory() as tmp:
             os.chdir(tmp)

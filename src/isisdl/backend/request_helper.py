@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
-import random
 import re
 import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field
 from datetime import datetime
-from itertools import repeat
 from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import logging
 import os
 import random
 import signal
