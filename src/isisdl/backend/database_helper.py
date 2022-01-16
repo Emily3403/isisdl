@@ -141,8 +141,7 @@ class ConfigHelper(SQLiteDatabase):
             if res is None:
                 return None
 
-            assert isinstance(res[0], str)
-            return res[0]
+            return cast(str, res[0])
 
     def _delete(self, key: str) -> None:
         with self.lock:
@@ -225,14 +224,6 @@ class ConfigHelper(SQLiteDatabase):
             return self.default_telemetry()
 
         return value != "0"
-
-    #
-
-    def set_other_files_in_working_location(self, value: str) -> None:
-        self._set("other_files", value)
-
-    def get_other_files_in_working_location(self) -> Optional[str]:
-        return self._get("other_files")
 
     #
 

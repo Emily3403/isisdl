@@ -10,7 +10,7 @@ Download all your Files and Videos from ISIS.
 
 ### It is fast
 
-Once the database is established and downloaded it takes ~5s to synchronize with ISIS.
+Once the database is established and downloaded it takes ~5s to synchronize your files with ISIS.
 
 ### Compatibility
 
@@ -42,18 +42,15 @@ installation.
 The output should look something like this
 
 ```
-pip 21.2.4 from /home/emily/Documents/Programs/Python/isisdl/venv/lib/python3.10/site-packages/pip (python 3.10)
+pip 21.3.1 from /home/emily/.local/lib/python3.10/site-packages/pip (python 3.10)
 ```
 
-If your installation is at least `python 3.8`, then everything will work perfectly.
-
-Also check that `$HOME/.local/bin` is in the `PATH`. Otherwise the executables won't be found.
+Now check that `$HOME/.local/bin` is in the `PATH`. Otherwise, the executables won't be found.
 
 #### Windows
 
 If you don't have python installed already go ahead and install it
-from [here](https://www.python.org/ftp/python/3.9.9/python-3.9.9-amd64.exe). In the installation there is an option to
-activate `pip`. You will need to check this.
+from [here](https://www.python.org/downloads/release/python-3101). 
 
 The next time I am on Windows I will complete this part of the documentation.
 
@@ -69,7 +66,7 @@ Afterwards everything is installed.
 
 ### Executing the program
 
-As you might have guessed the base executable is named `isisdl`. The following executables are shipped:
+The following executables are shipped:
 
 ```
 - isisdl
@@ -79,7 +76,7 @@ As you might have guessed the base executable is named `isisdl`. The following e
 
 The base executable `isisdl` is responsible for downloading your content.
 
-The executable `isisdl-config` is responsible for configuring your setup.
+The executable `isisdl-config` is responsible for reconfiguring your setup.
 
 The executable `isisdl-sync` is responsible for synchronizing your files with the database and detecting missing /
 corrupted files.
@@ -91,5 +88,3 @@ corrupted files.
 The compressing of videos is something I would love in the future. These are saved and distributed from a central
 server. The access is restricted, so we don't have any copyright infringement. If you want to participate in that you
 can request access [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
-
-retrieval

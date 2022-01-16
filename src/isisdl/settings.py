@@ -59,8 +59,8 @@ sync_database_num_threads = 32
 # Beware: Changing any of these options means loosing compatibility with the old password file.
 
 # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py#L274)
-hash_iterations = 390_000
 hash_algorithm = SHA3_512
+hash_iterations = 390_000
 hash_length = 32
 
 # < Password / Cryptography options >
@@ -80,9 +80,6 @@ status_time = 0.25
 
 
 # < Miscellaneous options >
-
-# It is possible to specify credentials using environment variables.
-# Note that `env_var_name_username` and `env_var_name_password` take precedence over `env_var_name_encrypted_password`
 
 # If you want to use username and password set these variables accordingly.
 env_var_name_username = "ISISDL_USERNAME"

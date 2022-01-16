@@ -41,13 +41,11 @@ def main() -> None:
 
 # TODO:
 #   Autolog to server
-#       → delete logger
 #   H265
-#   Prioritize documents over videos
 #
 #   Maybe systemd timer
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     database_helper.get_state()
     main()

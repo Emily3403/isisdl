@@ -26,10 +26,6 @@ from isisdl.settings import working_dir_location, is_windows, settings_file_loca
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
 
-static_fail_msg = "\n\nIt seams as if I had done my testing sloppy. I'm sorry :(\n" \
-                  "Please open a issue at https://github.com/Emily3403/isisdl/issues with a screenshot of this text.\n" \
-                  "You can disable this assertion by rerunning with the '-a' flag."
-
 
 def get_args_main() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
@@ -115,33 +111,11 @@ def startup() -> None:
         restore_link()
 
 
-def get_logger(debug_level: Optional[int] = None) -> logging.Logger:
-    """
-    Creates the logger
-    """
-    # disable DEBUG messages from various modules
-    logging.getLogger("urllib3").propagate = False
-    logging.getLogger("selenium").propagate = False
-    logging.getLogger("matplotlib").propagate = False
-    logging.getLogger("PIL").propagate = False
-    logging.getLogger("oauthlib").propagate = False
-    logging.getLogger("requests_oauthlib.oauth1_auth").propagate = False
-
-    logger = logging.getLogger(__name__)
-    logger.propagate = False
-
-    debug_level = debug_level or logging.DEBUG if args.verbose else logging.INFO
-    logger.setLevel(debug_level)
-
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(debug_level)
-
-    console_formatter = logging.Formatter("[%(levelname)s] %(message)s")
-    ch.setFormatter(console_formatter)
-
-    logger.addHandler(ch)
-
-    return logger
+def clear() -> None:
+    if is_windows:
+        os.system('cls')
+    else:
+        os.system('clear')
 
 
 def path(*args: str) -> str:
@@ -292,7 +266,7 @@ def calculate_local_checksum(filename: Path) -> str:
     sha = checksum_algorithm()
     sha.update(str(os.path.getsize(filename)).encode())
     curr_char = 0
-    with open(filename, 'rb') as f:
+    with open(filename, "rb") as f:
         i = 1
         while True:
             f.seek(curr_char)
@@ -343,13 +317,6 @@ class HumanBytes:
         return num, unit
 
 
-def clear() -> None:
-    if is_windows:
-        os.system('cls')
-    else:
-        os.system('clear')
-
-
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
     possible_videos: List[PreMediaContainer] = []
     possible_documents: List[PreMediaContainer] = []
@@ -391,7 +358,6 @@ database_helper = DatabaseHelper()
 config_helper = ConfigHelper()
 
 args = get_args(os.path.basename(sys.argv[0]))
-logger = get_logger()
 
 # Windows specific color codes…
 colorama.init()

@@ -45,16 +45,17 @@ def prep_container_and_dump(container: PreMediaContainer, file: Path) -> bool:
 said_text = False
 
 
-def restore_database_state(helper: RequestHelper, check_every_file: bool) -> None:
+def restore_database_state(helper: RequestHelper) -> None:
     files_to_download: Dict[Path, List[PreMediaContainer]] = defaultdict(list)
 
-    assert helper.session is not None
     added_num_step_1 = 0
+
+    # TODO: Threads
 
     for course in helper.courses:
         available_videos = course.download_videos(helper.session)
         available_documents = course.download_documents(helper)
-        helper.download_mod_assign(available_documents)
+        available_documents.extend(helper.download_mod_assign())
 
         videos, documents = defaultdict(list), defaultdict(list)
         for item in available_videos:
@@ -65,15 +66,11 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
 
         def corrupted_file_prompt(file: Path) -> None:
             global said_text
-            if check_every_file:
-                if said_text is False:
-                    print("I've found the following corrupted files.\nIf you know that I've downloaded it go ahead and delete them."
-                          "\n\n(If you select the option that files your personal files are not part of Courses they are automatically deleted.)\n\n")
-                    said_text = True
+            if said_text is False:
+                print("I've found the following corrupted files.\nIf you know that I've downloaded it go ahead and delete them.")
+                said_text = True
 
-                print(file.as_posix())
-            else:
-                file.unlink()
+            print(file.as_posix())
 
         for file in Path(course.path()).rglob("*"):
             if not os.path.isfile(file):
@@ -97,15 +94,13 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
             if len(possible) == 0:
                 corrupted_file_prompt(file)
 
-            elif len(possible) == 1 and not check_every_file:
+            elif len(possible) == 1:
                 added_num_step_1 += not prep_container_and_dump(possible[0], file)
 
             else:
                 files_to_download[file].extend(possible)
 
     def check_multiple(file: Path, containers: List[PreMediaContainer]) -> int:
-        assert helper.session is not None
-
         checksums: Dict[str, Tuple[int, PreMediaContainer]] = {}
         for item in containers:
             checksum, size = item.calculate_online_checksum(helper.session)
@@ -146,22 +141,14 @@ def restore_database_state(helper: RequestHelper, check_every_file: bool) -> Non
 
 
 def main() -> None:
-    prev_asked = config_helper.get_other_files_in_working_location()
-    if prev_asked is None:
-        choice = get_input(f"Are your personal files part of the directory {path(course_dir_location)!r}\n(Choosing yes will slow down the process of synchronizing)\n\n[y/n] ", {"y", "n"})
-        print()
-        second_choice = get_input("Do you want me to remember this option? [y/n] ", {"y", "n"})
-        if second_choice == "y":
-            config_helper.set_other_files_in_working_location(choice)
-    else:
-        choice = prev_asked
-
     user = get_credentials()
     request_helper = RequestHelper(user)
 
-    restore_database_state(request_helper, choice == "y")
+    restore_database_state(request_helper)
     delete_missing_files_from_database()
 
 
-if __name__ == '__main__':
+# TODO: Testing what happens when randomly inserting files
+
+if __name__ == "__main__":
     main()

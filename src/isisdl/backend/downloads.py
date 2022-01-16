@@ -19,7 +19,7 @@ import requests
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name, logger
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
 from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate
 
@@ -84,7 +84,7 @@ class SessionWithKey(Session):
                 return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-                logger.warning(f"ISIS is complaining about the number of downloads (I am ignoring it). Consider dropping the thread count. Sleeping for {sleep_time_for_isis}s")
+                # TODO: Server
                 time.sleep(sleep_time_for_isis)
                 i += 1
 

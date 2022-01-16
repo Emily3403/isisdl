@@ -4,8 +4,8 @@ from getpass import getpass
 from typing import List, Tuple, Optional, Union
 
 from isisdl.backend.crypt import encryptor
-from isisdl.backend.utils import config_helper, get_input, clear, User, path
-from isisdl.settings import is_first_time, is_windows, config_clear_screen, is_testing, database_file_location
+from isisdl.backend.utils import config_helper, get_input, User, path, clear
+from isisdl.settings import is_first_time, is_windows, is_testing, database_file_location, config_clear_screen
 
 explanation_depth = "2"
 indent = "    "
