@@ -300,15 +300,17 @@ class RequestHelper:
                 videos.extend(item[1])
 
         else:
-            # TODO: test
             mod_assign = self.download_mod_assign()
             documents, videos = [], []
             for course in self.courses:
                 documents.extend(course.download_documents(self))
                 videos.extend(course.download_videos(self.session))
 
-        # First all documents will get downloaded
-        return documents + mod_assign + videos
+        def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
+            return sorted(lst, key=lambda x: x.time, reverse=True)
+
+        # Download the newest files first
+        return sort(documents) + sort(mod_assign) + sort(videos)
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
         if args.disable_documents:
