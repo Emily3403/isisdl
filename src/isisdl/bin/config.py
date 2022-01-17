@@ -3,6 +3,7 @@ import sys
 from getpass import getpass
 from typing import List, Tuple, Optional, Union
 
+from isisdl.backend.downloads import SessionWithKey
 from isisdl.backend.crypt import encryptor
 from isisdl.backend.utils import config_helper, get_input, User, path, clear
 from isisdl.settings import is_first_time, is_windows, is_testing, database_file_location, config_clear_screen
@@ -73,9 +74,16 @@ def authentication_prompt() -> None:
     if choice == "2" or choice == prev_choice:
         return
 
-    print("Please provide authentication for ISIS.")
-    username = input("Username: ")
-    password = getpass("Password: ")
+    while True:
+        print("Please provide authentication for ISIS.")
+        username = input("Username: ")
+        password = getpass("Password: ")
+
+        worked = SessionWithKey.from_scratch(User(username, password))
+        if worked is not None:
+            break
+
+        print("\nISIS does not accept the password. Please try again!\n")
 
     config_helper.set_user(username)
     if choice == "0":

@@ -120,7 +120,7 @@ class Course:
         if videos_json["error"]:
             return []
 
-        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["timecreated"], size=item["duration"])
+        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=item["duration"])
                 for item in videos_json["data"]["videos"]]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
@@ -221,7 +221,12 @@ class RequestHelper:
     _meta_info: Dict[str, str] = field(default_factory=lambda: {})
 
     def __post_init__(self) -> None:
-        self.session = SessionWithKey.from_scratch(self.user)
+        temp = SessionWithKey.from_scratch(self.user)
+        if temp is None:
+            print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
+            exit(42)
+
+        self.session = temp
 
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
         self._get_courses()

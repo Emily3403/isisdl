@@ -34,7 +34,7 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User) -> SessionWithKey:
+    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
         s = cls("", "")
         s.headers.update({"User-Agent": "UwU"})
 
@@ -50,8 +50,7 @@ class SessionWithKey(Session):
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
-            print(f"I had a problem getting the {user = !s}. You have probably entered the wrong credentials.\nBailing out…")
-            exit(42)
+            return None
 
         # Extract the session key
         key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
