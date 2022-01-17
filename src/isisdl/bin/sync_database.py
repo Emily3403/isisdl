@@ -32,7 +32,7 @@ def delete_missing_files_from_database() -> None:
             database_helper.delete_by_checksum(item)
 
     num = sum(len(row) for row in checksums.values())
-    print(f"Deleted {num} corruped entr{'ies' if num != 1 else 'y'} from the database to be redownloaded.")
+    print(f"Deleted {num} entr{'ies' if num != 1 else 'y'} from the database to be re-downloaded.")
 
 
 def prep_container_and_dump(container: PreMediaContainer, file: Path) -> bool:

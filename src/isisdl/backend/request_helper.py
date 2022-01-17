@@ -96,9 +96,6 @@ class Course:
         return cls(name, id)
 
     def __post_init__(self) -> None:
-        self.prepare_dirs()
-
-    def prepare_dirs(self) -> None:
         for item in MediaType.list_dirs():
             os.makedirs(self.path(item), exist_ok=True)
 

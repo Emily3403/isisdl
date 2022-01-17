@@ -136,7 +136,7 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     # Now start to add chars that don't fit.
     char_string = ""
 
-    if filename_scheme >= "0":
+    if filename_scheme == "0":
         if is_windows:
             for char in "<>:\"/\\|?*":
                 name = name.replace(char, "")
@@ -145,11 +145,10 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
         else:
             return name.replace("/", "")
 
-    if filename_scheme >= "1":
-        # Now replace any remaining funny symbols with a `?`
-        name = name.encode("ascii", errors="replace").decode()
+    # Now replace any remaining funny symbols with a `?`
+    name = name.encode("ascii", errors="replace").decode()
 
-        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
+    char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
 
     name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
