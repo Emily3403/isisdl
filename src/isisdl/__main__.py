@@ -47,5 +47,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    database_helper.get_state()
     main()
