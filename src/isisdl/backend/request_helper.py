@@ -221,6 +221,7 @@ class RequestHelper:
     _meta_info: Dict[str, str] = field(default_factory=lambda: {})
 
     def __post_init__(self) -> None:
+        assert pre_status is not None
         temp = SessionWithKey.from_scratch(self.user, pre_status)
         if temp is None:
             print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
@@ -271,6 +272,7 @@ class RequestHelper:
         return response.json()
 
     def download_content(self) -> List[PreMediaContainer]:
+        assert pre_status is not None
         pre_status.set_status(PreStatusInfo.content)
 
         # The number of threads that are going to spawn
@@ -279,18 +281,21 @@ class RequestHelper:
         def download_videos(ret: List[PreMediaContainer], course: Course, session: SessionWithKey) -> None:
             ret.extend(course.download_videos(session))
 
+            assert pre_status is not None
             assert pre_status.status == PreStatusInfo.content
             pre_status.status.value.append(None)
 
         def download_documents(ret: List[PreMediaContainer], course: Course) -> None:
             ret.extend(course.download_documents(self))
 
+            assert pre_status is not None
             assert pre_status.status == PreStatusInfo.content
             pre_status.status.value.append(None)
 
         def download_mod_assign(ret: List[PreMediaContainer]) -> None:
             ret.extend(self.download_mod_assign())
 
+            assert pre_status is not None
             assert pre_status.status == PreStatusInfo.content
             pre_status.status.value.append(None)
 
@@ -391,6 +396,8 @@ class CourseDownloader:
         self.user = user
 
     def start(self) -> None:
+        global pre_status
+        pre_status = PreStatus()
         pre_status.set_status(PreStatusInfo.authenticating0)
         self.make_helper()
 
@@ -470,7 +477,6 @@ class CourseDownloader:
             time.sleep(0.25)
 
 
-pre_status = PreStatus()
-pre_status.start()
+pre_status: Optional[PreStatus] = None
 status: Optional[Status] = None
 downloading_files: Optional[List[MediaContainer]] = None
