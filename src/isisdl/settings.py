@@ -67,6 +67,9 @@ hash_length = 32
 
 # < Status options >
 
+# The first progress bar has a bigger resolution
+bigger_progress_bar_resolution = 100
+
 # The number of places the progress bar has.
 progress_bar_resolution = 10
 

@@ -12,7 +12,7 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler
+from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation
 from isisdl.settings import course_dir_location, enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
 
@@ -221,14 +221,17 @@ class RequestHelper:
     _meta_info: Dict[str, str] = field(default_factory=lambda: {})
 
     def __post_init__(self) -> None:
-        temp = SessionWithKey.from_scratch(self.user)
+        temp = SessionWithKey.from_scratch(self.user, pre_status)
         if temp is None:
             print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
             exit(42)
 
         self.session = temp
 
+        pre_status.set_status(PreStatusInfo.get_info)
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
+
+        pre_status.set_status(PreStatusInfo.get_courses)
         self._get_courses()
 
         if args.verbose:
@@ -268,14 +271,28 @@ class RequestHelper:
         return response.json()
 
     def download_content(self) -> List[PreMediaContainer]:
+        pre_status.set_status(PreStatusInfo.content)
+
+        # The number of threads that are going to spawn
+        pre_status.set_max_content(len(self.courses) * 2 + 1)
+
         def download_videos(ret: List[PreMediaContainer], course: Course, session: SessionWithKey) -> None:
             ret.extend(course.download_videos(session))
+
+            assert pre_status.status == PreStatusInfo.content
+            pre_status.status.value.append(None)
 
         def download_documents(ret: List[PreMediaContainer], course: Course) -> None:
             ret.extend(course.download_documents(self))
 
+            assert pre_status.status == PreStatusInfo.content
+            pre_status.status.value.append(None)
+
         def download_mod_assign(ret: List[PreMediaContainer]) -> None:
             ret.extend(self.download_mod_assign())
+
+            assert pre_status.status == PreStatusInfo.content
+            pre_status.status.value.append(None)
 
         if enable_multithread:
             collect: List[Tuple[List[PreMediaContainer], List[PreMediaContainer]]] = [([], []) for _ in range(len(self.courses))]
@@ -303,10 +320,13 @@ class RequestHelper:
 
         else:
             mod_assign = self.download_mod_assign()
+            pre_status.status.value.append(None)
             documents, videos = [], []
             for course in self.courses:
                 documents.extend(course.download_documents(self))
+                pre_status.status.value.append(None)
                 videos.extend(course.download_videos(self.session))
+                pre_status.status.value.append(None)
 
         def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
             return sorted(lst, key=lambda x: x.time, reverse=True)
@@ -371,6 +391,7 @@ class CourseDownloader:
         self.user = user
 
     def start(self) -> None:
+        pre_status.set_status(PreStatusInfo.authenticating0)
         self.make_helper()
 
         pre_containers = self.build_files()
@@ -390,6 +411,7 @@ class CourseDownloader:
         status = Status(len(media_containers), args.num_threads, throttler)
         downloader = Thread(target=self.download_files, args=(media_containers, throttler))
 
+        pre_status.stop()
         downloader.start()
         status.start()
 
@@ -448,5 +470,7 @@ class CourseDownloader:
             time.sleep(0.25)
 
 
+pre_status = PreStatus()
+pre_status.start()
 status: Optional[Status] = None
 downloading_files: Optional[List[MediaContainer]] = None

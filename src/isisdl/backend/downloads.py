@@ -21,7 +21,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
 from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate
+    download_timeout_multiplier, token_queue_download_refresh_rate, bigger_progress_bar_resolution
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -34,19 +34,31 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User, status: Optional[PreStatus] = None) -> Optional[SessionWithKey]:
         s = cls("", "")
-        s.headers.update({"User-Agent": "UwU"})
+
+        if status:
+            status.set_status(PreStatusInfo.authenticating0)
+
+        s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+
+        if status:
+            status.set_status(PreStatusInfo.authenticating1)
 
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
                data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
                      "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
                      "shib_idp_ls_supported": "", "_eventId_proceed": "", })
 
+        if status:
+            status.set_status(PreStatusInfo.authenticating3)
         response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                           params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
+
+        if status:
+            status.set_status(PreStatusInfo.authenticating4)
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -70,6 +82,8 @@ class SessionWithKey(Session):
         except InvalidSchema as ex:
             token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
 
+        if status:
+            status.set_status(PreStatusInfo.authenticating5)
         s.key = key
         s.token = token
 
@@ -279,6 +293,10 @@ class MediaContainer:
         else:
             percent = self.curr_size / self.size
 
+        # Sometimes this bug happens… I don't know why
+        if percent > 1:
+            percent = 1
+
         progress_chars = int(percent * progress_bar_resolution)
         return "╶" + "█" * progress_chars + " " * (progress_bar_resolution - progress_chars) + "╴"
 
@@ -368,22 +386,110 @@ class Status(Thread):
             if self._shutdown:
                 log_strings.extend(["", "Please wait for the downloads to finish…"])
 
-            # Now sanitize the output
-            width = shutil.get_terminal_size().columns
+            self.last_text_len = print_status_message(log_strings, self.last_text_len)
 
-            def maybe_chop_off(item: str) -> str:
-                if len(item) > width - status_chop_off + 1:
-                    return item[:width - status_chop_off] + "." * status_chop_off
-                return item.ljust(width)
 
-            for i, item in enumerate(log_strings):
-                log_strings[i] = maybe_chop_off(item)
+class PreStatusInfo(enum.Enum):
+    startup = 0
+    authenticating0 = 5
+    authenticating1 = 10
+    authenticating2 = 15
+    authenticating3 = 30
+    authenticating4 = 40
+    authenticating5 = 50
 
-            if self.last_text_len:
-                # Erase all previous chars
-                print(f"\033[{self.last_text_len}A\r", end="")
+    get_info = 55
+    get_courses = 60
 
-            final_str = "\n".join(log_strings)
-            self.last_text_len = final_str.count("\n") + 1
+    content: Any = []
+    get_content = 40
 
-            print(final_str)
+    done = 100
+
+
+class PreStatus(Thread):
+    def __init__(self) -> None:
+        self._running = True
+        self.last_text_len = 0
+        self.status = PreStatusInfo.startup
+        self.i = 0
+        self.max_content = 0
+
+        super().__init__(daemon=True)
+
+    def set_status(self, status: PreStatusInfo) -> None:
+        self.status = status
+        self.i = 0
+
+    def set_max_content(self, num: int) -> None:
+        self.max_content = num
+
+    def run(self) -> None:
+        while self._running:
+            time.sleep(status_time)
+
+            log_strings: List[str] = []
+
+            if self.status == PreStatusInfo.startup:
+                message = "Starting up"
+
+            elif self.status.name.startswith("authenticating"):
+                message = "Authenticating with ISIS"
+
+            elif self.status == PreStatusInfo.get_info:
+                message = "Getting information about the User"
+
+            elif self.status == PreStatusInfo.get_courses:
+                message = "Getting information about the Courses"
+
+            elif self.status == PreStatusInfo.content:
+                message = "Getting the content of the Courses"
+
+            else:
+                message = ""
+
+            log_strings.append(f"{message} {'.' * (self.i % 4)}")
+
+            log_strings.append("")
+
+            if isinstance(self.status.value, int):
+                perc_done = int(self.status.value / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+            elif isinstance(self.status.value, list):
+                assert self.max_content > 0
+                threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
+                perc_done = int((PreStatusInfo.get_courses.value + threads_finished_perc) / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+            else:
+                perc_done = 0
+
+            log_strings.append(f"[{'█' * perc_done}{' ' * (bigger_progress_bar_resolution - perc_done)}]")
+
+            self.last_text_len = print_status_message(log_strings, self.last_text_len)
+
+            self.i += 1
+
+    def stop(self) -> None:
+        self._running = False
+
+
+def print_status_message(strings: List[str], last_text_len: int) -> int:
+    # Now sanitize the output
+    width = shutil.get_terminal_size().columns
+
+    def maybe_chop_off(item: str) -> str:
+        if len(item) > width - status_chop_off + 1:
+            return item[:width - status_chop_off] + "." * status_chop_off
+        return item.ljust(width)
+
+    for i, item in enumerate(strings):
+        strings[i] = maybe_chop_off(item)
+
+    if last_text_len:
+        # Erase all previous chars
+        print(f"\033[{last_text_len}A\r", end="")
+
+    final_str = "\n".join(strings)
+    last_text_len = final_str.count("\n") + 1
+
+    print(final_str)
+
+    return last_text_len
