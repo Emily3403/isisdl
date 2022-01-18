@@ -4,30 +4,32 @@ import re
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-from typing import Optional
+from typing import Optional, Union
+from packaging import version
 
 import requests
+from packaging.version import Version, LegacyVersion
 
 from isisdl.backend.utils import config_helper
 from isisdl.version import __version__
 
 
-def check_pypi_for_version() -> Optional[str]:
+def check_pypi_for_version() -> Optional[Union[LegacyVersion, Version]]:
     # Inspired from https://pypi.org/project/pypi-search
     to_search = requests.get("https://pypi.org/project/isisdl/").text
-    version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
+    found_version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
 
-    if version is None:
+    if found_version is None:
         return None
 
-    groups = version.groups()
+    groups = found_version.groups()
     if groups is None or len(groups) != 1:
         return None
 
-    return groups[0].split()[1]
+    return version.parse(groups[0].split()[1])
 
 
-def check_github_for_version() -> Optional[str]:
+def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
     badge = requests.get("https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg").text
     if "passing" not in badge:
         return None
@@ -36,11 +38,11 @@ def check_github_for_version() -> Optional[str]:
     if not res.ok:
         return None
 
-    version = re.match("__version__ = \"(.*)?\"", res.text)
-    if version is None:
+    found_version = re.match("__version__ = \"(.*)?\"", res.text)
+    if found_version is None:
         return None
 
-    return version.group(1)
+    return version.parse(found_version.group(1))
 
 
 def install_latest_version() -> None:
@@ -56,7 +58,7 @@ def install_latest_version() -> None:
     if correct_version is None:
         return
 
-    if correct_version > __version__:
+    if correct_version > version.parse(__version__):
         print(f"\nThere is a new version available: {correct_version} (current: {__version__}).")
         print("According to your update policy I will auto-install it.\n")
 
