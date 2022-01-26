@@ -12,14 +12,14 @@ from pymediainfo import MediaInfo
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
 from isisdl.backend.utils import path, calculate_local_checksum, database_helper, calculate_online_checksum_file
-from isisdl.settings import course_dir_location, enable_multithread, sync_database_num_threads
+from isisdl.settings import enable_multithread, sync_database_num_threads, is_autorun
 
 
 def delete_missing_files_from_database() -> None:
     checksums = database_helper.get_checksums_per_course()
 
-    for course in os.listdir(path(course_dir_location)):
-        for file in Path(path(course_dir_location, course)).rglob("*"):
+    for course in os.listdir(path()):
+        for file in Path(path(course)).rglob("*"):
             if file.is_file():
                 correct_course = checksums[course]
                 try:
@@ -141,6 +141,9 @@ def restore_database_state(helper: RequestHelper) -> None:
 
 
 def main() -> None:
+    if is_autorun:
+        exit(127)
+
     user = get_credentials()
     request_helper = RequestHelper(user)
 

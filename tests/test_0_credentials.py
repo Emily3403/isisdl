@@ -5,7 +5,7 @@ from typing import Tuple, Any
 
 from isisdl.backend.crypt import get_credentials, encryptor
 from isisdl.settings import env_var_name_username, env_var_name_password
-from isisdl.backend.utils import config_helper
+from isisdl.backend.utils import config
 
 
 def _generate_random_string() -> str:
@@ -17,6 +17,18 @@ def generate_user() -> Tuple[str, str]:
     return _generate_random_string(), _generate_random_string()
 
 
+backup_config = {}
+
+
+def set_config(key, value):
+    backup_config[key] = config[key]
+    config[key] = value
+
+def unset_config():
+    for key in list(backup_config.keys()):
+        config[key] = backup_config[key]
+        del backup_config[key]
+
 def do_get_credentials(username: str, password: str) -> None:
     user = get_credentials()
 
@@ -25,43 +37,55 @@ def do_get_credentials(username: str, password: str) -> None:
 
 
 def test_environment_variables(monkeypatch: Any) -> None:
-    """
-    Verifies that the environment is capable of handling all ascii characters
-    """
-
     username, password = generate_user()
-    os.environ[env_var_name_username] = username
-    os.environ[env_var_name_password] = password
+    monkeypatch.setenv(env_var_name_username, username)
+    monkeypatch.setenv(env_var_name_password, password)
 
     do_get_credentials(username, password)
-
-    del os.environ[env_var_name_username]
-    del os.environ[env_var_name_password]
 
 
 def test_get_user_clean() -> None:
     username, password = generate_user()
-    config_helper.set_user(username)
-    config_helper.set_clear_password(password)
+
+    set_config("username", username)
+    set_config("password", password)
+    set_config("password_encrypted", False)
 
     do_get_credentials(username, password)
 
-    config_helper.delete_config()
+    unset_config()
+
 
 
 def test_get_user_encrypted(monkeypatch: Any) -> None:
     username, password = generate_user()
-
     user_pass = _generate_random_string()
-    config_helper.set_encrypted_password(encryptor(user_pass, password))
+    stored_password = encryptor(user_pass, password)
 
-    config_helper.set_user(username)
-
+    set_config("username", username)
+    set_config("password", stored_password)
+    set_config("password_encrypted", True)
     monkeypatch.setattr("getpass.getpass", lambda _: user_pass)
 
     do_get_credentials(username, password)
 
-    config_helper.delete_config()
+    unset_config()
+
+def test_get_user_encrypted_bad_password(monkeypatch: Any) -> None:
+    username, password = generate_user()
+    user_pass = _generate_random_string()
+    stored_password = encryptor(user_pass, password)
+
+    set_config("username", username)
+    set_config("password", stored_password)
+    set_config("password_encrypted", True)
+    responses = iter(["saltysalt", user_pass])
+    monkeypatch.setattr("getpass.getpass", lambda _: next(responses))
+
+    do_get_credentials(username, password)
+
+    unset_config()
+
 
 
 def test_manual_input(monkeypatch: Any) -> None:

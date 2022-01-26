@@ -1,9 +1,11 @@
 """
 This file is concerned with how to download an actual file given an url.
 """
+
 from __future__ import annotations
 
 import enum
+import math
 import os
 import shutil
 import time
@@ -12,19 +14,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
+from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast, Union
 
-import math
 import requests
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
-from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, bigger_progress_bar_resolution
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
+from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
+    download_timeout_multiplier, token_queue_download_refresh_rate, first_progress_bar_resolution
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
+
+
+class Dummy:
+    def set_status(self, _: Any) -> None:
+        return
 
 
 class SessionWithKey(Session):
@@ -34,31 +40,30 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User, status: Optional[PreStatus] = None) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User, status: Union[PreStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
         s = cls("", "")
-
-        if status:
-            status.set_status(PreStatusInfo.authenticating0)
-
         s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
+        status.set_status(PreStatusInfo.authenticating0)
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating1)
-
+        status.set_status(PreStatusInfo.authenticating1)
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-               data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
-                     "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                     "shib_idp_ls_supported": "", "_eventId_proceed": "", })
+               data={
+                   "shib_idp_ls_exception.shib_idp_session_ss": "",
+                   "shib_idp_ls_success.shib_idp_session_ss": "false",
+                   "shib_idp_ls_value.shib_idp_session_ss": "",
+                   "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                   "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                   "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                   "shib_idp_ls_supported": "", "_eventId_proceed": "",
+               })
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating3)
+        status.set_status(PreStatusInfo.authenticating3)
         response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                           params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating4)
+        status.set_status(PreStatusInfo.authenticating4)
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -82,8 +87,6 @@ class SessionWithKey(Session):
         except InvalidSchema as ex:
             token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating5)
         s.key = key
         s.token = token
 
@@ -96,7 +99,7 @@ class SessionWithKey(Session):
             try:
                 return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
-            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+            except Exception:
                 # TODO: Server
                 time.sleep(sleep_time_for_isis)
                 i += 1
@@ -135,7 +138,7 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
-        self.download_rate: Optional[int] = args.download_rate or config_helper.get_throttle_rate()
+        self.download_rate: Optional[int] = args.download_rate or config["throttle_rate"]
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -264,7 +267,14 @@ class MediaContainer:
             while True:
                 token = throttler.get()
 
-                new = running_download.raw.read(token.num_bytes, decode_content=True)
+                while True:
+                    try:
+                        new = running_download.raw.read(token.num_bytes, decode_content=True)
+                        break
+
+                    except Exception:
+                        pass
+
                 if len(new) == 0:
                     # No file left
                     break
@@ -297,8 +307,8 @@ class MediaContainer:
         if percent > 1:
             percent = 1
 
-        progress_chars = int(percent * progress_bar_resolution)
-        return "╶" + "█" * progress_chars + " " * (progress_bar_resolution - progress_chars) + "╴"
+        progress_chars = int(percent * download_progress_bar_resolution)
+        return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
 
     def __hash__(self) -> int:
         # The url is known and unique. No need to store an extra field "checksum".
@@ -393,10 +403,9 @@ class PreStatusInfo(enum.Enum):
     startup = 0
     authenticating0 = 5
     authenticating1 = 10
-    authenticating2 = 15
-    authenticating3 = 30
-    authenticating4 = 40
-    authenticating5 = 50
+    authenticating2 = 20
+    authenticating3 = 25
+    authenticating4 = 45
 
     get_info = 55
     get_courses = 60
@@ -453,15 +462,17 @@ class PreStatus(Thread):
             log_strings.append("")
 
             if isinstance(self.status.value, int):
-                perc_done = int(self.status.value / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+                perc_done = int(self.status.value / PreStatusInfo.done.value * first_progress_bar_resolution)
+
             elif isinstance(self.status.value, list):
                 assert self.max_content > 0
                 threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
-                perc_done = int((PreStatusInfo.get_courses.value + threads_finished_perc) / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+                perc_done = int((PreStatusInfo.get_courses.value + threads_finished_perc) / PreStatusInfo.done.value * first_progress_bar_resolution)
+
             else:
                 perc_done = 0
 
-            log_strings.append(f"[{'█' * perc_done}{' ' * (bigger_progress_bar_resolution - perc_done)}]")
+            log_strings.append(f"[{'█' * perc_done}{' ' * (first_progress_bar_resolution - perc_done)}]")
 
             self.last_text_len = print_status_message(log_strings, self.last_text_len)
 

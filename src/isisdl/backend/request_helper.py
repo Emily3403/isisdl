@@ -13,8 +13,8 @@ from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation
-from isisdl.settings import course_dir_location, enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
+from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation, config
+from isisdl.settings import enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
 
 
 @dataclass
@@ -178,10 +178,8 @@ class Course:
         return all_content
 
     def path(self, *args: str) -> str:
-        """
-        Custom path function that prepends the args with the `download_dir` and course name.
-        """
-        return path(course_dir_location, sanitize_name(self.name), *args)
+        # Custom path function that prepends the args with the course name.
+        return path(sanitize_name(self.name), *args)
 
     @property
     def ok(self) -> bool:
@@ -221,13 +219,12 @@ class RequestHelper:
     _meta_info: Dict[str, str] = field(default_factory=lambda: {})
 
     def __post_init__(self) -> None:
-
-        temp = SessionWithKey.from_scratch(self.user, pre_status)
-        if temp is None:
+        session = SessionWithKey.from_scratch(self.user, pre_status)
+        if session is None:
             print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
             exit(42)
 
-        self.session = temp
+        self.session = session
 
         pre_status.set_status(PreStatusInfo.get_info)
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
@@ -393,10 +390,9 @@ class CourseDownloader:
 
     def start(self) -> None:
         pre_status.start()
-        pre_status.set_status(PreStatusInfo.authenticating0)
-        self.make_helper()
+        self.helper = RequestHelper(self.user)
 
-        pre_containers = self.build_files()
+        pre_containers = self.helper.download_content()
 
         check_for_conflicts_in_files(pre_containers)
 
@@ -419,14 +415,6 @@ class CourseDownloader:
 
         downloader.join()
         status.join(0)
-
-    def make_helper(self) -> None:
-        self.helper = RequestHelper(self.user)
-
-    def build_files(self) -> List[PreMediaContainer]:
-        assert self.helper is not None
-
-        return self.helper.download_content()
 
     def make_files(self, files: List[PreMediaContainer]) -> List[MediaContainer]:
         assert self.helper is not None
@@ -456,7 +444,7 @@ class CourseDownloader:
                 download(file)
 
     @staticmethod
-    @on_kill()
+    @on_kill(2)
     def shutdown_running_downloads(*_: Any) -> None:
         if downloading_files is None:
             return

@@ -6,8 +6,8 @@ from pytest import fixture
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import startup, path, User, config_helper
-from isisdl.settings import is_windows, course_dir_location
+from isisdl.backend.utils import startup, path, User
+from isisdl.settings import is_windows, database_file_location
 
 
 def pytest_configure() -> None:
@@ -16,9 +16,11 @@ def pytest_configure() -> None:
 
 
 def pytest_unconfigure() -> None:
-    config_helper.close_connection()
-    if is_windows:
-        shutil.rmtree(path(course_dir_location))
+    # config_helper.close_connection()  TODO
+    if is_windows or True:
+        for file in os.listdir(path()):
+            if file != database_file_location:
+                shutil.rmtree(path(file))
     else:
         shutil.rmtree(path())
 

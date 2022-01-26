@@ -1,25 +1,22 @@
 import base64
 import getpass
 import os
-from typing import Optional
+from typing import Optional, cast
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.settings import hash_algorithm, hash_length, hash_iterations, env_var_name_username, env_var_name_password
-from isisdl.backend.utils import User, config_helper
+from isisdl.backend.utils import User, config
+from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password
 
 
 def generate_key(password: str) -> bytes:
     # You might notice that the salt is empty. This is a deliberate decision.
-    # In this scenario the encrypted file and password file are stored in the same directory.
-    # Thus, if a hacker gains access they probably will have access to the salt file as well.
-
-    # As the application is distributed on a local system basis the risc of a data-breach is comparatively low:
-    # A hacker might only ever gain access to a single encrypted file.
+    # Since the salt file only protects against brute forcing of multiple passwords
+    # and the password file is limited to a single system (no central storage) it doesn't make sense to include it.
     salt = b""
 
-    kdf = PBKDF2HMAC(algorithm=hash_algorithm(), length=hash_length, salt=salt, iterations=hash_iterations)
+    kdf = PBKDF2HMAC(algorithm=password_hash_algorithm(), length=password_hash_length, salt=salt, iterations=password_hash_iterations)
 
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
@@ -37,6 +34,12 @@ def decryptor(password: str, content: str) -> Optional[str]:
     except InvalidToken:
         return None
 
+def store_user(user: User, password: Optional[str] = None):
+    encrypted = encryptor(password or master_password, user.password)
+
+    config["username"] = user.username
+    config["password_encrypted"] = bool(password)
+    config["password"] = encrypted
 
 def get_credentials() -> User:
     """
@@ -50,21 +53,24 @@ def get_credentials() -> User:
         return User(username, password)
 
     # Now query the database
-    username = config_helper.get_user()
-    clear_password = config_helper.get_clear_password()
-    encrypted_password = config_helper.get_encrypted_password()
+    username = cast(Optional[str], config["username"])
+    password = cast(Optional[str], config["password"])
+    user_store_encrypted = cast(bool, config["password_encrypted"])
 
-    if username is not None and clear_password is not None:
-        return User(username, clear_password)
+    if username is not None and password is not None:
+        if not user_store_encrypted:
+            return User(username, decryptor(master_password, password))
 
-    if username is not None and encrypted_password is not None:
-        user_password = getpass.getpass("Please enter the password you encrypted your password with: ")
+        while True:
+            user_password = getpass.getpass("Please enter the passphrase: ")
+            actual_password = decryptor(user_password, password)
+            if actual_password is None:
+                print("Your password is incorrect. Try again\n")
+            else:
+                return User(username, actual_password)
 
-        password = decryptor(user_password, encrypted_password)
-        if password is None:
-            print("Your password is incorrect. Please enter your login information manually (or restart me)!")
-        else:
-            return User(username, password)
+    if is_autorun:
+        exit(127)
 
     # If nothing is found prompt the user
     print("Please provide authentication for ISIS.")

@@ -7,26 +7,28 @@ import os
 import random
 import signal
 import string
-import sys
+from configparser import ConfigParser
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING
+from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, Mapping, TypeVar
 from urllib.parse import unquote
 
 import colorama
+from yaml import safe_load
 
 import isisdl
-from isisdl.backend.database_helper import DatabaseHelper, ConfigHelper
-from isisdl.settings import working_dir_location, is_windows, settings_file_location, course_dir_location, intern_dir_location, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    testing_download_video_size, testing_download_documents_size
+from isisdl.backend.database_helper import DatabaseHelper
+from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
+    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, status_chop_off, sync_database_num_threads, \
+    first_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
 
 
-def get_args_main() -> argparse.Namespace:
+def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all courses from your ISIS page.""")
 
@@ -76,38 +78,123 @@ def get_args_main() -> argparse.Namespace:
     return the_args
 
 
-def get_args(file: str) -> argparse.Namespace:
-    return get_args_main()
+def get_default_config() -> Dict[str, Union[str, bool, None]]:
+    return {
+        "password_encrypted": False,
+        "username": None,
+        "password": None,
+        "filename_replacing": False,
+        "throttle_rate": None,
+        "update_policy": "pip",
+        "telemetry_policy": True,
+    }
+
+
+_KT = TypeVar("_KT")  # key type
+_VT = TypeVar("_VT")  # value type
+
+
+class Config(dict, Mapping[_KT, _VT]):  # type: ignore
+    def __setitem__(self, key: str, value: Union[bool, str, None]) -> None:
+        super().__setitem__(key, value)
+        database_helper.set_config(self)
+
+
+def get_config() -> Config[str, Union[bool, str, None]]:
+    default_config = get_default_config()
+
+    _config_file_data = parse_config_file()
+    config_file_data = {}
+
+    # Only get entries that are present in the default config
+    for k in default_config:
+        if k in _config_file_data:
+            config_file_data[k] = _config_file_data[k]
+
+    if "telemetry_policy" in config_file_data:
+        config_file_data["telemetry_policy"] = "" if config_file_data["telemetry_policy"] is False else "y"
+
+    stored_config = database_helper.get_config()
+
+    return Config({**default_config, **stored_config, **config_file_data})
 
 
 def startup() -> None:
-    def prepare_dir(p: str) -> None:
-        os.makedirs(path(p), exist_ok=True)
+    os.makedirs(path(), exist_ok=True)
+    if not is_windows:
+        os.makedirs(path(config_dir_location), exist_ok=True)
 
-    prepare_dir(course_dir_location)
-    prepare_dir(intern_dir_location)
+    default_config = get_default_config()
 
-    import isisdl
+    def encode(st: Union[str, bool, None]) -> str:
+        if st is None:
+            return "null"
+        elif st is True:
+            return "yes"
+        elif st is False:
+            return "no"
+        return str(st)
 
-    def restore_link() -> None:
-        try:
-            os.remove(other_settings_file)
-        except OSError:
-            pass
+    default_config_str = f"""---
 
-        if not is_windows:
-            # Sym-linking isn't really supported on Windows / not in a uniform way. Thus, I am not doing that.
-            os.symlink(actual_settings_file, other_settings_file)
+# You can overwrite any of the following values by un-commenting them.
+# They will take precedence over *any* otherwise provided value.
 
-    actual_settings_file = os.path.abspath(isisdl.settings.__file__)
-    other_settings_file = path(settings_file_location)
 
-    if os.path.islink(other_settings_file):
-        if os.path.realpath(other_settings_file) != actual_settings_file:
-            restore_link()
-    else:
-        # Damaged link → Either doesn't exist / broken
-        restore_link()
+# The directory where everything lives in.
+# Possible values {{any posix path}}
+#working_dir_location: {working_dir_location}
+
+# The name of the SQlite Database (located in `working_dir_location`).
+# Possible values {{any posix path}}
+#database_file_location: {database_file_location}
+
+
+# The way filenames are handled.
+# Possible values: {{"yes", "no"}}
+#filename_replacing: {encode(default_config["filename_replacing"])}
+
+
+# If a throttle rate should be imposed (in MiB).
+# Possible values {{"null", any integer}}
+#throttle_rate: {encode(default_config["throttle_rate"])}
+
+
+# How updates should be handled.
+# Possible values {{"pip", "github", "no"}}
+#update_policy: {encode(default_config["update_policy"])}
+
+
+# If telemetry data should be collected.
+# Possible values {{"yes", "no"}}
+#telemetry_policy: {encode(default_config["telemetry_policy"])}
+
+
+# The status message is replaced every ↓ seconds. If you are using e.g. alacritty values of 0.01 are possible.
+# Possible values {{any float}}
+#status_time: {status_time}
+
+
+# Number of threads to use for the database requests when `isisdl-sync` is called
+# Possible values {{any integer > 0}}
+#sync_database_num_threads: {sync_database_num_threads}
+
+
+# The number of spaces the first progress bar has
+# Possible values {{any integer > 0}}
+#first_progress_bar_resolution: {first_progress_bar_resolution}
+
+# The number of spaces the second progress bar (for the downloads) has
+# Possible values {{any integer > 0}}
+#download_progress_bar_resolution: {download_progress_bar_resolution}
+    """
+
+    with open(example_config_file_location, "w") as f:
+        f.write(default_config_str)
+
+    if not os.path.exists(config_file_location):
+        with open(config_file_location, "w") as f:
+            f.write(f"# You probably want to start by copying {config_file_location} and adapting it.\n")
 
 
 def clear() -> None:
@@ -126,7 +213,7 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     name = name.strip()
     name = unquote(name)
 
-    filename_scheme = filename_scheme or config_helper.get_or_default_filename_scheme()
+    filename_scheme = filename_scheme or config["filename_scheme"]
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
@@ -155,7 +242,7 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     # This is probably a suboptimal solution, but it works…
     final = list(name)
 
-    whitespaces = set(string.whitespace + "_")
+    whitespaces = set(string.whitespace + "_-")
     i = 0
     while i < len(final):
         char = final[i]
@@ -174,13 +261,13 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     return "".join(final)
 
 
-def get_input(message: str, allowed: Set[str]) -> str:
+def get_input(allowed: Set[str]) -> str:
     while True:
-        choice = input(message)
+        choice = input()
         if choice in allowed:
             break
 
-        print(f"\nUnhandled character: {choice!r} is not in the expected: {allowed}.\nPlease try again:\n\n")
+        print(f"Unhandled character: {choice!r} is not in the expected: {allowed}.\nPlease try again.\n")
 
     return choice
 
@@ -238,6 +325,31 @@ def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
     return decorator
 
 
+def acquire_file_lock_or_exit():
+    if acquire_file_lock():
+        print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance is running, you can delete it.")
+        exit(1)
+
+
+def acquire_file_lock() -> bool:
+    if os.path.exists(path(lock_file_location)):
+        return True
+
+    with open(path(lock_file_location), "w") as f:
+        f.write("UwU")
+
+    return False
+
+
+@on_kill(1)
+def remove_lock_file():
+    if not os.path.exists(path(lock_file_location)):
+        print("I could not remove the Lock file… why?")
+        return
+
+    os.remove(path(lock_file_location))
+
+
 # Shared between modules.
 @dataclass
 class User:
@@ -245,8 +357,11 @@ class User:
     password: str
 
     @staticmethod
-    def sanitize_name(name: str) -> str:
-        # uwu
+    def sanitize_name(name: Optional[str]) -> Optional[str]:
+        if name is None:
+            return None
+
+        # UwU
         if name == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
             return "".join(chr(item) for item in [101, 109, 105, 108, 121, 51, 52, 48, 51])
 
@@ -353,12 +468,17 @@ def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -
     return ret
 
 
+# Don't create startup files
+if is_first_time:
+    if is_autorun:
+        exit(127)
+
 startup()
 OnKill()
 database_helper = DatabaseHelper()
-config_helper = ConfigHelper()
+config = get_config()
 
-args = get_args(os.path.basename(sys.argv[0]))
+args = get_args()
 
 # Windows specific color codes…
 colorama.init()

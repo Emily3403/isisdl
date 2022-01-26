@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
+import isisdl.bin.config as config
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.backend.utils import args, database_helper
-from isisdl.bin.update import install_latest_version
+from isisdl.backend.update import install_latest_version
+from isisdl.backend.utils import args, acquire_file_lock_or_exit
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
-import isisdl.bin.config as config
 
 
 def maybe_print_version_and_exit() -> None:
@@ -19,6 +19,7 @@ def maybe_print_version_and_exit() -> None:
 
 def main() -> None:
     maybe_print_version_and_exit()
+    acquire_file_lock_or_exit()
     install_latest_version()
 
     if is_first_time:
@@ -42,8 +43,12 @@ def main() -> None:
 # TODO:
 #   Autolog to server
 #   H265
+#   GRS not found
+#   Make is_first_time dependent on config table
+#
 #
 #   Maybe systemd timer
+
 
 
 if __name__ == "__main__":

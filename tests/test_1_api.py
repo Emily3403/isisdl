@@ -9,7 +9,6 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import CourseDownloader, RequestHelper, PreMediaContainer
 from isisdl.backend.utils import args, path, calculate_local_checksum
 from isisdl.bin.sync_database import restore_database_state, delete_missing_files_from_database
-from isisdl.settings import course_dir_location
 from tests.conftest import user
 
 

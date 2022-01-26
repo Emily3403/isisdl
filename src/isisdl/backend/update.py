@@ -5,12 +5,12 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from typing import Optional, Union
-from packaging import version
 
 import requests
+from packaging import version
 from packaging.version import Version, LegacyVersion
 
-from isisdl.backend.utils import config_helper
+from isisdl.backend.utils import config
 from isisdl.version import __version__
 
 
@@ -49,7 +49,7 @@ def install_latest_version() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
-    update_policy = config_helper.get_or_default_update_policy()
+    update_policy = config["update_policy"]
     if update_policy == "0":
         return
 
