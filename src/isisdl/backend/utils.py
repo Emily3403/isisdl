@@ -7,8 +7,10 @@ import os
 import random
 import signal
 import string
+import traceback
 from configparser import ConfigParser
 from dataclasses import dataclass
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
@@ -22,11 +24,13 @@ import isisdl
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, status_chop_off, sync_database_num_threads, \
-    first_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location
+    first_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
+    error_directory_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
 
+error_text = "\033[1;91mError!\033[0m"
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
@@ -85,6 +89,7 @@ def get_default_config() -> Dict[str, Union[str, bool, None]]:
         "password": None,
         "filename_replacing": False,
         "throttle_rate": None,
+        "throttle_rate_autorun": None,
         "update_policy": "pip",
         "telemetry_policy": True,
     }
@@ -111,16 +116,18 @@ def get_config() -> Config[str, Union[bool, str, None]]:
         if k in _config_file_data:
             config_file_data[k] = _config_file_data[k]
 
-    if "telemetry_policy" in config_file_data:
-        config_file_data["telemetry_policy"] = "" if config_file_data["telemetry_policy"] is False else "y"
-
     stored_config = database_helper.get_config()
+
+    # TODO: Validate the config
 
     return Config({**default_config, **stored_config, **config_file_data})
 
 
 def startup() -> None:
     os.makedirs(path(), exist_ok=True)
+    if os.path.exists(path(error_directory_location)) and not os.listdir(path(error_directory_location)):
+        os.rmdir(path(error_directory_location))
+
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
 
@@ -158,6 +165,9 @@ def startup() -> None:
 # If a throttle rate should be imposed (in MiB).
 # Possible values {{"null", any integer}}
 #throttle_rate: {encode(default_config["throttle_rate"])}
+
+# The throttle rate for when `isisdl` automatically runs.
+# throttle_rate_autorun: {encode(default_config["throttle_rate_autorun"])}
 
 
 # How updates should be handled.
@@ -208,12 +218,12 @@ def path(*args: str) -> str:
     return os.path.join(working_dir_location, *args)
 
 
-def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
+def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
 
-    filename_scheme = filename_scheme or config["filename_scheme"]
+    replace_filenames = replace_filenames or config["filename_scheme"]
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
@@ -223,7 +233,7 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     # Now start to add chars that don't fit.
     char_string = ""
 
-    if filename_scheme == "0":
+    if replace_filenames is False:
         if is_windows:
             for char in "<>:\"/\\|?*":
                 name = name.replace(char, "")
@@ -240,21 +250,26 @@ def sanitize_name(name: str, filename_scheme: Optional[str] = None) -> str:
     name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
     # This is probably a suboptimal solution, but it works…
-    final = list(name)
+    str_list = list(name)
+    final = []
 
     whitespaces = set(string.whitespace + "_-")
     i = 0
-    while i < len(final):
-        char = final[i]
+    next_upper = False
+    while i < len(str_list):
+        char = str_list[i]
 
-        if char == "\0" or char in whitespaces:
-            final.pop(i)
+        if char == "\0":
+            pass
+        elif char in whitespaces:
+            next_upper = True
 
-            if char in whitespaces:
-                if i < len(final):
-                    final[i] = final[i].upper()
-
-            continue
+        else:
+            if next_upper:
+                final.append(char.upper())
+                next_upper = False
+            else:
+                final.append(char)
 
         i += 1
 
@@ -267,7 +282,7 @@ def get_input(allowed: Set[str]) -> str:
         if choice in allowed:
             break
 
-        print(f"Unhandled character: {choice!r} is not in the expected: {allowed}.\nPlease try again.\n")
+        print(f"Unhandled character: {choice!r} is not in the expected {allowed}.\nPlease try again.\n")
 
     return choice
 
@@ -301,15 +316,15 @@ class OnKill:
 
             os._exit(sig)
 
+        for _ in range(OnKill._funcs.qsize()):
+            OnKill._funcs.get_nowait()[1]()
+
         if sig is not None:
             sig = signal.Signals(sig)
             if isisdl.backend.request_helper.downloading_files:
                 OnKill._already_killed = True
             else:
                 os._exit(sig.value)
-
-        for _ in range(OnKill._funcs.qsize()):
-            OnKill._funcs.get_nowait()[1]()
 
 
 def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
@@ -325,13 +340,10 @@ def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
     return decorator
 
 
-def acquire_file_lock_or_exit():
-    if acquire_file_lock():
-        print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance is running, you can delete it.")
-        exit(1)
-
-
 def acquire_file_lock() -> bool:
+    if not enable_lock:
+        return False
+
     if os.path.exists(path(lock_file_location)):
         return True
 
@@ -341,8 +353,27 @@ def acquire_file_lock() -> bool:
     return False
 
 
+def acquire_file_lock_or_exit() -> None:
+    if acquire_file_lock():
+        print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance is running, you may delete it.")
+
+        if is_autorun:
+            exit(1)
+
+        print("\nIf you want, I can also delete it for you.\nDo you want me to do that? [y/n]")
+        choice = get_input({"y", "n"})
+        if choice == "y":
+            os.remove(path(lock_file_location))
+            acquire_file_lock()
+        else:
+            exit(1)
+
+
 @on_kill(1)
-def remove_lock_file():
+def remove_lock_file() -> None:
+    if not enable_lock:
+        return
+
     if not os.path.exists(path(lock_file_location)):
         print("I could not remove the Lock file… why?")
         return
@@ -369,7 +400,7 @@ class User:
 
     @property
     def sanitized_username(self) -> str:
-        return self.sanitize_name(self.username)
+        return self.sanitize_name(self.username) or ""
 
     def __repr__(self) -> str:
         return f"{self.sanitized_username}: {self.password}"
@@ -468,10 +499,25 @@ def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -
     return ret
 
 
+def generate_error_message() -> None:
+    print("\nI have encountered the following Exception. I'm sorry this happened 😔\n")
+    print(traceback.format_exc())
+
+    file_location = path(error_directory_location, datetime.now().strftime(error_file_location))
+    print(f"I have logged this error to the file\n`{file_location}`")
+
+    os.makedirs(path(error_directory_location), exist_ok=True)
+
+    with open(file_location, "w") as f:
+        f.write(traceback.format_exc())
+
+    os._exit(1)
+
+
 # Don't create startup files
 if is_first_time:
     if is_autorun:
-        exit(127)
+        exit(1)
 
 startup()
 OnKill()

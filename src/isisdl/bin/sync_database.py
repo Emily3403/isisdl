@@ -142,7 +142,7 @@ def restore_database_state(helper: RequestHelper) -> None:
 
 def main() -> None:
     if is_autorun:
-        exit(127)
+        exit(1)
 
     user = get_credentials()
     request_helper = RequestHelper(user)

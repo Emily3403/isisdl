@@ -13,7 +13,7 @@ from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation, config
+from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation, config, generate_error_message
 from isisdl.settings import enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
 
 
@@ -222,16 +222,15 @@ class RequestHelper:
         session = SessionWithKey.from_scratch(self.user, pre_status)
         if session is None:
             print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
-            exit(42)
+            exit(1)
 
         self.session = session
 
-        pre_status.set_status(PreStatusInfo.get_info)
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
 
-        pre_status.set_status(PreStatusInfo.get_courses)
         self._get_courses()
 
+        # TODO: Delete?
         if args.verbose:
             print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
 
@@ -425,6 +424,8 @@ class CourseDownloader:
         return filtered_files
 
     def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
+        exception_lock = threading.Lock()
+
         def download(file: MediaContainer) -> None:
             assert status is not None
             if enable_multithread:
@@ -433,7 +434,12 @@ class CourseDownloader:
                 thread_id = 0
 
             status.add(thread_id, file)
-            file.download(throttler)
+            try:
+                file.download(throttler)
+            except Exception:
+                with exception_lock:
+                    generate_error_message()
+
             status.finish(thread_id)
 
         if enable_multithread:

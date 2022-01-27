@@ -6,8 +6,8 @@ from typing import Optional, cast
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.backend.utils import User, config
-from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password
+from isisdl.backend.utils import User, config, error_text, path
+from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location
 
 
 def generate_key(password: str) -> bytes:
@@ -34,12 +34,14 @@ def decryptor(password: str, content: str) -> Optional[str]:
     except InvalidToken:
         return None
 
-def store_user(user: User, password: Optional[str] = None):
+
+def store_user(user: User, password: Optional[str] = None) -> None:
     encrypted = encryptor(password or master_password, user.password)
 
     config["username"] = user.username
     config["password_encrypted"] = bool(password)
     config["password"] = encrypted
+
 
 def get_credentials() -> User:
     """
@@ -59,7 +61,13 @@ def get_credentials() -> User:
 
     if username is not None and password is not None:
         if not user_store_encrypted:
-            return User(username, decryptor(master_password, password))
+            decrypted = decryptor(master_password, password)
+            if decrypted is None:
+                print(f"{error_text}\nI could not decrypt the password even though it is set to be encrypted with the master password.\n"
+                      f"You can delete the file `{path(database_file_location)}` and store your password again!")
+                os._exit(1)
+
+            return User(username, decrypted)
 
         while True:
             user_password = getpass.getpass("Please enter the passphrase: ")
@@ -70,7 +78,7 @@ def get_credentials() -> User:
                 return User(username, actual_password)
 
     if is_autorun:
-        exit(127)
+        exit(1)
 
     # If nothing is found prompt the user
     print("Please provide authentication for ISIS.")

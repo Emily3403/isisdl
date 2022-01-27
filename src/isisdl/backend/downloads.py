@@ -407,11 +407,8 @@ class PreStatusInfo(enum.Enum):
     authenticating3 = 25
     authenticating4 = 45
 
-    get_info = 55
-    get_courses = 60
-
     content: Any = []
-    get_content = 40
+    get_content = 55
 
     done = 100
 
@@ -445,12 +442,6 @@ class PreStatus(Thread):
             elif self.status.name.startswith("authenticating"):
                 message = "Authenticating with ISIS"
 
-            elif self.status == PreStatusInfo.get_info:
-                message = "Getting information about the User"
-
-            elif self.status == PreStatusInfo.get_courses:
-                message = "Getting information about the Courses"
-
             elif self.status == PreStatusInfo.content:
                 message = "Getting the content of the Courses"
 
@@ -467,7 +458,7 @@ class PreStatus(Thread):
             elif isinstance(self.status.value, list):
                 assert self.max_content > 0
                 threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
-                perc_done = int((PreStatusInfo.get_courses.value + threads_finished_perc) / PreStatusInfo.done.value * first_progress_bar_resolution)
+                perc_done = int((PreStatusInfo.authenticating4.value + threads_finished_perc) / PreStatusInfo.done.value * first_progress_bar_resolution)
 
             else:
                 perc_done = 0

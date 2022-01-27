@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any, Union
 
 from isisdl.settings import database_file_location
 
@@ -112,7 +112,7 @@ class DatabaseHelper:
             """, (json.dumps(config),))
             self.con.commit()
 
-    def get_config(self) -> Dict[str, Optional[str]]:
+    def get_config(self) -> Dict[str, Union[bool, str, None]]:
         with DatabaseHelper.lock:
             data = self.cur.execute("SELECT * from config").fetchone()
             if data is None:
@@ -121,7 +121,7 @@ class DatabaseHelper:
             if len(data) == 0:
                 return {}
 
-            return cast(Dict[str, Optional[str]], json.loads(data[0]))
+            return cast(Dict[str, Union[bool, str, None]], json.loads(data[0]))
 
     def delete_file_table(self) -> None:
         with self.lock:
