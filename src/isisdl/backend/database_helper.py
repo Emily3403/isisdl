@@ -34,8 +34,8 @@ class DatabaseHelper:
             """)
 
             self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS config
-                (config text)
+                CREATE TABLE IF NOT EXISTS json_strings
+                (id text primary key unique, json text)
             """)
 
     def get_state(self) -> Dict[str, List[Any]]:
@@ -65,6 +65,13 @@ class DatabaseHelper:
 
     def get_size_from_file_id(self, file_id: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))
+
+    def add_course(self, course: Course) -> None:
+        with DatabaseHelper.lock:
+            self.cur.execute("""
+                INSERT OR IGNORE INTO courseinfo values (?, ?)
+            """, (course.name, course.course_id))
+            self.con.commit()
 
     def delete_by_checksum(self, checksum: str) -> None:
         with DatabaseHelper.lock:
@@ -105,15 +112,14 @@ class DatabaseHelper:
 
     def set_config(self, config: Dict[str, Union[bool, str, int, None]]) -> None:
         with DatabaseHelper.lock:
-            self.cur.execute("DELETE FROM config")
             self.cur.execute("""
-                INSERT INTO config VALUES (?)
-            """, (json.dumps(config),))
+                INSERT OR REPLACE INTO json_strings VALUES (?, ?)
+            """, ("config", json.dumps(config)))
             self.con.commit()
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None]]:
         with DatabaseHelper.lock:
-            data = self.cur.execute("SELECT * from config").fetchone()
+            data = self.cur.execute("SELECT json from json_strings where id=\"config\"").fetchone()
             if data is None:
                 return defaultdict(lambda: None)
 
@@ -121,6 +127,24 @@ class DatabaseHelper:
                 return defaultdict(lambda: None)
 
             return defaultdict(lambda: None, json.loads(data[0]))
+
+    def set_video_cache(self, cache: Dict[str, int], course_name: str) -> None:
+        with DatabaseHelper.lock:
+            self.cur.execute("""
+               INSERT OR REPLACE INTO json_strings VALUES (?, ?)
+            """, ("video_cache_" + course_name, json.dumps(cache)))
+            self.con.commit()
+
+    def get_video_cache(self, course_name: str) -> Dict[str, int]:
+        with DatabaseHelper.lock:
+            data = self.cur.execute("SELECT json from json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
+            if data is None:
+                return {}
+
+            if len(data) == 0:
+                return {}
+
+            return cast(Dict[str, int], json.loads(data[0]))
 
     def delete_file_table(self) -> None:
         with self.lock:

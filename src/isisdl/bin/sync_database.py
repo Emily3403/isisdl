@@ -4,29 +4,48 @@ from __future__ import annotations
 import os
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Tuple, Dict
-
-from pymediainfo import MediaInfo
+from typing import List, Tuple
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, Course
-from isisdl.backend.utils import path, calculate_local_checksum, database_helper, calculate_online_checksum_file
-from isisdl.settings import enable_multithread, sync_database_num_threads, is_autorun
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.utils import path, calculate_local_checksum, database_helper
+from isisdl.settings import is_autorun
 
 
-def delete_missing_files_from_database() -> None:
-    checksums = database_helper.get_checksums_per_course()
+def remove_corrupted_prompt(files: List[Path]) -> None:
+    if not files:
+        return
 
-    for course in os.listdir(path()):
-        for file in Path(path(course)).rglob("*"):
+    print("I could not recognize the following files:\n" + "\n".join(item.as_posix() for item in files))
+    print("\nDo you want me to delete them? [y/n]")
+    choice = input()
+    if choice == "n":
+        return
+    if choice != "y":
+        print("I am going to interpret this as a no!")
+        return
+
+    for file in files:
+        file.unlink()
+
+
+def delete_missing_files_from_database(helper: RequestHelper) -> None:
+    _checksums = database_helper.get_checksums_per_course()
+    checksums = _checksums.copy()
+
+    corrupted_files = []
+
+    for course in helper.courses:
+        if course.name not in _checksums:
+            continue
+
+        for file in Path(path(course.path())).rglob("*"):
             if file.is_file():
-                correct_course = checksums[course]
                 try:
-                    correct_course.remove(calculate_local_checksum(file))
+                    checksums[course.name].remove(calculate_local_checksum(file))
                 except KeyError:
-                    pass
+                    corrupted_files.append(file)
 
     for row in checksums.values():
         for item in row:
@@ -34,6 +53,8 @@ def delete_missing_files_from_database() -> None:
 
     num = sum(len(row) for row in checksums.values())
     print(f"Deleted {num} entr{'ies' if num != 1 else 'y'} from the database to be re-downloaded.")
+
+    remove_corrupted_prompt(corrupted_files)
 
 
 def restore_database_state(helper: RequestHelper) -> None:
@@ -83,41 +104,17 @@ def restore_database_state(helper: RequestHelper) -> None:
     else:
         print(f"I have recovered {num_recovered_files} / {total_num} possible files.")
 
-    if not corrupted_files:
-        return
-
-    print("I could not recognize the following files:\n(If the file sizes are equal between two files I cannot tell them apart)\n\n" + "\n".join(item.as_posix() for item in corrupted_files))
-    print("\nDo you want me to delete them? [y/n]")
-    choice = input()
-    if choice == "n":
-        return
-    if choice != "y":
-        print("I am going to interpret this as a no!")
-        return
-
-    for file in corrupted_files:
-        file.unlink()
+    remove_corrupted_prompt(corrupted_files)
 
 
 def main() -> None:
-    s = time.perf_counter()
-    delete_missing_files_from_database()
-    print(f"{time.perf_counter() - s:.3f}")
-
-
-    if is_autorun:
-        exit(1)
-
     user = get_credentials()
     request_helper = RequestHelper(user)
 
     database_helper.delete_file_table()
     restore_database_state(request_helper)
+    delete_missing_files_from_database(request_helper)
 
-    delete_missing_files_from_database()
-
-
-# TODO: Testing what happens when randomly inserting files
 
 if __name__ == "__main__":
     main()

@@ -141,8 +141,14 @@ class Course:
             except ValueError:
                 return None
 
+        video_cache = database_helper.get_video_cache(self.name)
+        not_found_videos = [item for item in videos_json if item["url"] not in video_cache]
+
         with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
-            sizes = list(ex.map(find_out_size, videos_json))
+            sizes = list(ex.map(find_out_size, not_found_videos))
+
+        video_cache.update({video["url"]: size for video, size in zip(videos_json, sizes)})
+        database_helper.set_video_cache(video_cache, self.name)
 
         return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=size)
                 for item, size in zip(videos_json, sizes) if size is not None]
@@ -284,6 +290,7 @@ class RequestHelper:
         for item in res:
             course = Course.from_dict(item)
             self.course_id_mapping.update({course.course_id: course})
+            database_helper.add_course(course)
 
             if course.ok:
                 self.courses.append(course)
@@ -467,7 +474,7 @@ class CourseDownloader:
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         global status
         throttler = DownloadThrottler()
-        status = Status(len(media_containers), args.num_threads, throttler)
+        status = Status(media_containers, args.num_threads, throttler)
         downloader = Thread(target=self.download_files, args=(media_containers, throttler))
 
         pre_status.stop()

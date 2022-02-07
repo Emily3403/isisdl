@@ -84,8 +84,6 @@ def authentication_prompt() -> None:
 
         print("ISIS does not accept the username / password. Please try again!\n")
 
-    store_user(user, "")
-
     print()
     while True:
         additional_passphrase = getpass("Enter passphrase (empty for no passphrase): ")

@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_first_time
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -325,10 +325,12 @@ class MediaContainer:
 
 
 class Status(Thread):
-    def __init__(self, num_files: int, num_threads: int, throttler: DownloadThrottler) -> None:
+    def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
         self.finished_files = 0
-        self.total_files = num_files
+        self.total_files = len(files)
+        assert all(item.size > 0 for item in files)
+        self.total_size = sum(item.size for item in files)
         self.total_downloaded = 0
         self.last_text_len = 0
         self.throttler = throttler
@@ -374,11 +376,12 @@ class Status(Thread):
 
             curr_bandwidth = format_quick(self.throttler.bandwidth_used)
             downloaded_bytes = format_quick(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
+            total_size = format_quick(self.total_size)
 
             # General meta-info
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
-            log_strings.append(f"Downloaded {downloaded_bytes}")
+            log_strings.append(f"Downloaded {downloaded_bytes} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
             log_strings.append("")
 
@@ -453,7 +456,11 @@ class PreStatus(Thread):
 
             log_strings.append(f"{message} {'.' * (self.i % 4)}")
 
+            if is_first_time and self.status == PreStatusInfo.content:
+                log_strings.append("(This may take a while for the first time)")
+
             log_strings.append("")
+
 
             if isinstance(self.status.value, int):
                 perc_done = int(self.status.value / PreStatusInfo.done.value * status_progress_bar_resolution)
