@@ -14,7 +14,7 @@ from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation, config, generate_error_message
-from isisdl.settings import enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes
+from isisdl.settings import enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes, video_size_discover_num_threads
 
 
 @dataclass
@@ -53,7 +53,7 @@ class PreMediaContainer:
         time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
-            # TODO: Server
+            # Later: Server
             pass
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
@@ -95,7 +95,10 @@ class Course:
 
         return cls(name, id)
 
-    def __post_init__(self) -> None:
+    def __post_init(self) -> None:
+        self.make_directories()
+
+    def make_directories(self) -> None:
         for item in MediaType.list_dirs():
             os.makedirs(self.path(item), exist_ok=True)
 
@@ -120,8 +123,29 @@ class Course:
         if videos_json["error"]:
             return []
 
-        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=item["duration"])
-                for item in videos_json["data"]["videos"]]
+        videos_json = videos_json["data"]["videos"]
+
+        def find_out_size(info: Dict[str, str]) -> Optional[int]:
+            req = s.head_(info["url"], allow_redirects=True)
+            if req is None:
+                return None
+
+            if "content-length" not in req.headers:
+                return None
+
+            try:
+                size = int(req.headers["content-length"])
+                req.close()
+                return size
+
+            except ValueError:
+                return None
+
+        with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
+            sizes = list(ex.map(find_out_size, videos_json))
+
+        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=size)
+                for item, size in zip(videos_json, sizes) if size is not None]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
         if args.disable_documents:
@@ -154,11 +178,11 @@ class Course:
                     continue
 
                 if re.match(".*mod/(?:folder|resource)/.*", url) is None:
-                    # TODO: server
+                    # Later: Server
                     pass
 
                 if "contents" not in file:
-                    # TODO: Server
+                    # Later: Server
                     continue
 
                 prev_len = len(all_content)
@@ -172,7 +196,7 @@ class Course:
                     }
 
                     if url not in known_bad_urls:
-                        # TODO: Server
+                        # Later: Server
                         pass
 
         return all_content
@@ -183,10 +207,11 @@ class Course:
 
     @property
     def ok(self) -> bool:
-        if args.whitelist != [True] and self in args.whitelist:
-            return True
-
-        return self in args.whitelist and self not in args.blacklist
+        # if args.whitelist != [True] and self in args.whitelist:
+        #     return True
+        #
+        # return self in args.whitelist and self not in args.blacklist
+        return True
 
     def __str__(self) -> str:
         return self.name
@@ -209,43 +234,62 @@ class Course:
     def __hash__(self) -> int:
         return self.course_id
 
+    def __lt__(self, other: Course) -> bool:
+        return self.course_id < other.course_id
 
-@dataclass
+
 class RequestHelper:
     user: User
-    session: SessionWithKey = field(init=False)
-    courses: List[Course] = field(default_factory=lambda: [])
-    course_id_mapping: Dict[int, Course] = field(default_factory=lambda: {})
-    _meta_info: Dict[str, str] = field(default_factory=lambda: {})
+    session: SessionWithKey
+    courses: List[Course]
+    course_id_mapping: Dict[int, Course]
+    _meta_info: Dict[str, str]
+    _instance: Optional[RequestHelper] = None
+    _instance_init: bool = False
 
-    def __post_init__(self) -> None:
+    def __init__(self, user: User):
+        if self._instance_init:
+            return
+
+        self.user = user
         session = SessionWithKey.from_scratch(self.user, pre_status)
         if session is None:
-            print(f"I had a problem getting the {self.user = !s}. You have probably entered the wrong credentials.\nBailing out…")
+            print(f"I had a problem getting the user {self.user}. You have probably entered the wrong credentials.\nBailing out…")
             exit(1)
 
         self.session = session
+        self.courses = []
+        self.course_id_mapping = {}
 
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
 
         self._get_courses()
 
-        # TODO: Delete?
-        if args.verbose:
-            print("I am downloading the following courses:\n" + "\n".join(item.name for item in self.courses))
+        RequestHelper._instance_init = True
+
+    def __new__(cls, user: User) -> RequestHelper:
+        if RequestHelper._instance is None:
+            RequestHelper._instance = super().__new__(cls)
+
+        return RequestHelper._instance
+
+    def make_course_paths(self) -> None:
+        for course in self.courses:
+            if not os.path.exists(course.path()):
+                os.makedirs(course.path(), exist_ok=True)
+            course.make_directories()
 
     def _get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self.userid}))
         for item in res:
             course = Course.from_dict(item)
-
             self.course_id_mapping.update({course.course_id: course})
-            database_helper.add_course(course)
 
             if course.ok:
                 self.courses.append(course)
-                if not os.path.exists(course.path()):
-                    os.makedirs(course.path(), exist_ok=True)
+
+        self.courses = sorted(self.courses)
+        self.make_course_paths()
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
@@ -268,28 +312,43 @@ class RequestHelper:
         return response.json()
 
     def download_content(self) -> List[PreMediaContainer]:
+        exception_lock = threading.Lock()
+
         pre_status.set_status(PreStatusInfo.content)
 
         # The number of threads that are going to spawn
         pre_status.set_max_content(len(self.courses) * 2 + 1)
 
         def download_videos(ret: List[PreMediaContainer], course: Course, session: SessionWithKey) -> None:
-            ret.extend(course.download_videos(session))
+            try:
+                ret.extend(course.download_videos(session))
 
-            assert pre_status.status == PreStatusInfo.content
-            pre_status.status.value.append(None)
+                assert pre_status.status == PreStatusInfo.content
+                pre_status.status.value.append(None)
+            except Exception:
+                with exception_lock:
+                    generate_error_message()
 
         def download_documents(ret: List[PreMediaContainer], course: Course) -> None:
-            ret.extend(course.download_documents(self))
+            try:
+                ret.extend(course.download_documents(self))
 
-            assert pre_status.status == PreStatusInfo.content
-            pre_status.status.value.append(None)
+                assert pre_status.status == PreStatusInfo.content
+                pre_status.status.value.append(None)
+            except Exception:
+                with exception_lock:
+                    generate_error_message()
 
         def download_mod_assign(ret: List[PreMediaContainer]) -> None:
-            ret.extend(self.download_mod_assign())
+            try:
+                ret.extend(self.download_mod_assign())
 
-            assert pre_status.status == PreStatusInfo.content
-            pre_status.status.value.append(None)
+                assert pre_status.status == PreStatusInfo.content
+                pre_status.status.value.append(None)
+
+            except Exception:
+                with exception_lock:
+                    generate_error_message()
 
         if enable_multithread:
             collect: List[Tuple[List[PreMediaContainer], List[PreMediaContainer]]] = [([], []) for _ in range(len(self.courses))]
@@ -329,7 +388,13 @@ class RequestHelper:
             return sorted(lst, key=lambda x: x.time, reverse=True)
 
         # Download the newest files first
-        return sort(documents) + sort(mod_assign) + sort(videos)
+        all_files = sort(documents + mod_assign) + sort(videos)
+        check_for_conflicts_in_files(all_files)
+
+        if is_testing:
+            all_files = _course_downloader_transformation(all_files)
+
+        return all_files
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
         if args.disable_documents:
@@ -373,7 +438,7 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
 
         # TODO: Maybe filter out duplicates by file size
 
-        # TODO: Server
+        # Later: Server
 
         for new_row in locations.values():
             for i, item in enumerate(new_row):
@@ -388,17 +453,14 @@ class CourseDownloader:
         self.user = user
 
     def start(self) -> None:
-        pre_status.start()
+        if pre_status.status == PreStatusInfo.startup:
+            pre_status.start()
+
         self.helper = RequestHelper(self.user)
 
         pre_containers = self.helper.download_content()
-
-        check_for_conflicts_in_files(pre_containers)
-
-        if is_testing:
-            pre_containers = _course_downloader_transformation(pre_containers)
-
         media_containers = self.make_files(pre_containers)
+
         global downloading_files
         downloading_files = media_containers
 

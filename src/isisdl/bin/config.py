@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
+import json
 import os
 import subprocess
 import sys
 from getpass import getpass
-from typing import List, Optional, Union, Set, Dict
+from typing import List, Optional, Union, Set
+
+import math
+import yaml
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.downloads import SessionWithKey
-from isisdl.backend.utils import get_input, User, clear, config, get_default_config, acquire_file_lock, database_helper, error_text
-from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location
+from isisdl.backend.utils import get_input, User, clear, config, acquire_file_lock, error_text, generate_current_config_str, on_kill, run_cmd_with_error
+from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, config_file_location, export_config_file_location, working_dir_location
+from isisdl.backend.request_helper import RequestHelper
+
+was_in_configuration = False
 
 
-def stored_prompt(prev: Optional[Union[str, bool, None]], allowed: Set[str]) -> None:
+def stored_prompt(prev: Optional[Union[bool, str, int, None]], allowed: Set[str]) -> None:
     if prev is None:
         return
 
@@ -24,7 +31,7 @@ def stored_prompt(prev: Optional[Union[str, bool, None]], allowed: Set[str]) -> 
         print(f"`{prev}`.\n")
 
 
-def bool_prompt(prev: Optional[Union[str, bool, None]], default: Optional[bool]) -> Optional[bool]:
+def bool_prompt(prev: Optional[Union[bool, str, int, None]], default: Optional[bool]) -> Optional[bool]:
     # Will return None iff [s] is selected.
     allowed = {"0", "1"}
     if default is not None:
@@ -52,15 +59,15 @@ def authentication_prompt() -> None:
 """)
 
     # https://stackoverflow.com/a/47007761
-    choice = bool_prompt(user_config["password"] and User.sanitize_name(str(user_config["username"])), True)
+    choice = bool_prompt(config.user("password") and User.sanitize_name(str(config.user("username"))), True)
 
     if choice is None:
         return
 
     if choice is False:
-        config["username"] = None
-        config["password"] = None
-        config["password_encrypted"] = None
+        config.username = None
+        config.password = None
+        config.password_encrypted = None
         return
 
     while True:
@@ -69,12 +76,15 @@ def authentication_prompt() -> None:
         password = getpass("Password: ")
 
         print("\nChecking if the password works ...")
-        worked = SessionWithKey.from_scratch(User(username, password))
+        user = User(username, password)
+        worked = SessionWithKey.from_scratch(user)
         if worked is not None:
             print("ISIS accepted the password.")
             break
 
         print("ISIS does not accept the username / password. Please try again!\n")
+
+    store_user(user, "")
 
     print()
     while True:
@@ -85,7 +95,8 @@ def authentication_prompt() -> None:
         else:
             print("The passphrases do not match. Try again.\n")
 
-    store_user(User(username, password), additional_passphrase)
+    store_user(user, additional_passphrase)
+    return
 
 
 def filename_prompt() -> None:
@@ -104,12 +115,13 @@ If enabled, only ASCII letters + digits + "." are permitted as filenames.
 In order to maintain the readability of filenames,
 the next character after a whitespace is capitalized.
 
-If enabled a the filename would get renamed like this:
- "I am / a wierd 🐧 [filename]" → "IAmAWierdFilename"
+E.g.
+"I am / a \\ wierd 🐧 [filename]" → "IAmAWierdFilename"
 
 
 --- Note ---
 The character{'s' if is_windows else ''} `{forbidden_chars}` {'are' if is_windows else 'is'} always replaced (not supported on a filesystem level).
+
 When changing this option every file will be re-downloaded.
 ------------
 
@@ -118,19 +130,20 @@ When changing this option every file will be re-downloaded.
         
     [1] Yes
 """)
-    assert isinstance(default_config["filename_replacing"], bool)
-    choice = bool_prompt(user_config["filename_replacing"], default_config["filename_replacing"])
+    default = config.default("filename_replacing")
+    assert isinstance(default, bool)
+    choice = bool_prompt(config.user("filename_replacing"), default)
 
     if choice is None:
         return
 
-    config["filename_scheme"] = choice
+    config.filename_replacing = choice
 
 
 def throttler_prompt() -> None:
     clear()
-    print(f"""If you wish you can throttle your download speed to a limit.
-Do you want to do so?
+    print(f"""Do you want to enable a limit for you download speed?
+
 
 --- Note ---
 You may overwrite this option by setting the `-d, --download-rate` flag.
@@ -145,16 +158,16 @@ You may overwrite this option by setting the `-d, --download-rate` flag.
 """)
     allowed = {"0", "1", "2", ""}
 
-
-    if user_config["throttle_rate"] and user_config["throttle_rate_autorun"]:
-        print(f"\n    [s] Use the stored option {user_config['throttle_rate']} MiB/s (systemwide), {user_config['throttle_rate_autorun']} MiB/s (autorun).\n")
-
-    elif user_config["throttle_rate"]:
-        print(f"\n    [s] Use the stored option {user_config['throttle_rate']} MiB/s (systemwide).\n")
+    if config.user("throttle_rate") and config.user("throttle_rate_autorun"):
+        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (systemwide), {config.user('throttle_rate_autorun')} MiB/s (autorun).\n")
         allowed.add("s")
 
-    elif user_config["throttle_rate_autorun"]:
-        print(f"\n    [s] Use the stored option {user_config['throttle_rate_autorun']} MiB/s (autorun).\n")
+    elif config.user("throttle_rate"):
+        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (systemwide).\n")
+        allowed.add("s")
+
+    elif config.user("throttle_rate_autorun"):
+        print(f"\n    [s] Use the stored option {config.user('throttle_rate_autorun')} MiB/s (autorun).\n")
         allowed.add("s")
 
     choice = get_input(allowed)
@@ -163,8 +176,8 @@ You may overwrite this option by setting the `-d, --download-rate` flag.
         return
 
     if choice == "" or choice == "0":
-        config["throttle_rate"] = None
-        config["throttle_rate_autorun"] = None
+        config.throttle_rate = -1
+        config.throttle_rate_autorun = -1
         return
 
     if choice == "1":
@@ -175,82 +188,15 @@ You may overwrite this option by setting the `-d, --download-rate` flag.
     while True:
         print()
         try:
-            amount = str(int(input("How many MiB/s am I allowed to consume? ")))
-            config[config_str] = amount
+            amount = int(input("How many MiB/s am I allowed to consume? "))
+            setattr(config, config_str, amount)
             return
         except ValueError as ex:
             print(f"\nI did not quite catch that:\n{ex}\n")
 
 
 def timer_prompt() -> None:
-    if is_windows:
-        return
-
-    def run_cmd_with_error(args: List[str]) -> None:
-        result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-
-        if result.returncode:
-            print(error_text)
-            print(f"The command `{' '.join(result.args)}` exited with exit code {result.returncode}\n{result.stdout.decode()}{result.stderr.decode()}")
-            print("\nPress [enter] to continue")
-            input()
-
-    clear()
-    print("[Linux only]\n\nDo you want me to install a systemd timer to run `isisdl` every hour?\n")
-
-    not_systemd = subprocess.check_call(["systemctl", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-    if not_systemd:
-        print(f"""{error_text}
-It seams as if you are not running systemd.
-Since this feature is systemd specific, I can't install it on your system.
-If you think this is a bug please submit an error report at 
-https://github.com/Emily3403/isisdl/issues
-
-Press [enter] to continue.""")
-        input()
-        return
-
-    print("If you enable this option the files will automagically appear in\n`isisdl_downloads` and you will never have to execute `isisdl` again.")
-
-    if user_config["password_encrypted"]:
-        print(f"""\n{error_text}
-I cannot run `isisdl` automatically if the password is encrypted.
-Do you wish to store the password unencrypted?
-
-    [0] No
-    
-    [1] Yes
-""")
-        choice = bool_prompt(None, None)
-
-        if choice is False:
-            return
-
-        user = get_credentials()
-        store_user(user)
-        print("\nThe password is now stored unencrypted.\n")
-        print("Do you wish to enable the timer?")
-
-    print(f"""
---- Note ---
-The configuration file is located at 
-`{timer_file_location}`
-if you want to tune the time manually
-------------
-
-
-    [0] No
-    
-    [1] Yes  [default]
-""")
-
-    choice = bool_prompt(os.path.exists(timer_file_location), True)
-
-    if choice is None:
-        return
-
-    if choice is False:
+    def remove_systemd_timer() -> None:
         if not os.path.exists(timer_file_location):
             return
 
@@ -263,7 +209,70 @@ if you want to tune the time manually
         if os.path.exists(service_file_location):
             os.remove(service_file_location)
 
+    clear()
+    print("[Linux exclusive]\n\nDo you want me to install a systemd timer to run `isisdl` every hour?\n\n"
+          f"If you enable this option the files will automagically appear in\n`{working_dir_location}`\nand you will never have to execute `isisdl` manually again.")
+
+    if subprocess.check_call(["systemctl", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
+        print(f"""{error_text}
+It seams as if you are not running systemd.
+Since this feature is systemd specific, I can't install it on your system.
+If you think this is a bug please submit an error report at
+https://github.com/Emily3403/isisdl/issues
+
+Press enter to continue.""")
+        input()
         return
+
+    if is_windows:
+        print(f"\n\n{error_text}\nIt seams as if you are running windows.\nAutomatically running `isisdl` is currently not supported.\n"
+              "You can expect it to be supported in future updates.\n\nPress enter to continue")
+        input()
+        return
+
+
+    print(f"")
+
+    if config.user("password_encrypted"):
+        print(f"""\n{error_text}
+I cannot run `isisdl` automatically if the password is encrypted.
+Do you wish to store the password unencrypted?
+
+    [0] No
+    
+    [1] Yes
+""")
+        choice = bool_prompt(None, None)
+
+        if choice is False:
+            remove_systemd_timer()
+            return
+
+        user = get_credentials()
+        store_user(user)
+        print("\nThe password is now stored unencrypted.\n\n")
+        print("Do you wish to enable the timer?")
+
+    print(f"""
+--- Note ---
+The configuration file for the timer is located at 
+`{timer_file_location}`
+if you want to tune the time manually
+------------
+
+
+    [0] No
+    
+    [1] Yes  [default]
+""")
+
+    choice = bool_prompt(os.path.exists(timer_file_location) or None, True)
+
+    if choice is None:
+        return
+
+    if choice is False:
+        remove_systemd_timer()
 
     import isisdl.bin.autorun
     with open(service_file_location, "w") as f:
@@ -324,10 +333,14 @@ I collect the following:
     
     [1] Yes  [default]
 """)
-    assert isinstance(default_config["telemetry_policy"], bool)
-    choice = bool_prompt(user_config["telemetry_policy"], default_config["telemetry_policy"])
+    default = config.default("telemetry_policy")
+    assert isinstance(default, bool)
+    choice = bool_prompt(config.user("telemetry_policy"), default)
 
-    config["telemetry_policy"] = choice
+    if choice is None:
+        return
+
+    config.telemetry_policy = choice
 
 
 def update_policy_prompt() -> None:
@@ -337,24 +350,24 @@ def update_policy_prompt() -> None:
 The version on github is by design always more recent than the one on pip. 
 It should have no stability issues since the update is only installed if they pass the tests.
 
-The version on pip should be always working.
-It is usually pushed a few days after github release.
+The version on pip *should* be always working.
+It is usually pushed a few days after the github release.
 
 
     [0] No
     
-    [1] Notify me when updates are available on pip
+    [1] Install from pip  [default]
     
-    [2] Notify me when updates are available on github
+    [2] Install from github
     
-    [3] Install from pip  [default]
+    [3] Notify me when updates are available on pip
     
-    [4] Install from github
+    [4] Notify me when updates are available on github
 """)
 
     allowed = {"", "0", "1", "2", "3", "4"}
 
-    stored_prompt(user_config["update_policy"], allowed)
+    stored_prompt(config.user("update_policy"), allowed)
     choice: Optional[str] = get_input(allowed)
 
     if choice == "s":
@@ -363,19 +376,146 @@ It is usually pushed a few days after github release.
     elif choice == "0":
         choice = None
     elif choice == "1":
-        choice = "notify_pip"
-    elif choice == "2":
-        choice = "notify_github"
-    elif choice == "3" or choice == "":
         choice = "install_pip"
-    else:
+    elif choice == "2":
         choice = "install_github"
+    elif choice == "3" or choice == "":
+        choice = "notify_pip"
+    else:
+        choice = "notify_github"
 
-    config["update_policy"] = choice
+    config.update_policy = choice
 
 
-# TODO: Default values
-#   Cron and no store of passwords?
+def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
+    clear()
+    check_list = config.whitelist if is_whitelist else config.blacklist
+    print(f"""Do you wish to {'whitelist' if is_whitelist else 'blacklist'} any of your courses?
+    
+
+--- Note ---
+You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist else '-b, --blacklist'}` flag.
+------------
+
+
+    [0] No  [default]
+
+    [1] Yes  
+""")
+
+    allowed = {"", "0", "1"}
+    if check_list is not None:
+        print(f"\n    [s] Use the stored option {sorted(check_list)}")
+        allowed.add("s")
+
+    choice = get_input(allowed)
+    if choice == "s":
+        return True
+
+    if choice == "0" or choice == "":
+        return False
+
+    if RequestHelper._instance is None:
+        print("\n(Getting information about courses ...)\n")
+
+    user = get_credentials()
+    helper = RequestHelper(user)
+    print("Please provide a comma-seperated list of the course-numbers.\nE.g. \"0, 2, 3\"\n")  # TODO
+    max_len = math.ceil(math.log(len(helper.courses), 10))
+    for i, course in enumerate(helper.courses):
+        print(f"    [{i}]{' ' * (max_len - len(str(i)))}   {course.name}")
+
+    print()
+    while True:
+        user_input = input()
+        try:
+            lst = [int(item) for item in user_input.split(",")]
+            if not all(0 <= item < len(helper.courses) for item in lst):
+                raise ValueError("Your input was not constrained to the listed choices.")
+
+            break
+
+        except Exception as ex:
+            print(f"\nI did not quite catch that:\n{ex}\n")
+
+    return [helper.courses[i].course_id for i in lst]
+
+
+def whitelist_prompt() -> None:
+    lst = _list_prompt(True)
+    if lst is True:
+        return
+
+    if lst is False:
+        config.whitelist = None
+        return
+
+    assert isinstance(lst, list)
+
+    config.whitelist = lst
+
+
+def blacklist_prompt() -> None:
+    lst = _list_prompt(False)
+    if lst is True:
+        return
+
+    if lst is False:
+        config.blacklist = None
+        return
+
+    assert isinstance(lst, list)
+
+    config.blacklist = lst
+
+
+def dont_download_videos_prompt() -> None:
+    clear()
+    print(f"""Do you want to download videos on this device?
+
+This usually takes up a lot of space on your hard drive  and may take 
+a long time to download if you have a slow internet connection. 
+
+
+    [0] No
+
+    [1] Yes  [default]
+    """)
+
+    prev = config.user("download_videos")
+    assert prev is None or isinstance(prev, bool)
+    choice = bool_prompt(prev, True)
+
+    if choice is None:
+        return
+
+    config.download_videos = choice
+
+
+def run_config_wizard() -> None:
+    global was_in_configuration
+    was_in_configuration = True
+
+    authentication_prompt()
+
+    whitelist_prompt()
+    blacklist_prompt()
+    dont_download_videos_prompt()
+    filename_prompt()
+
+    timer_prompt()
+    throttler_prompt()
+    update_policy_prompt()
+    telemetry_data_prompt()
+    was_in_configuration = False
+
+    print("Thank you for your time - everything is saved!\n")
+
+
+@on_kill(3)
+def unexpected_exit_in_wizard() -> None:
+    if was_in_configuration:
+        print("\nThe configuration wizard was killed unexpectedly.\nI will continue with the default for all options which you have not configured.")
 
 
 def main() -> None:
@@ -383,42 +523,39 @@ def main() -> None:
     if is_autorun:
         exit(1)
 
-    print(f"""I will guide you through a short configuration phase of about 4min.
-It is recommended that you read the options carefully.
+    print(f"""Hello there 👋
+
+You can choose one of the following actions
+
+    [ ] run the configuration wizard
+    
+    [d] reset to the defaults
+    
+    [v] view the current configuration
 """)
+    if not is_windows:
+        print(f"    [e] export the current configuration to\n        `{export_config_file_location}`")
 
-    is_first_time = True
-    if is_first_time:
-        print("If you wish to re-configure me run `isisdl-config`.\n\nPlease press enter to continue.\n")
-
-    else:
-        print("""You can
-    [d] {'accept' if is_first_time else 'reset to'} the defaults
-    [e] export the current configuration
-
-If you want to {'accept' if is_first_time else 'reset to'} the default press [d] and [enter].""")
-
-    choice = input("")
+    choice = input()
+    print()
     if choice.lower() == "d":
-        print(f"\n{'Accepted' if is_first_time else 'Reset to'} the defaults!")
+        print("Resetting to defaults ...")
+        config.reset_to_defaults()
         return
 
+    if choice.lower() == "v":
+        print("\nThe configuration is the following:\n")
+        print(json.dumps(config.to_dict(), indent=4))
+        return
 
-    authentication_prompt()
-    update_policy_prompt()
-    timer_prompt()
-    filename_prompt()
-    throttler_prompt()
+    if choice.lower() == "e":
+        print("Exporting current configuration ...")
+        with open(export_config_file_location, "w") as f:
+            f.write(generate_current_config_str())
 
-    telemetry_data_prompt()
+        return
 
-    print("Thank you for your time - everything is saved!\n")
-
-
-default_config = get_default_config()
-
-user_config: Dict[str, Union[bool, str, None]] = {k: None for k in default_config}
-user_config.update(database_helper.get_config())
+    run_config_wizard()
 
 
 if __name__ == "__main__":

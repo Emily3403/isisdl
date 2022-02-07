@@ -13,6 +13,7 @@ from base64 import standard_b64decode
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Full, Queue, Empty
+from random import randint
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast, Union
 
@@ -22,7 +23,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, first_progress_bar_resolution
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -100,7 +101,7 @@ class SessionWithKey(Session):
                 return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except Exception:
-                # TODO: Server
+                # Later: Server
                 time.sleep(sleep_time_for_isis)
                 i += 1
 
@@ -138,7 +139,8 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
-        self.download_rate: Optional[int] = args.download_rate or config["throttle_rate"]
+
+        self.download_rate = args.download_rate or config.throttle_rate or -1
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -182,7 +184,7 @@ class DownloadThrottler(Thread):
 
     def get(self) -> Token:
         try:
-            if self.download_rate is None:
+            if self.download_rate == -1:
                 return self.token
 
             token = self.active_tokens.get()
@@ -195,7 +197,7 @@ class DownloadThrottler(Thread):
             self.timestamps_tokens.append(time.perf_counter())
 
     def max_tokens(self) -> int:
-        if self.download_rate is None:
+        if self.download_rate == -1:
             return 1
 
         return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
@@ -245,6 +247,7 @@ class MediaContainer:
         return MediaContainer(container.name, container.url, location, media_type, s, container)
 
     def download(self, throttler: DownloadThrottler) -> None:
+        # TODO: Better size
         if self._exit:
             self.done = True
             return
@@ -405,10 +408,10 @@ class PreStatusInfo(enum.Enum):
     authenticating1 = 10
     authenticating2 = 20
     authenticating3 = 25
-    authenticating4 = 45
+    authenticating4 = 30
 
     content: Any = []
-    get_content = 55
+    get_content = 70
 
     done = 100
 
@@ -453,17 +456,17 @@ class PreStatus(Thread):
             log_strings.append("")
 
             if isinstance(self.status.value, int):
-                perc_done = int(self.status.value / PreStatusInfo.done.value * first_progress_bar_resolution)
+                perc_done = int(self.status.value / PreStatusInfo.done.value * status_progress_bar_resolution)
 
             elif isinstance(self.status.value, list):
                 assert self.max_content > 0
                 threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
-                perc_done = int((PreStatusInfo.authenticating4.value + threads_finished_perc) / PreStatusInfo.done.value * first_progress_bar_resolution)
+                perc_done = int((PreStatusInfo.authenticating4.value + threads_finished_perc) / PreStatusInfo.done.value * status_progress_bar_resolution)
 
             else:
                 perc_done = 0
 
-            log_strings.append(f"[{'█' * perc_done}{' ' * (first_progress_bar_resolution - perc_done)}]")
+            log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             self.last_text_len = print_status_message(log_strings, self.last_text_len)
 

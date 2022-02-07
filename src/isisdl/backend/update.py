@@ -44,12 +44,13 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
     return version.parse(found_version.group(1))
 
+# TODO
 
 def install_latest_version() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
-    update_policy = config["update_policy"]
+    update_policy = config.update_policy
     if update_policy == "0":
         return
 

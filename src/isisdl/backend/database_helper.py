@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any, Union
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any, Union, DefaultDict
 
 from isisdl.settings import database_file_location
 
@@ -66,10 +66,6 @@ class DatabaseHelper:
     def get_size_from_file_id(self, file_id: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))
 
-    def get_course_name_and_ids(self) -> List[Tuple[str, int]]:
-        with DatabaseHelper.lock:
-            return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
-
     def delete_by_checksum(self, checksum: str) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
@@ -89,11 +85,14 @@ class DatabaseHelper:
 
             return already_exists
 
-    def add_course(self, course: Course) -> None:
+    def add_pre_containers(self, files: List[PreMediaContainer]) -> None:
+        """
+        Returns true iff the element already existed
+        """
         with DatabaseHelper.lock:
-            self.cur.execute("""
-                INSERT OR IGNORE INTO courseinfo VALUES (?, ?)
-            """, (course.name, course.course_id))
+            self.cur.executemany("""
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
+            """, [(file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
             self.con.commit()
 
     def get_checksums_per_course(self) -> Dict[str, Set[str]]:
@@ -104,7 +103,7 @@ class DatabaseHelper:
 
         return ret
 
-    def set_config(self, config: Dict[str, Optional[str]]) -> None:
+    def set_config(self, config: Dict[str, Union[bool, str, int, None]]) -> None:
         with DatabaseHelper.lock:
             self.cur.execute("DELETE FROM config")
             self.cur.execute("""
@@ -112,16 +111,16 @@ class DatabaseHelper:
             """, (json.dumps(config),))
             self.con.commit()
 
-    def get_config(self) -> Dict[str, Union[bool, str, None]]:
+    def get_config(self) -> DefaultDict[str, Union[bool, str, int, None]]:
         with DatabaseHelper.lock:
             data = self.cur.execute("SELECT * from config").fetchone()
             if data is None:
-                return {}
+                return defaultdict(lambda: None)
 
             if len(data) == 0:
-                return {}
+                return defaultdict(lambda: None)
 
-            return cast(Dict[str, Union[bool, str, None]], json.loads(data[0]))
+            return defaultdict(lambda: None, json.loads(data[0]))
 
     def delete_file_table(self) -> None:
         with self.lock:

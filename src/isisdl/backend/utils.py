@@ -7,6 +7,7 @@ import os
 import random
 import signal
 import string
+import subprocess
 import traceback
 from configparser import ConfigParser
 from dataclasses import dataclass
@@ -24,28 +25,29 @@ import isisdl
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, status_chop_off, sync_database_num_threads, \
-    first_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location
+    status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
+    error_directory_location, cache_user_and_websites
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
 
 error_text = "\033[1;91mError!\033[0m"
 
+
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
-    This program downloads all courses from your ISIS page.""")
+    This program downloads all content of your ISIS page.""")
 
     parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
-    parser.add_argument("-v", "--verbose", help="Enable debug output", action="store_true")
-    parser.add_argument("-n", "--num-threads", help="The number of threads which download the content from an individual course.", type=int, default=3)
-    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {…}MiB/s", type=float, default=None)
-    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files i.e. re-downloads them all.", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Enable debug output\n ", action="store_true")
+    parser.add_argument("-n", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="num")
+    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="num")
+    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files\n ", action="store_true")
 
-    parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's. ", nargs="*")
-    parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's. Blacklist takes precedence over whitelist.", nargs="*")
+    parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's.\n ", nargs="+", type=int, metavar="ID")
+    parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's.\n ", nargs="+", type=int, metavar="ID")
 
-    parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos", action="store_true")
+    parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos\n ", action="store_true")
     parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
     the_args, unknown = parser.parse_known_args()
@@ -53,40 +55,33 @@ def get_args() -> argparse.Namespace:
     if the_args.disable_videos:
         the_args.num_threads *= 2
 
-    course_id_mapping: Dict[str, int] = dict(database_helper.get_course_name_and_ids())
-
-    def add_arg_to_list(lst: Optional[List[Union[str]]]) -> List[int]:
-        if lst is None:
-            return []
-
-        ret = set()
-        for item in lst:
-            try:
-                ret.add(int(item))
-            except ValueError:
-                for course, num in course_id_mapping.items():
-                    if item.lower() in course.lower():
-                        ret.add(int(num))
-
-        return list(ret)
-
-    whitelist: List[int] = []
-    blacklist: List[int] = []
-
-    whitelist.extend(add_arg_to_list(the_args.whitelist))
-    blacklist.extend(add_arg_to_list(the_args.blacklist))
-
-    the_args.whitelist = whitelist or [True]
-    the_args.blacklist = blacklist
-
     return the_args
 
 
-def get_default_config() -> Dict[str, Union[str, bool, None]]:
-    return {
+class Config:
+    password_encrypted: Optional[bool]
+    username: Optional[str]
+    password: Optional[str]
+
+    whitelist: Optional[List[int]]
+    blacklist: Optional[List[int]]
+
+    download_videos: bool
+    filename_replacing: bool
+    throttle_rate: int
+    throttle_rate_autorun: int
+    update_policy: Optional[str]
+    telemetry_policy: bool
+
+    default_config: Dict[str, Union[bool, str, int, None]] = {
         "password_encrypted": False,
         "username": None,
         "password": None,
+
+        "whitelist": None,
+        "blacklist": None,
+
+        "download_videos": True,
         "filename_replacing": False,
         "throttle_rate": None,
         "throttle_rate_autorun": None,
@@ -94,33 +89,156 @@ def get_default_config() -> Dict[str, Union[str, bool, None]]:
         "telemetry_policy": True,
     }
 
+    __slots__ = tuple(
+        k for k in default_config
+    )
 
-_KT = TypeVar("_KT")  # key type
-_VT = TypeVar("_VT")  # value type
+    _user: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
+    _backup: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
+    _in_backup: bool = False
+
+    def __init__(self) -> None:
+        config_file_data = parse_config_file()
+        stored_config = database_helper.get_config()
+
+        Config._user.update(stored_config)
+        Config._user.update(config_file_data)
+
+        for name in self.__slots__:
+            super().__setattr__(name, next(iter(item for item in [config_file_data[name], stored_config[name]] if item is not None), self.default_config[name]))
+
+        def set_list(name: str) -> None:
+            if getattr(args, name):
+                new_list = (getattr(self, name) or []) + getattr(args, name)
+                super(Config, self).__setattr__(name, new_list)
+
+        set_list("whitelist")
+        set_list("blacklist")
+
+    def __setattr__(self, key: str, value: Union[bool, str, int, None]) -> None:
+        super().__setattr__(key, value)
+        if not self._in_backup:
+            Config._user[key] = value
+            database_helper.set_config(self.to_dict())
+
+    @staticmethod
+    def default(attr: str) -> Union[bool, str, int, None]:
+        return Config.default_config[attr]
+
+    @staticmethod
+    def user(attr: str) -> Union[bool, str, int, None]:
+        return Config._user[attr]
+
+    def to_dict(self) -> Dict[str, Union[bool, str, int, None]]:
+        return {name: getattr(self, name) for name in self.__slots__}
+
+    def start_backup(self) -> None:
+        Config._backup = self.to_dict()
+        Config._in_backup = True
+
+    def restore_backup(self) -> None:
+        Config._in_backup = False
+        for name in self.__slots__:
+            super().__setattr__(name, self._backup[name])
+
+    def reset_to_defaults(self) -> None:
+        for name in self.__slots__:
+            super().__setattr__(name, self.default_config[name])
 
 
-class Config(dict, Mapping[_KT, _VT]):  # type: ignore
-    def __setitem__(self, key: str, value: Union[bool, str, None]) -> None:
-        super().__setitem__(key, value)
-        database_helper.set_config(self)
+def encode_yaml(st: Union[bool, str, int, None]) -> str:
+    if st is None:
+        return "null"
+    elif st is True:
+        return "yes"
+    elif st is False:
+        return "no"
+    return str(st)
 
 
-def get_config() -> Config[str, Union[bool, str, None]]:
-    default_config = get_default_config()
+# TODO: White / blacklist + download videos
+def generate_config_str(working_dir_location: str, database_file_location: str, filename_replacing: bool, throttle_rate: Optional[int], throttle_rate_autorun: Optional[int],
+                        update_policy: Optional[str], telemetry_policy: bool, status_time: float, sync_database_num_threads: int, status_progress_bar_resolution: int,
+                        download_progress_bar_resolution: int) -> str:
+    return f"""---
 
-    _config_file_data = parse_config_file()
-    config_file_data = {}
+# Any values you overwrite will take precedence over *any* otherwise provided value.
 
-    # Only get entries that are present in the default config
-    for k in default_config:
-        if k in _config_file_data:
-            config_file_data[k] = _config_file_data[k]
 
-    stored_config = database_helper.get_config()
+# The directory where everything lives in.
+# Possible values {{any posix path}}
+working_dir_location: {working_dir_location}
 
-    # TODO: Validate the config
+# The name of the SQlite Database (located in `working_dir_location`) used for storing metadata about files + config.
+# Possible values {{any posix path}}
+database_file_location: {database_file_location}
 
-    return Config({**default_config, **stored_config, **config_file_data})
+
+# Should the filename be replaced with a sanitized version?
+# Possible values: {{"yes", "no"}}
+filename_replacing: {encode_yaml(filename_replacing)}
+
+
+# The global throttle rate. Will take precedence over throttle_rate_autorun.
+# Possible values {{"null", any integer}}
+throttle_rate: {encode_yaml(throttle_rate)}
+
+# The throttle rate for when `isisdl` automatically runs.
+# Possible values {{"null", any integer}}
+throttle_rate_autorun: {encode_yaml(throttle_rate_autorun)}
+
+
+# How updates should be handled.
+# Possible values {{"install_pip", "install_github", "notify_pip", "notify_github", "null"}}
+update_policy: {encode_yaml(update_policy)}
+
+
+# If telemetry data should be collected.
+# Possible values {{"yes", "no"}}
+telemetry_policy: {encode_yaml(telemetry_policy)}
+
+
+# The time waitet between re-renders of the status message. 
+# If you have a fast terminal / PC you can set this value to 0.1 or even 0.01.
+# Possible values {{any float}}
+status_time: {status_time}
+
+
+# Number of threads to use when syncing the database with isis (only applies for `isisdl-sync`).
+# Possible values {{any integer > 0}}
+sync_database_num_threads: {sync_database_num_threads}
+
+
+# The number of spaces the first progress bar has
+# Possible values {{any integer > 0}}
+status_progress_bar_resolution: {status_progress_bar_resolution}
+
+# The number of spaces the second progress bar has
+# Possible values {{any integer > 0}}
+download_progress_bar_resolution: {download_progress_bar_resolution}
+"""
+
+
+def generate_default_config_str() -> str:
+    filename_replacing = Config.default_config["filename_replacing"]
+    throttle_rate = Config.default_config["throttle_rate"]
+    throttle_rate_autorun = Config.default_config["throttle_rate_autorun"]
+    update_policy = Config.default_config["update_policy"]
+    telemetry_policy = Config.default_config["telemetry_policy"]
+
+    assert isinstance(filename_replacing, bool)
+    assert throttle_rate is None or isinstance(throttle_rate, bool)
+    assert throttle_rate_autorun is None or isinstance(throttle_rate_autorun, bool)
+    assert update_policy is None or isinstance(update_policy, str)
+    assert isinstance(telemetry_policy, bool)
+
+    return generate_config_str(working_dir_location, database_file_location, filename_replacing, throttle_rate, throttle_rate_autorun, update_policy, telemetry_policy, status_time,
+                               sync_database_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
+
+
+def generate_current_config_str() -> str:
+    return generate_config_str(working_dir_location, database_file_location, config.filename_replacing, config.throttle_rate, config.throttle_rate_autorun, config.update_policy,
+                               config.telemetry_policy, status_time, sync_database_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
 
 
 def startup() -> None:
@@ -131,73 +249,7 @@ def startup() -> None:
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
 
-    default_config = get_default_config()
-
-    def encode(st: Union[str, bool, None]) -> str:
-        if st is None:
-            return "null"
-        elif st is True:
-            return "yes"
-        elif st is False:
-            return "no"
-        return str(st)
-
-    default_config_str = f"""---
-
-# You can overwrite any of the following values by un-commenting them.
-# They will take precedence over *any* otherwise provided value.
-
-
-# The directory where everything lives in.
-# Possible values {{any posix path}}
-#working_dir_location: {working_dir_location}
-
-# The name of the SQlite Database (located in `working_dir_location`).
-# Possible values {{any posix path}}
-#database_file_location: {database_file_location}
-
-
-# The way filenames are handled.
-# Possible values: {{"yes", "no"}}
-#filename_replacing: {encode(default_config["filename_replacing"])}
-
-
-# If a throttle rate should be imposed (in MiB).
-# Possible values {{"null", any integer}}
-#throttle_rate: {encode(default_config["throttle_rate"])}
-
-# The throttle rate for when `isisdl` automatically runs.
-# throttle_rate_autorun: {encode(default_config["throttle_rate_autorun"])}
-
-
-# How updates should be handled.
-# Possible values {{"pip", "github", "no"}}
-#update_policy: {encode(default_config["update_policy"])}
-
-
-# If telemetry data should be collected.
-# Possible values {{"yes", "no"}}
-#telemetry_policy: {encode(default_config["telemetry_policy"])}
-
-
-# The status message is replaced every ↓ seconds. If you are using e.g. alacritty values of 0.01 are possible.
-# Possible values {{any float}}
-#status_time: {status_time}
-
-
-# Number of threads to use for the database requests when `isisdl-sync` is called
-# Possible values {{any integer > 0}}
-#sync_database_num_threads: {sync_database_num_threads}
-
-
-# The number of spaces the first progress bar has
-# Possible values {{any integer > 0}}
-#first_progress_bar_resolution: {first_progress_bar_resolution}
-
-# The number of spaces the second progress bar (for the downloads) has
-# Possible values {{any integer > 0}}
-#download_progress_bar_resolution: {download_progress_bar_resolution}
-    """
+    default_config_str = generate_default_config_str()
 
     with open(example_config_file_location, "w") as f:
         f.write(default_config_str)
@@ -214,6 +266,16 @@ def clear() -> None:
         os.system('clear')
 
 
+def run_cmd_with_error(args: List[str]) -> None:
+    result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    if result.returncode:
+        print(error_text)
+        print(f"The command `{' '.join(result.args)}` exited with exit code {result.returncode}\n{result.stdout.decode()}{result.stderr.decode()}")
+        print("\nPress enter to continue")
+        input()
+
+
 def path(*args: str) -> str:
     return os.path.join(working_dir_location, *args)
 
@@ -223,7 +285,7 @@ def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
     name = name.strip()
     name = unquote(name)
 
-    replace_filenames = replace_filenames or config["filename_scheme"]
+    replace_filenames = replace_filenames or config.filename_replacing
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
@@ -282,7 +344,7 @@ def get_input(allowed: Set[str]) -> str:
         if choice in allowed:
             break
 
-        print(f"Unhandled character: {choice!r} is not in the expected {allowed}.\nPlease try again.\n")
+        print(f"Unhandled character: {choice!r} is not in the expected {{" + ", ".join(repr(item) for item in sorted(list(allowed))) + "}\nPlease try again.\n")
 
     return choice
 
@@ -310,21 +372,24 @@ class OnKill:
     @staticmethod
     @atexit.register
     def exit(sig: Optional[int] = None, frame: Any = None) -> None:
-        if OnKill._already_killed and sig is not None:
+        if sig is None:
+            OnKill.do_funcs()
+            return
+
+        if OnKill._already_killed:
             print("Alright, stay calm. I am skipping cleanup and exiting!")
-            print("I will redownload the files that are partially downloaded.")
+            print("I will re-download the files that are partially downloaded.")
 
             os._exit(sig)
 
+        OnKill._already_killed = True
+        OnKill.do_funcs()
+        os._exit(sig)
+
+    @staticmethod
+    def do_funcs() -> None:
         for _ in range(OnKill._funcs.qsize()):
             OnKill._funcs.get_nowait()[1]()
-
-        if sig is not None:
-            sig = signal.Signals(sig)
-            if isisdl.backend.request_helper.downloading_files:
-                OnKill._already_killed = True
-            else:
-                os._exit(sig.value)
 
 
 def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
@@ -382,10 +447,10 @@ def remove_lock_file() -> None:
 
 
 # Shared between modules.
-@dataclass
 class User:
-    username: str
-    password: str
+    def __init__(self, username: str, password: str):
+        self.username = username
+        self.password = password
 
     @staticmethod
     def sanitize_name(name: Optional[str]) -> Optional[str]:
@@ -441,7 +506,7 @@ def calculate_online_checksum_file(file: Path, size: int) -> str:
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
-    def format(num: Union[int, float]) -> Tuple[float, str]:
+    def format(num: float) -> Tuple[float, str]:
         """
         Human-readable formatting of bytes, using binary (powers of 1024) representation.
 
@@ -504,7 +569,7 @@ def generate_error_message() -> None:
     print(traceback.format_exc())
 
     file_location = path(error_directory_location, datetime.now().strftime(error_file_location))
-    print(f"I have logged this error to the file\n`{file_location}`")
+    print(f"I have logged this error to the file\n{file_location}")
 
     os.makedirs(path(error_directory_location), exist_ok=True)
 
@@ -522,9 +587,8 @@ if is_first_time:
 startup()
 OnKill()
 database_helper = DatabaseHelper()
-config = get_config()
-
 args = get_args()
+config = Config()
 
 # Windows specific color codes…
 colorama.init()

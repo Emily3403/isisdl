@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import isisdl.bin.config as config
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.request_helper import CourseDownloader
+from isisdl.backend.request_helper import CourseDownloader, RequestHelper
 from isisdl.backend.update import install_latest_version
 from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message
+from isisdl.bin.config import run_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
 
@@ -24,12 +24,17 @@ def _main() -> None:
 
     # is_first_time = True
     if is_first_time:
-        print("It seams as if this is your first time executing isisdl. Welcome 💖\n")
-        config.main()
+        print("""It seams as if this is your first time executing isisdl. Welcome 💖
 
-    user = get_credentials()
+I will guide you through a short configuration phase of about 5min.
+It is recommended that you read the options carefully.
+If you wish to re-configure me run `isisdl-config`.
 
-    dl = CourseDownloader(user)
+Please press enter to continue.""")
+        input()
+        run_config_wizard()
+
+    dl = CourseDownloader(get_credentials())
 
     dl.start()
 
@@ -47,10 +52,11 @@ def main() -> None:
 #   Autolog to server
 #   H265
 #   GRS not found
-#   Make is_first_time dependent on config table
+#   Breaking changes
+#   async
 #
 #
-#   Maybe systemd timer
+# Log not working?
 
 
 if __name__ == "__main__":

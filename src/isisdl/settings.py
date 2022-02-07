@@ -1,9 +1,10 @@
 import os
 import platform
 import sys
+from collections import defaultdict
 from hashlib import sha256
 from linecache import getline
-from typing import Any, Dict, Optional, cast, Set
+from typing import Any, Dict, Optional, cast, Set, DefaultDict
 
 from yaml import safe_load, YAMLError
 
@@ -15,7 +16,7 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 # If you want to change behaviour that is not possible with the wizard please refer to the configuration docs.
 
 # The directory where everything lives in.
-working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl_downloads")
+working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 
 # The name of the SQlite Database
 # TODO: os.system( "attrib +h myFile.txt" )
@@ -26,6 +27,7 @@ config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "isisdl")
 
 config_file_location = os.path.join(config_dir_location, "config.yaml")
 example_config_file_location = os.path.join(config_dir_location, "example.yaml")
+export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
 # The path to the systemd timer files. (Only supported on systemd-based linux)
 timer_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.timer")
@@ -58,7 +60,7 @@ password_hash_length = 32
 master_password = "peanuts"
 
 # The number of spaces the first progress bar has
-first_progress_bar_resolution = 50
+status_progress_bar_resolution = 50
 
 # The number of spaces the second progress bar (for the downloads) has
 download_progress_bar_resolution = 10
@@ -73,10 +75,14 @@ status_time = 0.25
 env_var_name_username = "ISISDL_USERNAME"
 env_var_name_password = "ISISDL_PASSWORD"
 
-# Set if the configuration wizard should clear the screen
-config_clear_screen = True
+# Controls the caching of creation of user + authentication for websites.
+cache_user_and_websites = True
 
+# Should multithread be enabled? (Usually yes)
 enable_multithread = True
+
+#
+video_size_discover_num_threads = 32
 
 # Sets the chunk size for a download.
 download_chunk_size = 2 ** 16
@@ -108,27 +114,14 @@ token_queue_download_refresh_rate = 3
 
 
 # Now load any options the user may overwrite (Linux exclusive)
-def parse_config_file(allowed_values: Optional[Set[str]] = None) -> Dict[str, Any]:
+def parse_config_file() -> DefaultDict[str, Any]:
     try:
         with open(config_file_location) as f:
             _dat = safe_load(f)
             if _dat is None:
-                return {}
-            dat: Dict[str, Any] = _dat
+                return defaultdict(lambda: None)
 
-
-            if allowed_values is None:
-                return dat
-
-            bad_values = {}
-            for k, v in dat.items():
-                if k not in allowed_values:
-                    bad_values[k] = v
-
-            if bad_values:
-                print(f"Unrecognized option{'s' if len(bad_values) > 1 else ''}:\n" + "\n".join(f"{k}: {v}" for k, v in bad_values.items()))
-
-            return dat
+            return defaultdict(lambda: None, _dat)
 
     except OSError:
         pass
@@ -154,7 +147,7 @@ def parse_config_file(allowed_values: Optional[Set[str]] = None) -> Dict[str, An
 
         print("I will be ignoring the specified configuration.\n")
 
-    return {}
+    return defaultdict(str)
 
 
 if not is_windows:
@@ -172,16 +165,15 @@ is_first_time = not os.path.exists(os.path.join(working_dir_location, database_f
 is_testing = "pytest" in sys.modules
 if is_testing:
     _working_dir_location = working_dir_location
-    working_dir_location = os.path.join(os.path.expanduser("~"), "test_isisdl")
+    working_dir_location = os.path.join(os.path.expanduser("~"), "testisisdl")
     _status_time = status_time
     status_time = 2
     download_timeout = 6
 
-# This number represent seconds of video.
-# (ISIS does not offer a better "size" api…)
-testing_download_video_size = 3600 * 1
+# Number of bytes downloaded for videos.
+testing_download_video_size = 0
 
 # Number of bytes downloaded for documents.
-testing_download_documents_size = 1_000_000_000
+testing_download_documents_size = 300_000_000
 
 # </ Test Options >
