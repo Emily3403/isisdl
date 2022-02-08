@@ -34,7 +34,7 @@ timer_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd"
 service_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.service")
 
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"

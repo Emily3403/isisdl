@@ -13,8 +13,8 @@ from isisdl.settings import working_dir_location, _working_dir_location, databas
 
 
 def test_settings() -> None:
-    assert working_dir_location == os.path.join(os.path.expanduser("~"), "test_isisdl")
-    assert _working_dir_location == os.path.join(os.path.expanduser("~"), "isisdl_downloads")
+    assert working_dir_location == os.path.join(os.path.expanduser("~"), "testisisdl")
+    assert _working_dir_location == os.path.join(os.path.expanduser("~"), "isisdl")
     assert database_file_location == os.path.join(".state.db")
     assert config_dir_location == os.path.join(os.path.expanduser("~"), ".config", "isisdl")
     assert config_file_location == os.path.join(config_dir_location, "config.yaml")

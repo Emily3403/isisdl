@@ -228,7 +228,6 @@ Press enter to continue.""")
         input()
         return
 
-
     print(f"")
 
     if config.user("password_encrypted"):
@@ -418,7 +417,7 @@ You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist
 
     user = get_credentials()
     helper = RequestHelper(user)
-    print("Please provide a comma-seperated list of the course-numbers.\nE.g. \"0, 2, 3\"\n")  # TODO
+    print("Please provide a comma-seperated list of the course-numbers.\nE.g. \"0, 2, 3\"\n")
     max_len = math.ceil(math.log(len(helper.courses), 10))
     for i, course in enumerate(helper.courses):
         print(f"    [{i}]{' ' * (max_len - len(str(i)))}   {course.name}")
@@ -452,6 +451,10 @@ def whitelist_prompt() -> None:
 
     config.whitelist = lst
 
+    # Reevaluate courses
+    user = get_credentials()
+    RequestHelper(user).get_courses()
+
 
 def blacklist_prompt() -> None:
     lst = _list_prompt(False)
@@ -463,8 +466,11 @@ def blacklist_prompt() -> None:
         return
 
     assert isinstance(lst, list)
-
     config.blacklist = lst
+
+    # Reevaluate courses
+    user = get_credentials()
+    RequestHelper(user).get_courses()
 
 
 def dont_download_videos_prompt() -> None:
@@ -488,6 +494,16 @@ a long time to download if you have a slow internet connection.
         return
 
     config.download_videos = choice
+
+def isis_config_wizard() -> None:
+    # TODO:
+    #   Select courses to be downloaded
+    #   Rename each course indivually
+    #   decide if subfolders should be created inside a course folder.
+    #   set if external linked files should be downloaded (files like youtube videos).
+    #
+    print("Not yet supported!")
+    exit(1)
 
 
 def run_config_wizard() -> None:
@@ -536,6 +552,11 @@ You can choose one of the following actions
 
     choice = input()
     print()
+
+    if choice.lower() == "i":
+        isis_config_wizard()
+        return
+
     if choice.lower() == "d":
         print("Resetting to defaults ...")
         config.reset_to_defaults()
@@ -550,7 +571,6 @@ You can choose one of the following actions
         print("Exporting current configuration ...")
         with open(export_config_file_location, "w") as f:
             f.write(generate_current_config_str())
-
         return
 
     run_config_wizard()

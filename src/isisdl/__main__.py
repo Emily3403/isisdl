@@ -51,12 +51,9 @@ def main() -> None:
 # TODO:
 #   Autolog to server
 #   H265
-#   GRS not found
-#   Breaking changes
 #   async
 #
 #
-# Log not working?
 
 
 if __name__ == "__main__":

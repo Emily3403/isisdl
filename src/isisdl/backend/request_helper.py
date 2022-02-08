@@ -62,6 +62,7 @@ class PreMediaContainer:
         assert self.checksum is not None
         return database_helper.add_pre_container(self)
 
+    # TODO: Delete
     def calculate_online_checksum(self, s: SessionWithKey) -> Tuple[str, int]:
         while True:
             running_download = s.get_(self.url, params={"token": s.token}, stream=True)
@@ -103,7 +104,7 @@ class Course:
             os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
-        if args.disable_videos:
+        if args.disable_videos or not config.download_videos:
             return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
@@ -150,8 +151,8 @@ class Course:
         video_cache.update({video["url"]: size for video, size in zip(videos_json, sizes)})
         database_helper.set_video_cache(video_cache, self.name)
 
-        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=size)
-                for item, size in zip(videos_json, sizes) if size is not None]
+        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=video_cache.get(item["url"], -1))
+                for item in videos_json]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
         if args.disable_documents:
@@ -209,15 +210,23 @@ class Course:
 
     def path(self, *args: str) -> str:
         # Custom path function that prepends the args with the course name.
-        return path(sanitize_name(self.name), *args)
+        return str(path(sanitize_name(self.name), *args))
 
     @property
     def ok(self) -> bool:
-        # if args.whitelist != [True] and self in args.whitelist:
-        #     return True
-        #
-        # return self in args.whitelist and self not in args.blacklist
-        return True
+        if config.whitelist is None and config.blacklist is None:
+            return True
+
+        if config.whitelist is None and config.blacklist is not None:
+            return self.course_id not in config.blacklist
+
+        if config.whitelist is not None and config.blacklist is None:
+            return self.course_id in config.whitelist
+
+        if config.whitelist is not None and config.blacklist is not None:
+            return self.course_id in config.whitelist and self.course_id not in config.blacklist
+
+        assert False
 
     def __str__(self) -> str:
         return self.name
@@ -269,7 +278,7 @@ class RequestHelper:
 
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
 
-        self._get_courses()
+        self.get_courses()
 
         RequestHelper._instance_init = True
 
@@ -285,18 +294,18 @@ class RequestHelper:
                 os.makedirs(course.path(), exist_ok=True)
             course.make_directories()
 
-    def _get_courses(self) -> None:
+    def get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self.userid}))
+        courses = []
         for item in res:
             course = Course.from_dict(item)
             self.course_id_mapping.update({course.course_id: course})
             database_helper.add_course(course)
 
             if course.ok:
-                self.courses.append(course)
+                courses.append(course)
 
-        self.courses = sorted(self.courses)
-        self.make_course_paths()
+        self.courses = sorted(courses)
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
@@ -398,9 +407,6 @@ class RequestHelper:
         all_files = sort(documents + mod_assign) + sort(videos)
         check_for_conflicts_in_files(all_files)
 
-        if is_testing:
-            all_files = _course_downloader_transformation(all_files)
-
         return all_files
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
@@ -460,8 +466,9 @@ class CourseDownloader:
         self.user = user
 
     def start(self) -> None:
-        if pre_status.status == PreStatusInfo.startup:
-            pre_status.start()
+        global pre_status
+        pre_status = PreStatus()
+        pre_status.start()
 
         self.helper = RequestHelper(self.user)
 
@@ -470,6 +477,7 @@ class CourseDownloader:
 
         global downloading_files
         downloading_files = media_containers
+        self.helper.make_course_paths()
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         global status

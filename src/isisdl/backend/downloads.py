@@ -244,10 +244,9 @@ class MediaContainer:
         media_type = MediaType.video if container.is_video else MediaType.document
         location = os.path.join(container.location, sanitize_name(container.name))
 
-        return MediaContainer(container.name, container.url, location, media_type, s, container)
+        return MediaContainer(container.name, container.url, location, media_type, s, container, container.size)
 
     def download(self, throttler: DownloadThrottler) -> None:
-        # TODO: Better size
         if self._exit:
             self.done = True
             return
@@ -270,13 +269,14 @@ class MediaContainer:
             while True:
                 token = throttler.get()
 
-                while True:
+                i = 0
+                while i < num_tries_download:
                     try:
                         new = running_download.raw.read(token.num_bytes, decode_content=True)
                         break
 
                     except Exception:
-                        pass
+                        i += 1
 
                 if len(new) == 0:
                     # No file left
@@ -329,8 +329,7 @@ class Status(Thread):
         self._shutdown = False
         self.finished_files = 0
         self.total_files = len(files)
-        assert all(item.size > 0 for item in files)
-        self.total_size = sum(item.size for item in files)
+        self.total_size = sum(item.size for item in files if item.size != -1)
         self.total_downloaded = 0
         self.last_text_len = 0
         self.throttler = throttler

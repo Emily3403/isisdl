@@ -113,13 +113,14 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     monkeypatch.setenv(env_var_name_username, user.username)
     monkeypatch.setenv(env_var_name_password, user.password)
 
+    prev_courses = request_helper.courses.copy()
     indexes = [0, 3, 5]
     choices = iter(["1", ",".join(str(item) for item in indexes)])
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
 
     config_run.whitelist_prompt()
 
-    should_be_chosen = [request_helper.courses[i].course_id for i in indexes]
+    should_be_chosen = [prev_courses[i].course_id for i in indexes]
 
     assert should_be_chosen == config.whitelist
 
