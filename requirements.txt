@@ -1,6 +1,5 @@
 cryptography
 requests
-pymediainfo
 pyyaml
 packaging
 python-crontab; sys_platform == 'linux'

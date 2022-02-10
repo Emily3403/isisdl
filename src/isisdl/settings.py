@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import sys
 from collections import defaultdict
 from hashlib import sha256
@@ -34,7 +35,7 @@ timer_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd"
 service_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.service")
 
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"
@@ -100,6 +101,9 @@ download_timeout_multiplier = 2
 
 # A constant to detect if you are on Windows.
 is_windows = platform.system() == "Windows"
+
+# If the user has ffmpeg installed
+has_ffmpeg = shutil.which("ffmpeg") is not None
 
 # Check if running from cron
 import isisdl.bin.autorun

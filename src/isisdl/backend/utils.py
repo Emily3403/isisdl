@@ -3,22 +3,23 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import random
 import signal
 import string
 import subprocess
 import traceback
+import mimetypes
 from configparser import ConfigParser
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, Mapping, TypeVar
+from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, Mapping, TypeVar, cast
 from urllib.parse import unquote
 
-import colorama
 from yaml import safe_load
 
 import isisdl
@@ -274,6 +275,35 @@ def run_cmd_with_error(args: List[str]) -> None:
         print(f"The command `{' '.join(result.args)}` exited with exit code {result.returncode}\n{result.stdout.decode()}{result.stderr.decode()}")
         print("\nPress enter to continue")
         input()
+
+
+def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
+    # This function is copied and adapted from ffmpeg-python: https://github.com/kkroening/ffmpeg-python
+    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json"]
+    args += [filename]
+
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    if p.returncode != 0:
+        return None
+
+    return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
+
+
+def is_h265(filename: str) -> Optional[bool]:
+    probe = do_ffprobe(filename)
+    if probe is None:
+        return None
+
+    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+    if video_stream is None:
+        return None
+
+    if "codec_name" not in video_stream:
+        # Later: Server
+        return None
+
+    return bool(video_stream["codec_name"] == "hevc")
 
 
 def path(*args: str) -> str:
@@ -589,6 +619,3 @@ OnKill()
 database_helper = DatabaseHelper()
 args = get_args()
 config = Config()
-
-# Windows specific color codes…
-colorama.init()

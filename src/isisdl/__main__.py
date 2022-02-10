@@ -8,6 +8,8 @@ from isisdl.bin.config import run_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
 
+import ffmpeg
+
 
 def maybe_print_version_and_exit() -> None:
     if not args.version:
@@ -51,10 +53,6 @@ def main() -> None:
 # TODO:
 #   Autolog to server
 #   H265
-#   async
-#
-#
-
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import re
 import threading
@@ -315,7 +317,7 @@ class RequestHelper:
             "moodlewssettingfileurl": "true",
             "moodlewsrestformat": "json",
             "wsfunction": function,
-            "wstoken": self.session.token
+            "wstoken": self.session.token,
         })
 
         url = "https://isis.tu-berlin.de/webservice/rest/server.php"
@@ -428,7 +430,6 @@ class RequestHelper:
                         file["filepath"] = assignment["name"]
                         all_content.append(PreMediaContainer.from_api(file, assignment["id"], self.course_id_mapping[course["id"]]))
 
-        # TODO: Also get the submission contents.
         return all_content
 
     @property
