@@ -243,14 +243,14 @@ def startup() -> None:
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
 
-    default_config_str = generate_default_config_str()
+        default_config_str = generate_default_config_str()
 
-    with open(example_config_file_location, "w") as f:
-        f.write(default_config_str)
+        with open(example_config_file_location, "w") as f:
+            f.write(default_config_str)
 
-    if not os.path.exists(config_file_location):
-        with open(config_file_location, "w") as f:
-            f.write(f"# You probably want to start by copying {config_file_location} and adapting it.\n")
+        if not os.path.exists(config_file_location):
+            with open(config_file_location, "w") as f:
+                f.write(f"# You probably want to start by copying {config_file_location} and adapting it.\n")
 
 
 def clear() -> None:
