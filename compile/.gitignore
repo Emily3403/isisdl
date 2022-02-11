@@ -1,0 +1,6 @@
+*.build
+*.dist
+isisdl
+isisdl-compress
+isisdl-sync
+isisdl-config

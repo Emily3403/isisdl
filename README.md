@@ -2,31 +2,29 @@
 
 ![Tests](https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg)
 
-A downloading utility for the [ISIS](https://isis.tu-berlin.de/) tool of TU-Berlin.
-
-Download all your Files and Videos from ISIS.
+A downloading utility for [ISIS](https://isis.tu-berlin.de/) of TU-Berlin. Download all your files and videos from ISIS.
 
 ## Features
 
-### It is fast
+### It is *fast*
 
-Once the database is established and downloaded it takes ~5s to synchronize your files with ISIS.
+Once all files are downloaded it takes about 5s to synchronize your files with ISIS.
 
 ### Compatibility
 
 This library will run with any python interpreter that is ≥ 3.8.
 
-Every operating system is supported.
+Linux, macOS and Windows are supported. There are also a variety of tests that ensure everything is working properly.
 
 ### Multithreaded
 
-A fixed number of download threads may be selected at start time with `-n`.
+A fixed number of download threads may be selected at start time with the command-line-option `-n`.
 
-### Easy black- / whitelisting
+### Easy black- / whitelisting of courses
 
-The course name is matched by substring with a `-b` for blacklist and `-w` for whitelist.
+When first installing you may select courses that will be white- or blacklisted.
 
-The whitelist takes precedence over the blacklist.
+These may also be set with the command-line-options `-b` and `-w`.
 
 ## Installation
 
@@ -36,7 +34,7 @@ If you have a working `pip` installment skip the following part (to [here](#Pip)
 
 #### Linux
 
-If you are using Linux you are in luck: Everything should be installed. Test with `pip -V` to check for an existing
+If you are using Linux you are in luck: Everything should be installed. Check with `pip -V` for an existing
 installation.
 
 The output should look something like this
@@ -45,16 +43,14 @@ The output should look something like this
 pip 21.3.1 from /home/emily/.local/lib/python3.10/site-packages/pip (python 3.10)
 ```
 
-Now check that `$HOME/.local/bin` is in the `PATH`. Otherwise, the executables won't be found.
+Also check that `$HOME/.local/bin` is in the `PATH`. Otherwise, the executable won't be found.
 
 #### Windows
 
-If you don't have python installed already go ahead and install it
-from [here](https://www.python.org/downloads/release/python-3101). 
+First install python from [here](https://www.python.org/downloads/release/python-3101). Then ensure you have pip
+installed with [this](https://pip.pypa.io/en/stable/installation/) guide.
 
-The next time I am on Windows I will complete this part of the documentation.
-
-### Pip
+### pip
 
 With a working python interpreter and pip installation type the following into your favorite shell
 
@@ -69,22 +65,26 @@ Afterwards everything is installed.
 The following executables are shipped:
 
 ```
-- isisdl
-- isisdl-config
-- isisdl-sync
+isisdl
+isisdl-config
+isisdl-sync
+isisdl-compress
 ```
 
 The base executable `isisdl` is responsible for downloading your content.
 
 The executable `isisdl-config` is responsible for reconfiguring your setup.
 
-The executable `isisdl-sync` is responsible for synchronizing your files with the database and detecting missing /
-corrupted files.
+If your database gets corrupted / deleted you can re-build it by executing `isisdl-sync`. This will ensure all files are
+present and unaltered.
+
+To compress videos execute `isisdl-compress`. This will decrease the filesize *massively*. It does cost a lot of CPU so,
+it might not be worth for you, especially if you plan to delete the videos anyway.
 
 ## Future Ideas
 
-### Compression of videos
+### Sharing of compressed videos
 
-The compressing of videos is something I would love in the future. These are saved and distributed from a central
-server. The access is restricted, so we don't have any copyright infringement. If you want to participate in that you
-can request access [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
+Compressed videos could be saved and distributed from a central server. The access would be restricted, so there is no
+copyright infringement. If you want to participate in that you can request access
+[here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).

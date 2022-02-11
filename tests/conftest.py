@@ -1,28 +1,25 @@
 import os
-import shutil
 from typing import Any
 
 from pytest import fixture
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import startup, path, User, config_helper
-from isisdl.settings import is_windows, course_dir_location
+from isisdl.backend.utils import startup, path, User
 
 
 def pytest_configure() -> None:
-    assert path() == os.path.join(os.path.expanduser("~"), "test_isisdl")
+    assert path() == os.path.join(os.path.expanduser("~"), "testisisdl")
     startup()
 
 
-def pytest_unconfigure() -> None:
-    config_helper.close_connection()
-    if is_windows:
-        shutil.rmtree(path(course_dir_location))
-    else:
-        shutil.rmtree(path())
+# def pytest_unconfigure() -> None:
+    # for file in os.listdir(path()):
+    #     if file != database_file_location:
+    #         shutil.rmtree(path(file))
 
 
+@fixture(scope="session")
 def user() -> User:
     username, password = os.getenv("ISISDL_ACTUAL_USERNAME"), os.getenv("ISISDL_ACTUAL_PASSWORD")
     assert username is not None
@@ -40,6 +37,6 @@ def database_helper() -> Any:
 
 
 @fixture(scope="session")
-def request_helper() -> Any:
-    helper = RequestHelper(user())
+def request_helper(user: User) -> Any:
+    helper = RequestHelper(user)
     yield helper

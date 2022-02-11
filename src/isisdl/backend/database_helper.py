@@ -1,34 +1,42 @@
 from __future__ import annotations
 
+import json
 import sqlite3
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
 
-from isisdl.settings import database_file_location, set_database_to_memory
+from isisdl.settings import database_file_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, Course
 
 
-class SQLiteDatabase(ABC):
-    lock: Lock = Lock()
+class DatabaseHelper:
+    lock = Lock()
 
     def __init__(self) -> None:
         from isisdl.backend.utils import path
-        if set_database_to_memory:
-            self.con = sqlite3.connect(":memory:", check_same_thread=False)
-        else:
-            self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
-
+        self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
         self.cur = self.con.cursor()
-
         self.create_default_tables()
 
-    @abstractmethod
     def create_default_tables(self) -> None:
-        ...
+        with self.lock:
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS fileinfo
+                (name text, file_id text primary key unique, url text, time int, course_id int, checksum text, size int)
+            """)
+
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS courseinfo
+                (name text, id int primary key)
+            """)
+
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS json_strings
+                (id text primary key unique, json text)
+            """)
 
     def get_state(self) -> Dict[str, List[Any]]:
         res: Dict[str, List[Any]] = {}
@@ -43,22 +51,8 @@ class SQLiteDatabase(ABC):
         self.cur.close()
         self.con.close()
 
-
-class DatabaseHelper(SQLiteDatabase):
-    def create_default_tables(self) -> None:
-        with self.lock:
-            self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS fileinfo
-                (name text, file_id text primary key unique, url text, time int, course_id int, checksum text, size int)
-            """)
-
-            self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS courseinfo
-                (name text, id int primary key)
-            """)
-
     def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str = "file_id", table: str = "fileinfo") -> Any:
-        with DatabaseHelper.lock:
+        with self.lock:
             res = self.cur.execute(f"""SELECT {attr} FROM {table} WHERE {eq_name} = ?""", (eq_val,)).fetchone()
 
         if res is None:
@@ -72,9 +66,12 @@ class DatabaseHelper(SQLiteDatabase):
     def get_size_from_file_id(self, file_id: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))
 
-    def get_course_name_and_ids(self) -> List[Tuple[str, int]]:
+    def add_course(self, course: Course) -> None:
         with DatabaseHelper.lock:
-            return self.cur.execute("""SELECT * FROM courseinfo""").fetchall()
+            self.cur.execute("""
+                INSERT OR IGNORE INTO courseinfo values (?, ?)
+            """, (course.name, course.course_id))
+            self.con.commit()
 
     def delete_by_checksum(self, checksum: str) -> None:
         with DatabaseHelper.lock:
@@ -86,7 +83,7 @@ class DatabaseHelper(SQLiteDatabase):
         Returns true iff the element already existed
         """
         with DatabaseHelper.lock:
-            already_exists = self.cur.execute("SELECT * FROM fileinfo WHERE checksum = ?", (file.checksum, )).fetchone() is not None
+            already_exists = self.cur.execute("SELECT * FROM fileinfo WHERE checksum = ?", (file.checksum,)).fetchone() is not None
 
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
@@ -95,11 +92,14 @@ class DatabaseHelper(SQLiteDatabase):
 
             return already_exists
 
-    def add_course(self, course: Course) -> None:
+    def add_pre_containers(self, files: List[PreMediaContainer]) -> None:
+        """
+        Returns true iff the element already existed
+        """
         with DatabaseHelper.lock:
-            self.cur.execute("""
-                INSERT OR IGNORE INTO courseinfo values (?, ?)
-            """, (course.name, course.course_id))
+            self.cur.executemany("""
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
+            """, [(file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
             self.con.commit()
 
     def get_checksums_per_course(self) -> Dict[str, Set[str]]:
@@ -110,6 +110,53 @@ class DatabaseHelper(SQLiteDatabase):
 
         return ret
 
+    def set_config(self, config: Dict[str, Union[bool, str, int, None]]) -> None:
+        with DatabaseHelper.lock:
+            self.cur.execute("""
+                INSERT OR REPLACE INTO json_strings VALUES (?, ?)
+            """, ("config", json.dumps(config)))
+            self.con.commit()
+
+    def get_config(self) -> DefaultDict[str, Union[bool, str, int, None]]:
+        with DatabaseHelper.lock:
+            data = self.cur.execute("SELECT json from json_strings where id=\"config\"").fetchone()
+            if data is None:
+                return defaultdict(lambda: None)
+
+            if len(data) == 0:
+                return defaultdict(lambda: None)
+
+            return defaultdict(lambda: None, json.loads(data[0]))
+
+    def set_video_cache(self, cache: Dict[str, int], course_name: str) -> None:
+        with DatabaseHelper.lock:
+            self.cur.execute("""
+               INSERT OR REPLACE INTO json_strings VALUES (?, ?)
+            """, ("video_cache_" + course_name, json.dumps(cache)))
+            self.con.commit()
+
+    def get_video_cache(self, course_name: str) -> Dict[str, int]:
+        with DatabaseHelper.lock:
+            data = self.cur.execute("SELECT json FROM json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
+            if data is None:
+                return {}
+
+            if len(data) == 0:
+                return {}
+
+            return cast(Dict[str, int], json.loads(data[0]))
+
+    def get_video_cache_exists(self) -> bool:
+        with DatabaseHelper.lock:
+            data = self.cur.execute("SELECT * FROM json_strings WHERE id LIKE '%video%'").fetchone()
+            if data is None:
+                return False
+
+            if len(data) == 0:
+                return False
+
+            return True
+
     def delete_file_table(self) -> None:
         with self.lock:
             self.cur.execute("""
@@ -117,120 +164,11 @@ class DatabaseHelper(SQLiteDatabase):
             """)
 
         self.create_default_tables()
-        pass
-
-
-class ConfigHelper(SQLiteDatabase):
-    def create_default_tables(self) -> None:
-        with self.lock:
-            self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS config
-                (key text unique, value text);
-            """)
-
-    def _set(self, key: str, value: str) -> None:
-        with self.lock:
-            self.cur.execute("""
-                INSERT OR REPLACE INTO config values (?, ?)
-            """, (key, value))
-            self.con.commit()
-
-    def _get(self, key: str) -> Optional[str]:
-        with self.lock:
-            res = self.cur.execute("SELECT value FROM config where key = ?", (key,)).fetchone()
-            if res is None:
-                return None
-
-            return cast(str, res[0])
-
-    def _delete(self, key: str) -> None:
-        with self.lock:
-            self.cur.execute("DELETE FROM config where key = ?", (key,))
-            self.con.commit()
-
-    def set_user(self, username: str) -> None:
-        self._set("username", username)
-
-    def set_clear_password(self, password: str) -> None:
-        return self._set("clear_password", password)
-
-    def set_encrypted_password(self, password: str) -> None:
-        return self._set("encrypted_password", password)
-
-    def get_user(self) -> Optional[str]:
-        return self._get("username")
-
-    def get_clear_password(self) -> Optional[str]:
-        return self._get("clear_password")
-
-    def get_encrypted_password(self) -> Optional[str]:
-        return self._get("encrypted_password")
-
-    #
-
-    @staticmethod
-    def default_filename_scheme() -> str:
-        return "0"
-
-    def set_filename_scheme(self, num: str) -> None:
-        self._set("filename_scheme", num)
-
-    def get_filename_scheme(self) -> Optional[str]:
-        return self._get("filename_scheme")
-
-    def get_or_default_filename_scheme(self) -> str:
-        return self.get_filename_scheme() or self.default_filename_scheme()
-
-    def set_throttle_rate(self, num: Optional[str]) -> None:
-        if num is None:
-            self._delete("throttle_rate")
-        else:
-            self._set("throttle_rate", num)
-
-    def get_throttle_rate(self) -> Optional[int]:
-        value = self._get("throttle_rate")
-        if value is None:
-            return None
-
-        return int(value)
-
-    #
-
-    @staticmethod
-    def default_update_policy() -> str:
-        return "2"
-
-    def get_update_policy(self) -> Optional[str]:
-        return self._get("update_policy")
-
-    def get_or_default_update_policy(self) -> str:
-        return self.get_update_policy() or self.default_update_policy()
-
-    def set_update_policy(self, value: str) -> None:
-        self._set("update_policy", value)
-
-    #
-
-    @staticmethod
-    def default_telemetry() -> bool:
-        return True
-
-    def set_telemetry(self, num: str) -> None:
-        self._set("telemetry", num)
-
-    def get_telemetry(self) -> bool:
-        value = self._get("telemetry")
-        if value is None:
-            return self.default_telemetry()
-
-        return value != "0"
-
-    #
 
     def delete_config(self) -> None:
         with self.lock:
             self.cur.execute("""
-                DROP table config
+                DROP table json_strings
             """)
 
         self.create_default_tables()

@@ -1,6 +1,7 @@
 """
 This file is concerned with how to download an actual file given an url.
 """
+
 from __future__ import annotations
 
 import enum
@@ -12,19 +13,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
+from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast, Union
 
 import math
-import requests
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config_helper, sanitize_name
-from isisdl.settings import progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, bigger_progress_bar_resolution
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
+from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
+
+
+class Dummy:
+    def set_status(self, _: Any) -> None:
+        return
 
 
 class SessionWithKey(Session):
@@ -34,31 +39,30 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User, status: Optional[PreStatus] = None) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User, status: Union[PreStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
         s = cls("", "")
-
-        if status:
-            status.set_status(PreStatusInfo.authenticating0)
-
         s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
+        status.set_status(PreStatusInfo.authenticating0)
         s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating1)
-
+        status.set_status(PreStatusInfo.authenticating1)
         s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-               data={"shib_idp_ls_exception.shib_idp_session_ss": "", "shib_idp_ls_success.shib_idp_session_ss": "false", "shib_idp_ls_value.shib_idp_session_ss": "",
-                     "shib_idp_ls_exception.shib_idp_persistent_ss": "", "shib_idp_ls_success.shib_idp_persistent_ss": "false", "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                     "shib_idp_ls_supported": "", "_eventId_proceed": "", })
+               data={
+                   "shib_idp_ls_exception.shib_idp_session_ss": "",
+                   "shib_idp_ls_success.shib_idp_session_ss": "false",
+                   "shib_idp_ls_value.shib_idp_session_ss": "",
+                   "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                   "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                   "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                   "shib_idp_ls_supported": "", "_eventId_proceed": "",
+               })
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating3)
+        status.set_status(PreStatusInfo.authenticating3)
         response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                           params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating4)
+        status.set_status(PreStatusInfo.authenticating4)
 
         if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             # The redirection did not work → credentials are wrong
@@ -82,8 +86,6 @@ class SessionWithKey(Session):
         except InvalidSchema as ex:
             token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
 
-        if status:
-            status.set_status(PreStatusInfo.authenticating5)
         s.key = key
         s.token = token
 
@@ -96,8 +98,8 @@ class SessionWithKey(Session):
             try:
                 return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
-            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-                # TODO: Server
+            except Exception:
+                # Later: Server
                 time.sleep(sleep_time_for_isis)
                 i += 1
 
@@ -135,7 +137,8 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
-        self.download_rate: Optional[int] = args.download_rate or config_helper.get_throttle_rate()
+
+        self.download_rate = args.download_rate or config.throttle_rate or -1
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -179,7 +182,7 @@ class DownloadThrottler(Thread):
 
     def get(self) -> Token:
         try:
-            if self.download_rate is None:
+            if self.download_rate == -1:
                 return self.token
 
             token = self.active_tokens.get()
@@ -192,7 +195,7 @@ class DownloadThrottler(Thread):
             self.timestamps_tokens.append(time.perf_counter())
 
     def max_tokens(self) -> int:
-        if self.download_rate is None:
+        if self.download_rate == -1:
             return 1
 
         return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
@@ -239,7 +242,7 @@ class MediaContainer:
         media_type = MediaType.video if container.is_video else MediaType.document
         location = os.path.join(container.location, sanitize_name(container.name))
 
-        return MediaContainer(container.name, container.url, location, media_type, s, container)
+        return MediaContainer(container.name, container.url, location, media_type, s, container, container.size)
 
     def download(self, throttler: DownloadThrottler) -> None:
         if self._exit:
@@ -264,7 +267,15 @@ class MediaContainer:
             while True:
                 token = throttler.get()
 
-                new = running_download.raw.read(token.num_bytes, decode_content=True)
+                i = 0
+                while i < num_tries_download:
+                    try:
+                        new = running_download.raw.read(token.num_bytes, decode_content=True)
+                        break
+
+                    except Exception:
+                        i += 1
+
                 if len(new) == 0:
                     # No file left
                     break
@@ -297,8 +308,8 @@ class MediaContainer:
         if percent > 1:
             percent = 1
 
-        progress_chars = int(percent * progress_bar_resolution)
-        return "╶" + "█" * progress_chars + " " * (progress_bar_resolution - progress_chars) + "╴"
+        progress_chars = int(percent * download_progress_bar_resolution)
+        return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
 
     def __hash__(self) -> int:
         # The url is known and unique. No need to store an extra field "checksum".
@@ -312,10 +323,11 @@ class MediaContainer:
 
 
 class Status(Thread):
-    def __init__(self, num_files: int, num_threads: int, throttler: DownloadThrottler) -> None:
+    def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
         self.finished_files = 0
-        self.total_files = num_files
+        self.total_files = len(files)
+        self.total_size = sum(item.size for item in files if item.size != -1)
         self.total_downloaded = 0
         self.last_text_len = 0
         self.throttler = throttler
@@ -361,11 +373,12 @@ class Status(Thread):
 
             curr_bandwidth = format_quick(self.throttler.bandwidth_used)
             downloaded_bytes = format_quick(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
+            total_size = format_quick(self.total_size)
 
             # General meta-info
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
-            log_strings.append(f"Downloaded {downloaded_bytes}")
+            log_strings.append(f"Downloaded {downloaded_bytes} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
             log_strings.append("")
 
@@ -384,7 +397,7 @@ class Status(Thread):
                 pass
 
             if self._shutdown:
-                log_strings.extend(["", "Please wait for the downloads to finish…"])
+                log_strings.extend(["", "Please wait for the downloads to finish ..."])
 
             self.last_text_len = print_status_message(log_strings, self.last_text_len)
 
@@ -393,16 +406,12 @@ class PreStatusInfo(enum.Enum):
     startup = 0
     authenticating0 = 5
     authenticating1 = 10
-    authenticating2 = 15
-    authenticating3 = 30
-    authenticating4 = 40
-    authenticating5 = 50
-
-    get_info = 55
-    get_courses = 60
+    authenticating2 = 20
+    authenticating3 = 25
+    authenticating4 = 30
 
     content: Any = []
-    get_content = 40
+    get_content = 70
 
     done = 100
 
@@ -425,6 +434,7 @@ class PreStatus(Thread):
         self.max_content = num
 
     def run(self) -> None:
+        video_cache_exists = database_helper.get_video_cache_exists()
         while self._running:
             time.sleep(status_time)
 
@@ -436,12 +446,6 @@ class PreStatus(Thread):
             elif self.status.name.startswith("authenticating"):
                 message = "Authenticating with ISIS"
 
-            elif self.status == PreStatusInfo.get_info:
-                message = "Getting information about the User"
-
-            elif self.status == PreStatusInfo.get_courses:
-                message = "Getting information about the Courses"
-
             elif self.status == PreStatusInfo.content:
                 message = "Getting the content of the Courses"
 
@@ -450,20 +454,26 @@ class PreStatus(Thread):
 
             log_strings.append(f"{message} {'.' * (self.i % 4)}")
 
+            if not video_cache_exists and self.status == PreStatusInfo.content and not (args.disable_videos or not config.download_videos):
+                log_strings.append("(This may take a while for the first time)")
+
             log_strings.append("")
 
             if isinstance(self.status.value, int):
-                perc_done = int(self.status.value / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+                perc_done = int(self.status.value / PreStatusInfo.done.value * status_progress_bar_resolution)
+
             elif isinstance(self.status.value, list):
                 assert self.max_content > 0
                 threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
-                perc_done = int((PreStatusInfo.get_courses.value + threads_finished_perc) / PreStatusInfo.done.value * bigger_progress_bar_resolution)
+                perc_done = int((PreStatusInfo.authenticating4.value + threads_finished_perc) / PreStatusInfo.done.value * status_progress_bar_resolution)
+
             else:
                 perc_done = 0
 
-            log_strings.append(f"[{'█' * perc_done}{' ' * (bigger_progress_bar_resolution - perc_done)}]")
+            log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
-            self.last_text_len = print_status_message(log_strings, self.last_text_len)
+            if self._running:
+                self.last_text_len = print_status_message(log_strings, self.last_text_len)
 
             self.i += 1
 

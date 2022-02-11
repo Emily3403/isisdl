@@ -4,6 +4,8 @@ pytest==6.2.5
 pytest-cov==2.12.1
 mypy===0.910
 types-requests===2.26.3
+types-PyYAML===6.0.3
 twine===3.4.2
 build===0.7.0
 radon===5.1.0
+nuitka===0.6.19.6
