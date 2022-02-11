@@ -42,7 +42,7 @@ def test_settings() -> None:
 
     assert 2 <= status_chop_off <= 3
     assert status_time == 2
-    assert 0.1 <= _status_time <= 0.5
+    assert 0.1 <= _status_time <= 1
 
     assert env_var_name_username == "ISISDL_USERNAME"
     assert env_var_name_password == "ISISDL_PASSWORD"
