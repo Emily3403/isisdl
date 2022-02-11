@@ -68,9 +68,6 @@ download_progress_bar_resolution = 10
 # Chop off the last ↓ characters of the status message for a ...
 status_chop_off = 2
 
-# The status message is replaced every ↓ seconds
-status_time = 0.25
-
 # Environment variables are checked when authenticating
 env_var_name_username = "ISISDL_USERNAME"
 env_var_name_password = "ISISDL_PASSWORD"
@@ -101,6 +98,9 @@ download_timeout_multiplier = 2
 # A constant to detect if you are on Windows.
 is_windows = platform.system() == "Windows"
 
+# The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
+status_time = 0.25 if not is_windows else 1
+
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
@@ -112,6 +112,8 @@ token_queue_refresh_rate = 0.1
 
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3
+
+ffmpeg_args = ["-crf", "35", "-c:v", "libx265", "-c:a", "copy", "-preset", "fast",]
 
 
 # Now load any options the user may overwrite (Linux exclusive)

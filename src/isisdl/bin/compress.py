@@ -8,11 +8,11 @@ from pathlib import Path
 from threading import Thread
 from typing import Optional
 
-from downloads import MediaType
+from isisdl.backend.downloads import MediaType
 from isisdl.backend.crypt import get_credentials
-from isisdl.settings import is_windows, has_ffmpeg, status_time
-from request_helper import RequestHelper
-from utils import error_text, is_h265, on_kill, HumanBytes, do_ffprobe
+from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args
+from isisdl.backend.request_helper import RequestHelper
+from isisdl.backend.utils import error_text, is_h265, on_kill, HumanBytes, do_ffprobe
 
 
 def check_ffmpeg_exists() -> None:
@@ -46,11 +46,12 @@ def run_ffmpeg_till_finished() -> None:
 
     print("\n\nPlease wait for the conversion to be finished!")
     probe = do_ffprobe(str(curr_file))
-    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-    if video_stream is not None and "duration" in video_stream:
-        print(f"(Duration: {datetime.timedelta(seconds=int(float(video_stream['duration'])))}:00)\n")
-    else:
-        print()
+    if probe is not None:
+        video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+        if video_stream is not None and "duration" in video_stream:
+            print(f"(Duration: {datetime.timedelta(seconds=int(float(video_stream['duration'])))}:00)\n")
+        else:
+            print()
 
     while True:
         if stop_encoding is False:
@@ -83,16 +84,12 @@ def convert() -> None:
                 continue
 
             curr_file = video
-
             subprocess.Popen([
                 "ffmpeg",
                 "-i", str(video),
-                "-crf", "35",
-                "-c:v", "libx265",
-                "-c:a", "copy",
-                "-preset", "fast",
+                *ffmpeg_args,
                 video.parent.joinpath(".tmp_" + video.name)
-            ], stdin=subprocess.DEVNULL, preexec_fn=lambda: os.setpgrp() if is_windows else lambda: None).wait()  # type: ignore
+            ], stdin=subprocess.DEVNULL, preexec_fn=lambda: os.setpgrp() if not is_windows else lambda: None).wait()  # type: ignore
 
             total_prev_size += video.stat().st_size
             shutil.move(str(video.parent.joinpath(".tmp_" + video.name)), str(video))
@@ -103,6 +100,8 @@ def convert() -> None:
 
 def main() -> None:
     print("Attention: If you rename a compressed file and the database is deleted you will lose this file.\nThe only way to recover it is by renaming it back to its original name.")
+    print("\nPress enter to continue")
+    input()
     # Run the conversion in a separate thread so if killed it will still run
     runner = Thread(target=convert)
     runner.start()

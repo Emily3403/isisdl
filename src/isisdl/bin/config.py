@@ -210,20 +210,22 @@ def timer_prompt() -> None:
     print("[Linux exclusive]\n\nDo you want me to install a systemd timer to run `isisdl` every hour?\n\n"
           f"If you enable this option the files will automagically appear in\n`{working_dir_location}`\nand you will never have to execute `isisdl` manually again.")
 
-    if subprocess.check_call(["systemctl", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
+    if is_windows:
+        print(f"\n\n{error_text}\nIt seems as if you are running windows.\nAutomatically running `isisdl` is currently not supported.\n"
+              "You can expect it to be supported in future updates.\n\nPress enter to continue")
+        input()
+        return
+
+    try:
+        subprocess.check_call(["systemctl", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
         print(f"""{error_text}
-It seems as if you are not running systemd.
+I cannot find the `systemctl` executable. Probably you do not have systemd installed. 
 Since this feature is systemd specific, I can't install it on your system.
 If you think this is a bug please submit an error report at
 https://github.com/Emily3403/isisdl/issues
 
 Press enter to continue.""")
-        input()
-        return
-
-    if is_windows:
-        print(f"\n\n{error_text}\nIt seems as if you are running windows.\nAutomatically running `isisdl` is currently not supported.\n"
-              "You can expect it to be supported in future updates.\n\nPress enter to continue")
         input()
         return
 
