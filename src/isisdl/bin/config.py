@@ -220,7 +220,7 @@ def timer_prompt() -> None:
         subprocess.check_call(["systemctl", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         print(f"""{error_text}
-I cannot find the `systemctl` executable. Probably you do not have systemd installed. 
+I cannot find the `systemctl` executable. Probably you do not have systemd installed.
 Since this feature is systemd specific, I can't install it on your system.
 If you think this is a bug please submit an error report at
 https://github.com/Emily3403/isisdl/issues

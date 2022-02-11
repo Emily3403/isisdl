@@ -113,7 +113,7 @@ token_queue_refresh_rate = 0.1
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3
 
-ffmpeg_args = ["-crf", "35", "-c:v", "libx265", "-c:a", "copy", "-preset", "fast",]
+ffmpeg_args = ["-crf", "35", "-c:v", "libx265", "-c:a", "copy", "-preset", "fast"]
 
 
 # Now load any options the user may overwrite (Linux exclusive)

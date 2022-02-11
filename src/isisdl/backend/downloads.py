@@ -397,7 +397,7 @@ class Status(Thread):
                 pass
 
             if self._shutdown:
-                log_strings.extend(["", "Please wait for the downloads to finish…"])
+                log_strings.extend(["", "Please wait for the downloads to finish ..."])
 
             self.last_text_len = print_status_message(log_strings, self.last_text_len)
 

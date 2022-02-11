@@ -2,6 +2,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import time
 import datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ total_after_size = 0
 curr_file: Optional[Path] = None
 
 
-@on_kill(5)  # type: ignore
+@on_kill(5)
 def run_ffmpeg_till_finished() -> None:
     global stop_encoding
     if stop_encoding is None:
@@ -73,6 +74,13 @@ def convert() -> None:
 
     stop_encoding = False
 
+    if sys.platform == "win32":
+        def func_to_call() -> None:
+            pass
+    else:
+        def func_to_call() -> None:
+            os.setpgrp()
+
     for course in helper.courses:
         videos = list(Path(course.path(MediaType.video.dir_name)).glob("*"))
         for video in videos:
@@ -84,12 +92,12 @@ def convert() -> None:
                 continue
 
             curr_file = video
-            subprocess.Popen([
+            subprocess.call([
                 "ffmpeg",
                 "-i", str(video),
                 *ffmpeg_args,
                 video.parent.joinpath(".tmp_" + video.name)
-            ], stdin=subprocess.DEVNULL, preexec_fn=lambda: os.setpgrp() if not is_windows else lambda: None).wait()  # type: ignore
+            ], stdin=subprocess.DEVNULL, preexec_fn=func_to_call)
 
             total_prev_size += video.stat().st_size
             shutil.move(str(video.parent.joinpath(".tmp_" + video.name)), str(video))
