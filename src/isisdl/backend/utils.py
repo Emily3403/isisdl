@@ -109,11 +109,6 @@ class Config:
         set_list("whitelist")
         set_list("blacklist")
 
-        if is_windows:
-            raise ValueError(f"{self.whitelist}")
-            assert self.whitelist is None or isinstance(self.whitelist, list)
-            assert self.blacklist is None or isinstance(self.blacklist, list)
-
     def __setattr__(self, key: str, value: Union[bool, str, int, None]) -> None:
         super().__setattr__(key, value)
         if not self._in_backup:
