@@ -35,7 +35,7 @@ def test_environment_variables(monkeypatch: Any) -> None:
     config.restore_backup()
 
 
-def test_get_user_clean(monkeypatch: Any) -> None:
+def test_get_user_clean() -> None:
     config.start_backup()
 
     username, password = generate_user()

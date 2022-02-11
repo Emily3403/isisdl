@@ -102,15 +102,18 @@ def test_config_authentication_prompt_with_pw(monkeypatch: Any, user: User) -> N
 
 
 def test_whitelist_prompt_no(monkeypatch: Any) -> None:
+    config.start_backup()
     monkeypatch.setattr("builtins.input", lambda _=None: "0")
 
     config.whitelist = [42, 69]
     config_run.whitelist_prompt()
 
     assert config.whitelist is None
+    config.restore_backup()  # type: ignore
 
 
 def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:
+    config.start_backup()
     monkeypatch.setenv(env_var_name_username, user.username)
     monkeypatch.setenv(env_var_name_password, user.password)
 
@@ -124,3 +127,4 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     should_be_chosen = [prev_courses[i].course_id for i in indexes]
 
     assert should_be_chosen == config.whitelist
+    config.restore_backup()
