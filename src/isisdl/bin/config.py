@@ -113,7 +113,7 @@ In order to maintain the readability of filenames,
 the next character after a whitespace is capitalized.
 
 E.g.
-"I am / a \\ wierd 🐧 [filename]" → "IAmAWierdFilename"
+"I am / a \\ wierd 🐧 [filename].png" → "IAmAWierdFilename.png"
 
 
 --- Note ---
