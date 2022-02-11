@@ -148,7 +148,7 @@ def parse_config_file() -> DefaultDict[str, Any]:
 
         print("I will be ignoring the specified configuration.\n")
 
-    return defaultdict(str)
+    return defaultdict(lambda: None)
 
 
 if not is_windows:
