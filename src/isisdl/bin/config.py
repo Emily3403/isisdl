@@ -558,7 +558,7 @@ You can choose one of the following actions
         print(yaml.dump(config.to_dict()))
         return
 
-    if choice.lower() == "e":
+    if not is_windows and choice.lower() == "e":
         print("Exporting current configuration ...")
         with open(export_config_file_location, "w") as f:
             f.write(generate_current_config_str())

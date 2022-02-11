@@ -8,7 +8,7 @@ import isisdl.bin.config as config_run
 from isisdl.backend.crypt import decryptor
 from isisdl.backend.request_helper import RequestHelper
 from isisdl.backend.utils import config, User
-from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password
+from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
 
 
 def generate_random_string() -> str:
@@ -31,6 +31,9 @@ def assert_config_expected(password_encrypted: Any, username: Any, password: Any
 
 
 def test_config_export(monkeypatch: Any) -> None:
+    if is_windows:
+        return
+
     monkeypatch.setattr("builtins.input", lambda _=None: "e")
     config_run.main()
 
