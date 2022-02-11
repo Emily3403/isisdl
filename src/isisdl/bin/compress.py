@@ -92,7 +92,7 @@ def convert() -> None:
                 "-c:a", "copy",
                 "-preset", "fast",
                 video.parent.joinpath(".tmp_" + video.name)
-            ], stdin=subprocess.DEVNULL, preexec_fn=lambda: os.setpgrp()).wait()
+            ], stdin=subprocess.DEVNULL, preexec_fn=lambda: os.setpgrp() if is_windows else lambda: None).wait()  # type: ignore
 
             total_prev_size += video.stat().st_size
             shutil.move(str(video.parent.joinpath(".tmp_" + video.name)), str(video))
