@@ -110,7 +110,7 @@ class Config:
         set_list("blacklist")
 
         if is_windows:
-            raise ValueError(self.whitelist)
+            raise ValueError(f"{self.whitelist}")
             assert self.whitelist is None or isinstance(self.whitelist, list)
             assert self.blacklist is None or isinstance(self.blacklist, list)
 
