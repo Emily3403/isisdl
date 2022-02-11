@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import os
 import re
 import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, _course_downloader_transformation, config, generate_error_message
-from isisdl.settings import enable_multithread, checksum_algorithm, is_testing, checksum_num_bytes, video_size_discover_num_threads
+from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message
+from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
 
 
 @dataclass
@@ -63,24 +61,6 @@ class PreMediaContainer:
     def dump(self) -> bool:
         assert self.checksum is not None
         return database_helper.add_pre_container(self)
-
-    # TODO: Delete
-    def calculate_online_checksum(self, s: SessionWithKey) -> Tuple[str, int]:
-        while True:
-            running_download = s.get_(self.url, params={"token": s.token}, stream=True)
-
-            if running_download is None:
-                continue
-
-            if not running_download.ok:
-                assert False
-
-            break
-
-        chunk = running_download.raw.read(checksum_num_bytes, decode_content=True)
-        size = len(chunk)
-
-        return checksum_algorithm(chunk + str(size).encode()).hexdigest(), size
 
     def __hash__(self) -> int:
         return self.file_id.__hash__()

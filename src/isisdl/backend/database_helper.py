@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Tuple, Any, Union, DefaultDict
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
 
 from isisdl.settings import database_file_location
 
@@ -137,7 +137,7 @@ class DatabaseHelper:
 
     def get_video_cache(self, course_name: str) -> Dict[str, int]:
         with DatabaseHelper.lock:
-            data = self.cur.execute("SELECT json from json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
+            data = self.cur.execute("SELECT json FROM json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
             if data is None:
                 return {}
 
@@ -145,6 +145,17 @@ class DatabaseHelper:
                 return {}
 
             return cast(Dict[str, int], json.loads(data[0]))
+
+    def get_video_cache_exists(self) -> bool:
+        with DatabaseHelper.lock:
+            data = self.cur.execute("SELECT * FROM json_strings WHERE id LIKE '%video%'").fetchone()
+            if data is None:
+                return False
+
+            if len(data) == 0:
+                return False
+
+            return True
 
     def delete_file_table(self) -> None:
         with self.lock:
@@ -157,7 +168,7 @@ class DatabaseHelper:
     def delete_config(self) -> None:
         with self.lock:
             self.cur.execute("""
-                DROP table config
+                DROP table json_strings
             """)
 
         self.create_default_tables()

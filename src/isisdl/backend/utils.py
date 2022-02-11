@@ -10,24 +10,18 @@ import signal
 import string
 import subprocess
 import traceback
-import mimetypes
-from configparser import ConfigParser
-from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, Mapping, TypeVar, cast
+from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
-from yaml import safe_load
-
-import isisdl
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, status_chop_off, sync_database_num_threads, \
+    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, cache_user_and_websites
+    error_directory_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -52,9 +46,6 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
 
     the_args, unknown = parser.parse_known_args()
-
-    if the_args.disable_videos:
-        the_args.num_threads *= 2
 
     return the_args
 
@@ -86,7 +77,7 @@ class Config:
         "filename_replacing": False,
         "throttle_rate": None,
         "throttle_rate_autorun": None,
-        "update_policy": "pip",
+        "update_policy": "install_pip",
         "telemetry_policy": True,
     }
 
@@ -95,6 +86,7 @@ class Config:
     )
 
     _user: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
+    _stored: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
     _backup: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
     _in_backup: bool = False
 
@@ -104,6 +96,7 @@ class Config:
 
         Config._user.update(stored_config)
         Config._user.update(config_file_data)
+        Config._stored.update(stored_config)
 
         for name in self.__slots__:
             super().__setattr__(name, next(iter(item for item in [config_file_data[name], stored_config[name]] if item is not None), self.default_config[name]))
@@ -120,14 +113,15 @@ class Config:
         super().__setattr__(key, value)
         if not self._in_backup:
             Config._user[key] = value
-            database_helper.set_config(self.to_dict())
+            Config._stored[key] = value
+            database_helper.set_config(self._stored)
 
     @staticmethod
-    def default(attr: str) -> Union[bool, str, int, None]:
+    def default(attr: str) -> Any:
         return Config.default_config[attr]
 
     @staticmethod
-    def user(attr: str) -> Union[bool, str, int, None]:
+    def user(attr: str) -> Any:
         return Config._user[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None]]:
@@ -142,32 +136,27 @@ class Config:
         for name in self.__slots__:
             super().__setattr__(name, self._backup[name])
 
-    def reset_to_defaults(self) -> None:
-        for name in self.__slots__:
-            super().__setattr__(name, self.default_config[name])
-
 
 def encode_yaml(st: Union[bool, str, int, None]) -> str:
     if st is None:
         return "null"
     elif st is True:
-        return "yes"
+        return "true"
     elif st is False:
-        return "no"
+        return "false"
     return str(st)
 
 
-# TODO: White / blacklist + download videos
-def generate_config_str(working_dir_location: str, database_file_location: str, filename_replacing: bool, throttle_rate: Optional[int], throttle_rate_autorun: Optional[int],
-                        update_policy: Optional[str], telemetry_policy: bool, status_time: float, sync_database_num_threads: int, status_progress_bar_resolution: int,
-                        download_progress_bar_resolution: int) -> str:
+def generate_config_str(working_dir_location: str, database_file_location: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
+                        throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float,
+                        video_size_discover_num_threads: int, status_progress_bar_resolution: int, download_progress_bar_resolution: int) -> str:
     return f"""---
 
-# Any values you overwrite will take precedence over *any* otherwise provided value.
+# Any values you overwrite here will take precedence over *any* otherwise provided value.
 
 
 # The directory where everything lives in.
-# Possible values {{any posix path}}
+# Possible values {{any absolute posix path}}
 working_dir_location: {working_dir_location}
 
 # The name of the SQlite Database (located in `working_dir_location`) used for storing metadata about files + config.
@@ -175,9 +164,23 @@ working_dir_location: {working_dir_location}
 database_file_location: {database_file_location}
 
 
+# Should videos be downloaded on this device?
+# Possible values {{"true", "false"}}
+download_videos: {encode_yaml(download_videos)}
+
+
 # Should the filename be replaced with a sanitized version?
-# Possible values: {{"yes", "no"}}
+# Possible values {{"true", "false"}}
 filename_replacing: {encode_yaml(filename_replacing)}
+
+
+# The global whitelist of courses to be considered. Best set with `isisdl-config` and then extracted.
+# Possible values {{"null", list[int] of course ID's}}
+whitelist: {'null' if whitelist is None else whitelist}
+
+# The global blacklist of courses to be considered. Best set with `isisdl-config` and then extracted.
+# Possible values {{"null", list[int] of course ID's}}
+blacklist: {'null' if blacklist is None else blacklist}
 
 
 # The global throttle rate. Will take precedence over throttle_rate_autorun.
@@ -190,56 +193,46 @@ throttle_rate_autorun: {encode_yaml(throttle_rate_autorun)}
 
 
 # How updates should be handled.
-# Possible values {{"install_pip", "install_github", "notify_pip", "notify_github", "null"}}
+# Possible values {{"null", "install_pip", "install_github", "notify_pip", "notify_github"}}
 update_policy: {encode_yaml(update_policy)}
 
 
-# If telemetry data should be collected.
-# Possible values {{"yes", "no"}}
+# Should telemetry data be collected?
+# Possible values {{"true", "false"}}
 telemetry_policy: {encode_yaml(telemetry_policy)}
 
 
-# The time waitet between re-renders of the status message. 
-# If you have a fast terminal / PC you can set this value to 0.1 or even 0.01.
+# The time waited between re-renders of the status message.
+# If you have a fast terminal / PC you can easily set this value to 0.1 or even 0.01.
 # Possible values {{any float}}
 status_time: {status_time}
 
 
-# Number of threads to use when syncing the database with isis (only applies for `isisdl-sync`).
+# Number of threads to use when discovering video file sizes (ISIS does not offer an API).
 # Possible values {{any integer > 0}}
-sync_database_num_threads: {sync_database_num_threads}
+video_size_discover_num_threads: {video_size_discover_num_threads}
 
 
-# The number of spaces the first progress bar has
+# The resolution of the initial progress bar.
 # Possible values {{any integer > 0}}
 status_progress_bar_resolution: {status_progress_bar_resolution}
 
-# The number of spaces the second progress bar has
+# The resolution of the download progress bar.
 # Possible values {{any integer > 0}}
 download_progress_bar_resolution: {download_progress_bar_resolution}
 """
 
 
 def generate_default_config_str() -> str:
-    filename_replacing = Config.default_config["filename_replacing"]
-    throttle_rate = Config.default_config["throttle_rate"]
-    throttle_rate_autorun = Config.default_config["throttle_rate_autorun"]
-    update_policy = Config.default_config["update_policy"]
-    telemetry_policy = Config.default_config["telemetry_policy"]
-
-    assert isinstance(filename_replacing, bool)
-    assert throttle_rate is None or isinstance(throttle_rate, bool)
-    assert throttle_rate_autorun is None or isinstance(throttle_rate_autorun, bool)
-    assert update_policy is None or isinstance(update_policy, str)
-    assert isinstance(telemetry_policy, bool)
-
-    return generate_config_str(working_dir_location, database_file_location, filename_replacing, throttle_rate, throttle_rate_autorun, update_policy, telemetry_policy, status_time,
-                               sync_database_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
+    return generate_config_str(working_dir_location, database_file_location, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
+                               Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"),
+                               Config.default("telemetry_policy"), status_time, video_size_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
 
 
 def generate_current_config_str() -> str:
-    return generate_config_str(working_dir_location, database_file_location, config.filename_replacing, config.throttle_rate, config.throttle_rate_autorun, config.update_policy,
-                               config.telemetry_policy, status_time, sync_database_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
+    return generate_config_str(working_dir_location, database_file_location, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist, config.throttle_rate,
+                               config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, video_size_discover_num_threads, status_progress_bar_resolution,
+                               download_progress_bar_resolution)
 
 
 def startup() -> None:
@@ -408,8 +401,6 @@ class OnKill:
 
         if OnKill._already_killed:
             print("Alright, stay calm. I am skipping cleanup and exiting!")
-            print("I will re-download the files that are partially downloaded.")
-
             os._exit(sig)
 
         OnKill._already_killed = True
@@ -450,10 +441,10 @@ def acquire_file_lock() -> bool:
 
 def acquire_file_lock_or_exit() -> None:
     if acquire_file_lock():
-        print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance is running, you may delete it.")
+        print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance of `isisdl` is running, you may delete it.")
 
         if is_autorun:
-            exit(1)
+            os._exit(1)
 
         print("\nIf you want, I can also delete it for you.\nDo you want me to do that? [y/n]")
         choice = get_input({"y", "n"})
@@ -461,7 +452,7 @@ def acquire_file_lock_or_exit() -> None:
             os.remove(path(lock_file_location))
             acquire_file_lock()
         else:
-            exit(1)
+            os._exit(1)
 
 
 @on_kill(1)
@@ -557,6 +548,11 @@ class HumanBytes:
                 num /= unit_step
 
         return num, unit
+
+    @staticmethod
+    def format_str(num: float) -> str:
+        n, unit = HumanBytes.format(num)
+        return f"{n:.2f} {unit}"
 
 
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:

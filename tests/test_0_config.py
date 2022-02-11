@@ -1,12 +1,12 @@
-from typing import Any, Optional
+from typing import Any
 
 from yaml import safe_load
 
 import isisdl.bin.config as config_run
 from isisdl.backend.crypt import decryptor
-from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password
-from isisdl.backend.utils import config, User
 from isisdl.backend.request_helper import RequestHelper
+from isisdl.backend.utils import config, User
+from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password
 from test_0_credentials import generate_random_string
 
 
@@ -22,14 +22,6 @@ def assert_config_expected(password_encrypted: Any, username: Any, password: Any
     assert config.throttle_rate_autorun == throttle_rate_autorun
     assert config.update_policy == update_policy
     assert config.telemetry_policy == telemetry_policy
-
-
-def test_config_default(monkeypatch: Any) -> None:
-    monkeypatch.setattr("builtins.input", lambda _=None: "d")
-    config_run.main()
-
-    assert_config_expected(config.default("password_encrypted"), config.default("username"), config.default("password"), config.default("filename_replacing"),
-                           config.default("throttle_rate"), config.default("throttle_rate_autorun"), config.default("update_policy"), config.default("telemetry_policy"))
 
 
 def test_config_export(monkeypatch: Any) -> None:
@@ -123,5 +115,3 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     should_be_chosen = [prev_courses[i].course_id for i in indexes]
 
     assert should_be_chosen == config.whitelist
-
-

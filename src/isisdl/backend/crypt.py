@@ -1,7 +1,7 @@
 import base64
 import getpass
 import os
-from typing import Optional, cast
+from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC

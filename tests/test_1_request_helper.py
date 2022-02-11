@@ -1,6 +1,5 @@
 import os
 import random
-import re
 import shutil
 import string
 from collections import defaultdict
@@ -102,7 +101,7 @@ def test_normal_course_downloader(request_helper: RequestHelper, database_helper
     # Now check if everything is restored (except `possible_duplicates`)
     recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
 
-    assert prev_ids == recovered_ids
+    assert prev_ids.difference(recovered_ids) == set()
 
 
 def sample_files(files: List[PreMediaContainer], num: int) -> List[Path]:
@@ -125,7 +124,6 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
         dupl[container.size].append(container)
 
     possible = [item for row in dupl.values() for item in row if len(row) == 1]
-
 
     the_files = sample_files(possible, 10)
     new_names = []
@@ -155,4 +153,3 @@ def test_move_files(database_helper: DatabaseHelper, request_helper: RequestHelp
     delete_missing_files_from_database(request_helper)
     for csum in checksums:
         assert database_helper.get_name_by_checksum(csum) is None
-

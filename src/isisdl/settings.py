@@ -5,11 +5,12 @@ import sys
 from collections import defaultdict
 from hashlib import sha256
 from linecache import getline
-from typing import Any, Dict, Optional, cast, Set, DefaultDict
-
-from yaml import safe_load, YAMLError
+from typing import Any, DefaultDict
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
+from yaml import safe_load, YAMLError
+
+import isisdl.bin.autorun
 
 # This settings file will get overwritten everytime a new version is installed.
 # Don't overwrite any settings since you will have to do it everytime.
@@ -20,12 +21,12 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 
 # The name of the SQlite Database
-# TODO: os.system( "attrib +h myFile.txt" )
 database_file_location = ".state.db"
 
 # The path to the user-configuration file. Linux only feature
 config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "isisdl")
 
+# The paths to the individual config files
 config_file_location = os.path.join(config_dir_location, "config.yaml")
 example_config_file_location = os.path.join(config_dir_location, "example.yaml")
 export_config_file_location = os.path.join(config_dir_location, "export.yaml")
@@ -34,8 +35,9 @@ export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 timer_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.timer")
 service_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.service")
 
+# Lock settings
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"
@@ -48,9 +50,6 @@ checksum_num_bytes = 1024 * 4
 
 # Skips $`checksum_base_skip` ^ i$ bytes per calculation → O(log(n)) time :O
 checksum_base_skip = 2
-
-# Number of threads to use for the database requests when `isisdl-sync` is called
-sync_database_num_threads = 32
 
 # This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py#L274)
 password_hash_algorithm = SHA3_512
@@ -82,7 +81,7 @@ cache_user_and_websites = True
 # Should multithread be enabled? (Usually yes)
 enable_multithread = True
 
-#
+# Number of threads to discover video sizes
 video_size_discover_num_threads = 32
 
 # Sets the chunk size for a download.
@@ -105,9 +104,7 @@ is_windows = platform.system() == "Windows"
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
-# Check if running from cron
-import isisdl.bin.autorun
-
+# Check if being automatically run
 is_autorun = sys.argv[0] == isisdl.bin.autorun.__file__
 
 # DownloadThrottler refresh rate in s
@@ -175,9 +172,9 @@ if is_testing:
     download_timeout = 6
 
 # Number of bytes downloaded for videos.
-testing_download_video_size = 0
+testing_download_video_size = 1_000_000_000
 
 # Number of bytes downloaded for documents.
-testing_download_documents_size = 300_000_000
+testing_download_documents_size = 1_00_000_000
 
 # </ Test Options >

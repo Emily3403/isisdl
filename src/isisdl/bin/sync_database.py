@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import copy
 import mimetypes
 import os
 import time
@@ -13,7 +12,7 @@ from typing import List, Tuple, Set, Optional
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_status_message
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, pre_status
-from isisdl.backend.utils import path, calculate_local_checksum, database_helper, is_h265, sanitize_name
+from isisdl.backend.utils import path, calculate_local_checksum, database_helper, is_h265, sanitize_name, acquire_file_lock_or_exit
 from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolution
 
 corrupted_files: Set[Path] = set()
@@ -23,7 +22,7 @@ def remove_corrupted_prompt(files: Set[Path]) -> None:
     if not files:
         return
 
-    print("\n\nI could not recognize the following files:\n" + "\n".join(str(item) for item in sorted(files)))
+    print("\n\nThe following files are corrupted:\n" + "\n".join(str(item) for item in sorted(files)))
     print("\nDo you want me to delete them? [y/n]")
     choice = input()
     if choice == "n":
@@ -37,29 +36,25 @@ def remove_corrupted_prompt(files: Set[Path]) -> None:
 
 
 def delete_missing_files_from_database(helper: RequestHelper) -> None:
-    _checksums = database_helper.get_checksums_per_course()
-    checksums = copy.deepcopy(_checksums)
+    pre_status.stop()
+    checksums = database_helper.get_checksums_per_course()
 
     global corrupted_files
     for course in helper.courses:
-        if course.name not in _checksums:
+        if course.name not in checksums:
             continue
 
         for file in Path(path(course.path())).rglob("*"):
             if file.is_file():
+                checksum = calculate_local_checksum(file)
                 try:
-                    checksum = calculate_local_checksum(file)
                     checksums[course.name].remove(checksum)
                 except KeyError:
-                    if checksum not in _checksums[course.name]:
-                        corrupted_files.add(file)
+                    pass
 
     for row in checksums.values():
         for item in row:
             database_helper.delete_by_checksum(item)
-
-    num = sum(len(row) for row in checksums.values())
-    print(f"Deleted {num} entr{'ies' if num != 1 else 'y'} from the database to be re-downloaded.")
 
 
 def restore_database_state(helper: RequestHelper) -> None:
@@ -79,6 +74,7 @@ def restore_database_state(helper: RequestHelper) -> None:
         for container in all_files:
             if container.course_id == course.course_id:
                 files_for_course[container.size].append(container)
+            # filename_mapping[container.name].append(container)
 
         for file in Path(course.path()).rglob("*"):
             sync_status.done_thing()
@@ -86,6 +82,7 @@ def restore_database_state(helper: RequestHelper) -> None:
                 continue
 
             if database_helper.get_name_by_checksum(calculate_local_checksum(file)) is not None:
+                num_recovered_files += 1
                 continue
 
             # First heuristic: File name
@@ -134,7 +131,8 @@ def restore_database_state(helper: RequestHelper) -> None:
     database_helper.add_pre_containers(final_containers)
 
     total_num = len([item for course in helper.courses for item in Path(course.path()).rglob("*") if item.is_file()])
-    if num_recovered_files == 0:
+    print()
+    if num_recovered_files == total_num:
         print(f"No unrecognized files (checked {total_num})")
 
     else:
@@ -170,18 +168,19 @@ class SyncStatus(Thread):
 
             perc_done = int(self.num_done / self.total_files * status_progress_bar_resolution)
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
-            print_status_message(log_strings, 3)
+            if self._running:
+                print_status_message(log_strings, 3)
 
             self.i = (self.i + 1) % len(self.progress_bar)
             time.sleep(status_time)
 
 
 def main() -> None:
+    acquire_file_lock_or_exit()
     pre_status.start()
     user = get_credentials()
     request_helper = RequestHelper(user)
 
-    database_helper.delete_file_table()
     restore_database_state(request_helper)
     delete_missing_files_from_database(request_helper)
 

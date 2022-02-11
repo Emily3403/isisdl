@@ -44,29 +44,34 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
     return version.parse(found_version.group(1))
 
-# TODO
 
 def install_latest_version() -> None:
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
     update_policy = config.update_policy
-    if update_policy == "0":
+    if update_policy is None:
         return
 
-    correct_version = version_github if update_policy == "1" else version_pypi
+    correct_version = version_github if update_policy.endswith("git") else version_pypi
 
     if correct_version is None:
         return
 
-    if correct_version > version.parse(__version__):
-        print(f"\nThere is a new version available: {correct_version} (current: {__version__}).")
-        print("According to your update policy I will auto-install it.\n")
-
-    else:
+    if correct_version <= version.parse(__version__):
         return
 
-    if update_policy == "1":
+    print(f"\nThere is a new version of isisdl available: {correct_version} (current: {__version__}).")
+
+    if update_policy.startswith("notify"):
+        return
+
+    print("According to your update policy I will auto-install it.\n")
+    if update_policy == "install_pip":
+        subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
+        return
+
+    elif update_policy == "install_github":
         old_dir = os.getcwd()
         with TemporaryDirectory() as tmp:
             os.chdir(tmp)
@@ -79,6 +84,3 @@ def install_latest_version() -> None:
             print("Installing with pip ...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
             os.chdir(old_dir)
-
-    if update_policy == "2":
-        subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])

@@ -5,7 +5,6 @@ This file is concerned with how to download an actual file given an url.
 from __future__ import annotations
 
 import enum
-import math
 import os
 import shutil
 import time
@@ -13,17 +12,16 @@ from base64 import standard_b64decode
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Full, Queue, Empty
-from random import randint
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast, Union
 
-import requests
+import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_first_time
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -436,6 +434,7 @@ class PreStatus(Thread):
         self.max_content = num
 
     def run(self) -> None:
+        video_cache_exists = database_helper.get_video_cache_exists()
         while self._running:
             time.sleep(status_time)
 
@@ -455,11 +454,10 @@ class PreStatus(Thread):
 
             log_strings.append(f"{message} {'.' * (self.i % 4)}")
 
-            if is_first_time and self.status == PreStatusInfo.content:
+            if not video_cache_exists and self.status == PreStatusInfo.content and not (args.disable_videos or not config.download_videos):
                 log_strings.append("(This may take a while for the first time)")
 
             log_strings.append("")
-
 
             if isinstance(self.status.value, int):
                 perc_done = int(self.status.value / PreStatusInfo.done.value * status_progress_bar_resolution)
@@ -474,7 +472,8 @@ class PreStatus(Thread):
 
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
-            self.last_text_len = print_status_message(log_strings, self.last_text_len)
+            if self._running:
+                self.last_text_len = print_status_message(log_strings, self.last_text_len)
 
             self.i += 1
 

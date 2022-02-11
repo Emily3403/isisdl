@@ -2,4 +2,3 @@ cryptography
 requests
 pyyaml
 packaging
-python-crontab; sys_platform == 'linux'
