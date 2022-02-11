@@ -109,6 +109,7 @@ class Config:
         set_list("whitelist")
         set_list("blacklist")
 
+        raise ValueError(self.whitelist)
         assert self.whitelist is None or isinstance(self.whitelist, list)
         assert self.blacklist is None or isinstance(self.blacklist, list)
 
