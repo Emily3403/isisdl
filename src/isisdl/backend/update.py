@@ -68,19 +68,28 @@ def install_latest_version() -> None:
 
     print("According to your update policy I will auto-install it.\n")
     if update_policy == "install_pip":
-        subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
-        return
+        ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
     elif update_policy == "install_github":
         old_dir = os.getcwd()
         with TemporaryDirectory() as tmp:
             os.chdir(tmp)
             print(f"Cloning the repository into {tmp} ...")
-            ret = subprocess.check_call(["git", "clone", "https://github.com/Emily3403/isisdl"])
+            ret = subprocess.call(["git", "clone", "https://github.com/Emily3403/isisdl"])
             if ret:
                 print(f"Cloning failed with exit code {ret}")
                 return
 
             print("Installing with pip ...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "./isisdl"])
+            ret = subprocess.call([sys.executable, "-m", "pip", "install", "./isisdl"])
             os.chdir(old_dir)
+
+    else:
+        assert False
+
+    if ret == 0:
+        print("Successfully updated!")
+        exit(0)
+    else:
+        print("Updating failed… why?")
+        exit(ret)

@@ -297,7 +297,7 @@ class RequestHelper:
             if course.ok:
                 courses.append(course)
 
-        self.courses = sorted(courses)
+        self.courses = sorted(courses, reverse=True)
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}

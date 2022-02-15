@@ -13,7 +13,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, pre_status
 from isisdl.backend.utils import path, calculate_local_checksum, database_helper, is_h265, sanitize_name, acquire_file_lock_or_exit
-from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolution
+from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolution, is_first_time
 
 corrupted_files: Set[Path] = set()
 
@@ -22,7 +22,7 @@ def remove_corrupted_prompt(files: Set[Path]) -> None:
     if not files:
         return
 
-    print("\n\nThe following files are corrupted:\n" + "\n".join(str(item) for item in sorted(files)))
+    print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(files)))
     print("\nDo you want me to delete them? [y/n]")
     choice = input()
     if choice == "n":
@@ -61,6 +61,7 @@ def restore_database_state(helper: RequestHelper) -> None:
     all_files = helper.download_content()
     pre_status.stop()
     sync_status = SyncStatus(len(all_files))
+    print("\n")
     sync_status.start()
 
     global corrupted_files
@@ -146,6 +147,7 @@ class SyncStatus(Thread):
         self.i = 0
         self.num_done = 0
         self._running = True
+        self.last_text_len = 0
         super().__init__(daemon=True)
 
     def add_total_files(self, total_files: int) -> None:
@@ -166,7 +168,7 @@ class SyncStatus(Thread):
             perc_done = int(self.num_done / self.total_files * status_progress_bar_resolution)
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
             if self._running:
-                print_log_messages(log_strings)
+                self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
             self.i = (self.i + 1) % len(self.progress_bar)
             time.sleep(status_time)
@@ -185,6 +187,12 @@ def _main() -> None:
 
 def main() -> None:
     acquire_file_lock_or_exit()
+    if is_first_time:
+        import isisdl.bin.config as config_run
+        print("No database found. Running the config wizard ...\n\nPress Enter to continue\n")
+        input()
+        config_run.run_config_wizard()
+
     _main()
 
 

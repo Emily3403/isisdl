@@ -15,7 +15,7 @@ def maybe_print_version_and_exit() -> None:
     if not args.version:
         return
 
-    print(__version__)
+    print(f"isisdl Version {__version__}")
     exit(0)
 
 
@@ -57,7 +57,7 @@ Please press enter to continue.""")
 
     dl.start()
 
-    print("\nDone! Have a nice day ^.^")
+    print("\n\nDone! Have a nice day ^.^")
 
 
 def main() -> None:
@@ -69,6 +69,7 @@ def main() -> None:
 
 # TODO:
 #   Autolog to server
+#   Use mp4 metadata to recognize files
 
 if __name__ == "__main__":
     main()

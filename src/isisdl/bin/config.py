@@ -11,7 +11,7 @@ import yaml
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.downloads import SessionWithKey
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import get_input, User, clear, config, acquire_file_lock, error_text, generate_current_config_str, on_kill, run_cmd_with_error
+from isisdl.backend.utils import get_input, User, clear, config, acquire_file_lock, error_text, generate_current_config_str, on_kill, run_cmd_with_error, acquire_file_lock_or_exit
 from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, export_config_file_location, working_dir_location
 
 was_in_configuration = False
@@ -533,7 +533,7 @@ def unexpected_exit_in_wizard() -> None:
 
 
 def main() -> None:
-    acquire_file_lock()
+    acquire_file_lock_or_exit()
     if is_autorun:
         exit(1)
 

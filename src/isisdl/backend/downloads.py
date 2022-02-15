@@ -398,7 +398,7 @@ class DownloadStatus(Thread):
             if self._shutdown:
                 log_strings.extend(["", "Please wait for the downloads to finish ..."])
 
-            print_log_messages(log_strings)
+            self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
 
 class PreStatusInfo(enum.Enum):
@@ -473,7 +473,7 @@ class InfoStatus(Thread):
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             if self._running:
-                print_log_messages(log_strings)
+                self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
             self.i = (self.i + 1) % 4
 
@@ -487,7 +487,10 @@ def maybe_chop_off_str(st: str, width: int) -> str:
     return st.ljust(width)
 
 
-def print_log_messages(strings: List[str]) -> None:
+def print_log_messages(strings: List[str], last_num: int) -> int:
+    if last_num:
+        print(f"\033[{last_num}F", end="")
+
     # First sanitize the output
     width = shutil.get_terminal_size().columns
 
@@ -498,5 +501,4 @@ def print_log_messages(strings: List[str]) -> None:
     print(final_str)
 
     # Erase all previous chars
-    last_num = final_str.count("\n") + 1
-    print(f"\033[{last_num}A\r", end="")
+    return final_str.count("\n") + 1

@@ -436,8 +436,13 @@ def acquire_file_lock() -> bool:
     with open(path(lock_file_location), "w") as f:
         f.write("UwU")
 
+    global created_lock_file
+    created_lock_file = True
+
     return False
 
+
+created_lock_file = False
 
 def acquire_file_lock_or_exit() -> None:
     if acquire_file_lock():
@@ -454,10 +459,13 @@ def acquire_file_lock_or_exit() -> None:
         else:
             os._exit(1)
 
-
 @on_kill(1)
 def remove_lock_file() -> None:
+    global created_lock_file
     if not enable_lock:
+        return
+
+    if not created_lock_file:
         return
 
     if not os.path.exists(path(lock_file_location)):
