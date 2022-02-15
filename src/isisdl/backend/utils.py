@@ -10,6 +10,7 @@ import signal
 import string
 import subprocess
 import traceback
+import colorama
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -427,7 +428,6 @@ class OnKill:
         OnKill._pids_to_kill.append(pid)
 
 
-
 def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
     def decorator(function: Any) -> Any:
         # Expects the method to have *no* args
@@ -640,6 +640,7 @@ if is_first_time:
     if is_autorun:
         exit(1)
 
+colorama.init()
 startup()
 OnKill()
 database_helper = DatabaseHelper()

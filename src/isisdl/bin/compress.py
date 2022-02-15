@@ -10,8 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from typing import Optional, List, Dict, Any
 
-import psutil as psutil
-
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, pre_status, PreMediaContainer

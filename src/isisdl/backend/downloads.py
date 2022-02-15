@@ -19,9 +19,9 @@ import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -489,7 +489,11 @@ def maybe_chop_off_str(st: str, width: int) -> str:
 
 def print_log_messages(strings: List[str], last_num: int) -> int:
     if last_num:
-        print(f"\033[{last_num}F", end="")
+        if is_windows:
+            # Windows does not support ANSI escape sequences…
+            clear()
+        else:
+            print(f"\033[{last_num}F", end="")
 
     # First sanitize the output
     width = shutil.get_terminal_size().columns
