@@ -319,7 +319,7 @@ def compress(files: List[PreMediaContainer]) -> None:
 
             compress_status.start_thing(file, ffmpeg)
             ffmpeg.wait()
-            os.rename(new_file_name, file.path)
+            os.replace(new_file_name, file.path)
 
             compress_status.done_thing(file)
 
