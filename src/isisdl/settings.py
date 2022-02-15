@@ -100,7 +100,7 @@ download_timeout_multiplier = 2
 is_windows = platform.system() == "Windows"
 
 # The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
-status_time = 0.25
+status_time = 0.25 if not is_windows else 0.75
 
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
