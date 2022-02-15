@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from threading import Thread
 from typing import Optional, List, Dict, Any
 
@@ -64,10 +65,13 @@ def run_ffmpeg_till_finished() -> None:
     if current_pid is not None:
         OnKill.add_pid(current_pid)
 
-    if compress_status is None:
+    if compress_status is None or compress_thread is None:
         return
 
     if stop_encoding is None:
+        return
+
+    if not compress_thread.is_alive():
         return
 
     stop_encoding = True
@@ -283,12 +287,11 @@ def compress(files: List[PreMediaContainer]) -> None:
 
         stop_encoding = False
 
+        # Windows does not support preexec_fn and os.setpgrp() ...
         if sys.platform == "win32":
-            def func_to_call() -> None:
-                pass
+            popen = partial(subprocess.Popen)
         else:
-            def func_to_call() -> None:
-                os.setpgrp()
+            popen = partial(subprocess.Popen, preexec_fn=lambda: os.setpgrp())
 
         for file in files:
             if stop_encoding:
@@ -304,14 +307,14 @@ def compress(files: List[PreMediaContainer]) -> None:
             if probe is None or probe is True:
                 continue
 
-            ffmpeg = subprocess.Popen([
+            ffmpeg = popen([
                 "ffmpeg",
                 "-i", file.path,
                 "-y", "-loglevel", "warning", "-stats",
                 *ffmpeg_args,
                 "-x265-params", "log-level=0",
                 new_file_name
-            ], stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, preexec_fn=func_to_call, universal_newlines=True)
+            ], stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
             current_pid = ffmpeg.pid
 
             compress_status.start_thing(file, ffmpeg)
@@ -319,6 +322,8 @@ def compress(files: List[PreMediaContainer]) -> None:
             os.rename(new_file_name, file.path)
 
             compress_status.done_thing(file)
+
+        stop_encoding = False
 
     except Exception:
         generate_error_message()
@@ -329,6 +334,7 @@ def compress(files: List[PreMediaContainer]) -> None:
 
 def main() -> None:
     global compress_status
+    global compress_thread
     acquire_file_lock_or_exit()
     print("Attention: If you rename a compressed file and the database is deleted you will lose this file.\nThe only way to recover it is by renaming it back to its original name.")
     print("\nPress enter to continue")
@@ -363,12 +369,13 @@ def main() -> None:
     compress_status.start()
 
     # Run the conversion in a separate thread so, if killed, it will still run
-    runner = Thread(target=compress, args=(content,))
-    runner.start()
-    runner.join()
+    compress_thread = Thread(target=compress, args=(content,))
+    compress_thread.start()
+    compress_thread.join()
 
 
 compress_status: Optional[CompressStatus] = None
+compress_thread: Optional[Thread] = None
 
 if __name__ == '__main__':
     main()
