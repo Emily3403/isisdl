@@ -14,17 +14,24 @@ Once all files are downloaded it takes about 5s to synchronize your files with I
 
 This library will run with any python interpreter that is ≥ 3.8.
 
-Linux, macOS and Windows are supported. There are also a variety of tests that ensure everything is working properly.
+Linux, macOS and Windows are supported. There are also a variety of tests that ensure everything is working properly
+across all platforms.
 
 ### Multithreaded
 
 A fixed number of download threads may be selected at start time with the command-line-option `-n`.
 
-### Easy black- / whitelisting of courses
+### Compression of videos
 
-When first installing you may select courses that will be white- or blacklisted.
+You can easily save space on your hard drive by executing `isisdl-compress`. For the first files an efficiency of ~
+80-90% is expected.
 
-These may also be set with the command-line-options `-b` and `-w`.
+### Automatic downloading
+
+Note: This option is currently only supported on linux.
+
+If you give the ok in the configuration wizard, `isisdl` will be automagically executed every hour. This way all new
+files just appear in `~/isisdl` and you will never have to execute it again.
 
 ## Installation
 
@@ -72,7 +79,7 @@ I am currently in the process of testing [nuitka](https://nuitka.net/) to compil
 executables. See the github releases page for a binary for your system. It *should* work. If it doesn't feel free to
 submit a bug report.
 
-### Executing the program
+## Executing the program
 
 The following executables are shipped:
 
