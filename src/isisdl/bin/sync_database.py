@@ -175,8 +175,8 @@ class SyncStatus(Thread):
 
 
 def _main() -> None:
-    pre_status.start()
     user = get_credentials()
+    pre_status.start()
     request_helper = RequestHelper(user)
 
     restore_database_state(request_helper)
