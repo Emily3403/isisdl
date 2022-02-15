@@ -35,6 +35,7 @@ def check_online() -> None:
 def _main() -> None:
     maybe_print_version_and_exit()
     acquire_file_lock_or_exit()
+    check_online()
     install_latest_version()
 
     # is_first_time = True

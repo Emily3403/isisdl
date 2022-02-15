@@ -21,7 +21,7 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location
+    error_directory_location, systemd_dir_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -242,6 +242,7 @@ def startup() -> None:
 
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
+        os.makedirs(systemd_dir_location, exist_ok=True)
 
         default_config_str = generate_default_config_str()
 

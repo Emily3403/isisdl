@@ -11,6 +11,7 @@ from packaging import version
 from packaging.version import Version, LegacyVersion
 
 from isisdl.backend.utils import config
+from isisdl.settings import is_first_time
 from isisdl.version import __version__
 
 
@@ -46,6 +47,9 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 
 def install_latest_version() -> None:
+    if is_first_time:
+        return
+
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
@@ -88,8 +92,8 @@ def install_latest_version() -> None:
         assert False
 
     if ret == 0:
-        print("Successfully updated!")
+        print("\n\nSuccessfully updated!")
         exit(0)
     else:
-        print("Updating failed… why?")
+        print("\n\nUpdating failed… why?")
         exit(ret)

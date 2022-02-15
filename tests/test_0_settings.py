@@ -7,7 +7,7 @@ from isisdl.settings import working_dir_location, _working_dir_location, databas
     password_hash_algorithm, password_hash_length, download_progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, \
     enable_multithread, download_chunk_size, sleep_time_for_isis, num_tries_download, download_timeout, download_timeout_multiplier, _status_time, config_dir_location, example_config_file_location, \
     config_file_location, timer_file_location, service_file_location, lock_file_location, enable_lock, error_directory_location, error_file_location, master_password, status_progress_bar_resolution, \
-    token_queue_refresh_rate, token_queue_download_refresh_rate, cache_user_and_websites, video_size_discover_num_threads
+    token_queue_refresh_rate, token_queue_download_refresh_rate, cache_user_and_websites, video_size_discover_num_threads, systemd_dir_location
 
 
 def test_settings() -> None:
@@ -18,8 +18,9 @@ def test_settings() -> None:
     assert config_file_location == os.path.join(config_dir_location, "config.yaml")
     assert example_config_file_location == os.path.join(config_dir_location, "example.yaml")
 
-    assert timer_file_location == os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.timer")
-    assert service_file_location == os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.service")
+    assert systemd_dir_location == os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
+    assert timer_file_location == os.path.join(systemd_dir_location, "isisdl.timer")
+    assert service_file_location == os.path.join(systemd_dir_location, "isisdl.service")
 
     assert lock_file_location == ".lock"
     assert enable_lock is True

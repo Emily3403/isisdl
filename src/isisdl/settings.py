@@ -32,8 +32,9 @@ example_config_file_location = os.path.join(config_dir_location, "example.yaml")
 export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
 # The path to the systemd timer files. (Only supported on systemd-based linux)
-timer_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.timer")
-service_file_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "isisdl.service")
+systemd_dir_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
+timer_file_location = os.path.join(systemd_dir_location, "isisdl.timer")
+service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # Lock settings
 lock_file_location = ".lock"

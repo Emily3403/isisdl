@@ -271,6 +271,7 @@ if you want to tune the time manually
 
     if choice is False:
         remove_systemd_timer()
+        return
 
     import isisdl.bin.autorun
     with open(service_file_location, "w") as f:
