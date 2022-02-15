@@ -86,10 +86,12 @@ def calculate_efficiency(now: float, prev: float) -> int:
 
     return int((now - prev) / prev * 100)
 
-def calculate_average(l: List[int]) -> float:
-    if not l:
+
+def calculate_average(lst: List[int]) -> float:
+    if not lst:
         return 0
-    return sum(l) / len(l)
+    return sum(lst) / len(lst)
+
 
 class CompressStatus(Thread):
     cur_file: Optional[PreMediaContainer]
@@ -188,10 +190,10 @@ class CompressStatus(Thread):
                     "",
                     f"Total files compressed this session:    {self.session_files_done}",
                     f"Total file size saved for this session: {HumanBytes.format_str(self.session_total_prev_size - self.session_total_cur_size)}",
-                    f"Efficiency for the last 5 files:        " +
+                    "Efficiency for the last 5 files:        " +
                     str(calculate_efficiency(calculate_average(self.last_5_files_cur_size), calculate_average(self.last_5_files_prev_size))) + "%",
                     "", "",
-                    f"Currently processing:",
+                    "Currently processing:",
                     f"{self.cur_file.path}" if self.cur_file is not None else '',
                 ]
 

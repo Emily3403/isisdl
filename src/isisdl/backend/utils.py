@@ -444,6 +444,7 @@ def acquire_file_lock() -> bool:
 
 created_lock_file = False
 
+
 def acquire_file_lock_or_exit() -> None:
     if acquire_file_lock():
         print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance of `isisdl` is running, you may delete it.")
@@ -458,6 +459,7 @@ def acquire_file_lock_or_exit() -> None:
             acquire_file_lock()
         else:
             os._exit(1)
+
 
 @on_kill(1)
 def remove_lock_file() -> None:
