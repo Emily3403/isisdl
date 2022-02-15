@@ -37,7 +37,7 @@ service_file_location = os.path.join(os.path.expanduser("~"), ".config", "system
 
 # Lock settings
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"
