@@ -10,7 +10,7 @@ from threading import Thread
 from typing import List, Tuple, Set, Optional
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import print_status_message
+from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, pre_status
 from isisdl.backend.utils import path, calculate_local_checksum, database_helper, is_h265, sanitize_name, acquire_file_lock_or_exit
 from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolution
@@ -69,12 +69,11 @@ def restore_database_state(helper: RequestHelper) -> None:
     num_recovered_files = 0
 
     for course in helper.courses:
-        filename_mapping = {item.name: item for item in all_files if item.course_id == course.course_id}
+        filename_mapping = {sanitize_name(item._name): item for item in all_files if item.course_id == course.course_id}
         files_for_course = defaultdict(list)
         for container in all_files:
             if container.course_id == course.course_id:
                 files_for_course[container.size].append(container)
-            # filename_mapping[container.name].append(container)
 
         for file in Path(course.path()).rglob("*"):
             sync_status.done_thing()
@@ -103,7 +102,7 @@ def restore_database_state(helper: RequestHelper) -> None:
                 if len(possible_lst) == 1:
                     possible = possible_lst[0]
                 else:
-                    possible = next((item for item in files_for_course[file.stat().st_size] if sanitize_name(item.name) == file.name), None)
+                    possible = next((item for item in files_for_course[file.stat().st_size] if sanitize_name(item._name) == file.name), None)
 
                 if possible is None:
                     corrupted_files.add(file)
@@ -124,7 +123,7 @@ def restore_database_state(helper: RequestHelper) -> None:
     sync_status.stop()
     final_containers = []
     for container, file in recovered_containers:
-        container.location, container.name = str(file.parent), file.name
+        container.location, container._name = str(file.parent), file.name
         container.checksum = calculate_local_checksum(file)
         final_containers.append(container)
 
@@ -162,21 +161,18 @@ class SyncStatus(Thread):
     def run(self) -> None:
         time.sleep(status_time)
         while self._running:
-            log_strings = []
-            log_strings.append("Discovering files " + "." * self.i)
-            log_strings.append("")
+            log_strings = ["Discovering files " + "." * self.i, ""]
 
             perc_done = int(self.num_done / self.total_files * status_progress_bar_resolution)
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
             if self._running:
-                print_status_message(log_strings, 3)
+                print_log_messages(log_strings)
 
             self.i = (self.i + 1) % len(self.progress_bar)
             time.sleep(status_time)
 
 
-def main() -> None:
-    acquire_file_lock_or_exit()
+def _main() -> None:
     pre_status.start()
     user = get_credentials()
     request_helper = RequestHelper(user)
@@ -185,6 +181,11 @@ def main() -> None:
     delete_missing_files_from_database(request_helper)
 
     remove_corrupted_prompt(corrupted_files)
+
+
+def main() -> None:
+    acquire_file_lock_or_exit()
+    _main()
 
 
 if __name__ == "__main__":

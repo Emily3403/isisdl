@@ -13,12 +13,6 @@ def pytest_configure() -> None:
     startup()
 
 
-# def pytest_unconfigure() -> None:
-    # for file in os.listdir(path()):
-    #     if file != database_file_location:
-    #         shutil.rmtree(path(file))
-
-
 @fixture(scope="session")
 def user() -> User:
     username, password = os.getenv("ISISDL_ACTUAL_USERNAME"), os.getenv("ISISDL_ACTUAL_PASSWORD")

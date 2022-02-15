@@ -108,7 +108,7 @@ has_ffmpeg = shutil.which("ffmpeg") is not None
 is_autorun = sys.argv[0] == isisdl.bin.autorun.__file__
 
 # DownloadThrottler refresh rate in s
-token_queue_refresh_rate = 0.1
+token_queue_refresh_rate = 0.01
 
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3

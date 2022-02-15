@@ -28,7 +28,7 @@ These may also be set with the command-line-options `-b` and `-w`.
 
 ## Installation
 
-If you have a working `pip` installment skip the following part (to [here](#Pip))
+If you have a working `pip` installment skip the following part (to [here](#pip))
 
 ### Python
 

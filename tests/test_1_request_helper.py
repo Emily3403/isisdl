@@ -8,7 +8,7 @@ from typing import Any, List
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import CourseDownloader, RequestHelper, PreMediaContainer
-from isisdl.backend.utils import args, path, calculate_local_checksum, User, config, sanitize_name, _course_downloader_transformation
+from isisdl.backend.utils import args, path, calculate_local_checksum, User, config, _course_downloader_transformation
 from isisdl.bin.sync_database import restore_database_state, delete_missing_files_from_database
 from isisdl.settings import database_file_location, lock_file_location
 
@@ -56,9 +56,8 @@ def test_normal_course_downloader(request_helper: RequestHelper, database_helper
     course_downloader.start()
 
     for item in content_to_download:
-        item_loc = os.path.join(item.location, sanitize_name(item.name))
-        assert os.path.exists(item_loc)
-        assert os.stat(item_loc).st_size == item.size
+        assert os.path.exists(item.path)
+        assert os.stat(item.path).st_size == item.size
 
     # Now test with filename replacing
     remove_old_files(database_helper)
@@ -73,11 +72,10 @@ def test_normal_course_downloader(request_helper: RequestHelper, database_helper
 
     allowed_chars = set(string.ascii_letters + string.digits + ".")
     for item in content_to_download:
-        item_loc = os.path.join(item.location, sanitize_name(item.name))
-        assert os.path.exists(item_loc)
-        assert os.stat(item_loc).st_size == item.size
+        assert os.path.exists(item.path)
+        assert os.stat(item.path).st_size == item.size
         # The full path only consists of allowed chars
-        assert all(c for item in Path(item_loc).parts[1:] for c in item if c not in allowed_chars)
+        assert all(c for item in Path(item.path).parts[1:] for c in item if c not in allowed_chars)
 
     # Now check if deleting the filetable and rediscovering works
     prev_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}

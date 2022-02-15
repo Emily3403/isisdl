@@ -12,14 +12,14 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, Status, DownloadThrottler, PreStatus, PreStatusInfo
+from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
 
 
 @dataclass
 class PreMediaContainer:
-    name: str
+    _name: str
     file_id: str
     url: str
     location: str
@@ -58,9 +58,19 @@ class PreMediaContainer:
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
 
+    @property
+    def path(self) -> str:
+        return os.path.join(self.location, sanitize_name(self._name))
+
     def dump(self) -> bool:
         assert self.checksum is not None
         return database_helper.add_pre_container(self)
+
+    def __str__(self) -> str:
+        return sanitize_name(self._name)
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     def __hash__(self) -> int:
         return self.file_id.__hash__()
@@ -420,7 +430,7 @@ class RequestHelper:
 def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
     conflicts = defaultdict(list)
     for item in files:
-        conflicts[item.name].append(item)
+        conflicts[item._name].append(item)
 
     items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]
     for row in items:
@@ -430,14 +440,12 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
 
         locations = {k: v for k, v in locations.items() if len(v) > 1}
 
-        # TODO: Maybe filter out duplicates by file size
-
         # Later: Server
 
         for new_row in locations.values():
             for i, item in enumerate(new_row):
-                basename, ext = os.path.splitext(item.name)
-                item.name = basename + f"({i}-{len(new_row) - 1})" + ext
+                basename, ext = os.path.splitext(item._name)
+                item._name = basename + f"({i}-{len(new_row) - 1})" + ext
 
 
 class CourseDownloader:
@@ -448,7 +456,10 @@ class CourseDownloader:
 
     def start(self) -> None:
         global pre_status
-        pre_status = PreStatus()
+        pre_status = InfoStatus()
+        while PreStatusInfo.content.value:
+            PreStatusInfo.content.value.pop()
+
         pre_status.start()
 
         self.helper = RequestHelper(self.user)
@@ -463,7 +474,7 @@ class CourseDownloader:
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         global status
         throttler = DownloadThrottler()
-        status = Status(media_containers, args.num_threads, throttler)
+        status = DownloadStatus(media_containers, args.num_threads, throttler)
         downloader = Thread(target=self.download_files, args=(media_containers, throttler))
 
         pre_status.stop()
@@ -524,6 +535,6 @@ class CourseDownloader:
             time.sleep(0.25)
 
 
-pre_status = PreStatus()
-status: Optional[Status] = None
+pre_status = InfoStatus()
+status: Optional[DownloadStatus] = None
 downloading_files: Optional[List[MediaContainer]] = None

@@ -87,7 +87,7 @@ class DatabaseHelper:
 
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
-            """, (file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size))
+            """, (file._name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size))
             self.con.commit()
 
             return already_exists
@@ -99,7 +99,7 @@ class DatabaseHelper:
         with DatabaseHelper.lock:
             self.cur.executemany("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
-            """, [(file.name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
+            """, [(file._name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
             self.con.commit()
 
     def get_checksums_per_course(self) -> Dict[str, Set[str]]:

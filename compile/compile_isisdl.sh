@@ -20,5 +20,3 @@ mv ./__main__.bin ./isisdl
 mv ./compress.bin ./isisdl-compress
 mv ./config.bin ./isisdl-config
 mv ./sync_database.bin ./isisdl-sync
-
-deactivate

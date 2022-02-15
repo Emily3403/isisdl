@@ -156,11 +156,11 @@ You may overwrite this option by setting the `-d, --download-rate` flag.
     allowed = {"0", "1", "2", ""}
 
     if config.user("throttle_rate") and config.user("throttle_rate_autorun"):
-        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (systemwide), {config.user('throttle_rate_autorun')} MiB/s (autorun).\n")
+        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (system-wide), {config.user('throttle_rate_autorun')} MiB/s (autorun).\n")
         allowed.add("s")
 
     elif config.user("throttle_rate"):
-        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (systemwide).\n")
+        print(f"\n    [s] Use the stored option {config.user('throttle_rate')} MiB/s (system-wide).\n")
         allowed.add("s")
 
     elif config.user("throttle_rate_autorun"):
@@ -365,11 +365,11 @@ It is usually pushed a few days after the github release.
 
     elif choice == "0":
         choice = None
-    elif choice == "1":
+    elif choice == "1" or choice == "":
         choice = "install_pip"
     elif choice == "2":
         choice = "install_github"
-    elif choice == "3" or choice == "":
+    elif choice == "3":
         choice = "notify_pip"
     else:
         choice = "notify_github"
@@ -498,8 +498,8 @@ a long time to download if you have a slow internet connection.
 def isis_config_wizard() -> None:
     # TODO:
     #   Select courses to be downloaded
-    #   Rename each course indivually
-    #   decide if subfolders should be created inside a course folder.
+    #   Rename each course individually
+    #   decide if sub-folders should be created inside a course folder.
     #   set if external linked files should be downloaded (files like youtube videos).
     #
     print("Not yet supported!")

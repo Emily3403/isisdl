@@ -554,6 +554,11 @@ class HumanBytes:
         n, unit = HumanBytes.format(num)
         return f"{n:.2f} {unit}"
 
+    @staticmethod
+    def format_pad(num: float) -> str:
+        n, unit = HumanBytes.format(num)
+        return f"{f'{n:.2f}'.rjust(6)} {unit}"
+
 
 def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
     possible_videos: List[PreMediaContainer] = []

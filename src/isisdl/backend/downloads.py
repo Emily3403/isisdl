@@ -4,8 +4,8 @@ This file is concerned with how to download an actual file given an url.
 
 from __future__ import annotations
 
+import datetime
 import enum
-import os
 import shutil
 import time
 from base64 import standard_b64decode
@@ -19,7 +19,7 @@ import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, sanitize_name, config
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution
 
@@ -39,7 +39,7 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User, status: Union[PreStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User, status: Union[InfoStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
         s = cls("", "")
         s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
@@ -240,9 +240,7 @@ class MediaContainer:
                 return None
 
         media_type = MediaType.video if container.is_video else MediaType.document
-        location = os.path.join(container.location, sanitize_name(container.name))
-
-        return MediaContainer(container.name, container.url, location, media_type, s, container, container.size)
+        return MediaContainer(container._name, container.url, container.path, media_type, s, container, container.size)
 
     def download(self, throttler: DownloadThrottler) -> None:
         if self._exit:
@@ -322,7 +320,7 @@ class MediaContainer:
         return self.name
 
 
-class Status(Thread):
+class DownloadStatus(Thread):
     def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
         self.finished_files = 0
@@ -372,20 +370,21 @@ class Status(Thread):
                 return f"{a:.2f} {b}"
 
             curr_bandwidth = format_quick(self.throttler.bandwidth_used)
-            downloaded_bytes = format_quick(self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None))
+            downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None)
             total_size = format_quick(self.total_size)
 
             # General meta-info
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
-            log_strings.append(f"Downloaded {downloaded_bytes} / {total_size}")
+            log_strings.append(f"Downloaded {format_quick(downloaded_bytes)} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
+            log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
             log_strings.append("")
 
             # Now determine the already downloaded amount and display it
             thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
             for thread_id, container in self.thread_files.items():
-                thread_string = f"Thread {f'{thread_id}:':{' '}<{thread_format + 1}}"
+                thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
                 if container is None:
                     log_strings.append(thread_string)
                     continue
@@ -399,7 +398,7 @@ class Status(Thread):
             if self._shutdown:
                 log_strings.extend(["", "Please wait for the downloads to finish ..."])
 
-            self.last_text_len = print_status_message(log_strings, self.last_text_len)
+            print_log_messages(log_strings)
 
 
 class PreStatusInfo(enum.Enum):
@@ -416,7 +415,7 @@ class PreStatusInfo(enum.Enum):
     done = 100
 
 
-class PreStatus(Thread):
+class InfoStatus(Thread):
     def __init__(self) -> None:
         self._running = True
         self.last_text_len = 0
@@ -438,7 +437,7 @@ class PreStatus(Thread):
         while self._running:
             time.sleep(status_time)
 
-            log_strings: List[str] = []
+            log_strings = []
 
             if self.status == PreStatusInfo.startup:
                 message = "Starting up"
@@ -452,7 +451,8 @@ class PreStatus(Thread):
             else:
                 message = ""
 
-            log_strings.append(f"{message} {'.' * (self.i % 4)}")
+            log_strings.append("")
+            log_strings.append(f"{message} {'.' * self.i}")
 
             if not video_cache_exists and self.status == PreStatusInfo.content and not (args.disable_videos or not config.download_videos):
                 log_strings.append("(This may take a while for the first time)")
@@ -473,33 +473,30 @@ class PreStatus(Thread):
             log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             if self._running:
-                self.last_text_len = print_status_message(log_strings, self.last_text_len)
+                print_log_messages(log_strings)
 
-            self.i += 1
+            self.i = (self.i + 1) % 4
 
     def stop(self) -> None:
         self._running = False
 
 
-def print_status_message(strings: List[str], last_text_len: int) -> int:
-    # Now sanitize the output
+def maybe_chop_off_str(st: str, width: int) -> str:
+    if len(st) > width - status_chop_off + 1:
+        return st[:width - status_chop_off] + "." * status_chop_off
+    return st.ljust(width)
+
+
+def print_log_messages(strings: List[str]) -> None:
+    # First sanitize the output
     width = shutil.get_terminal_size().columns
 
-    def maybe_chop_off(item: str) -> str:
-        if len(item) > width - status_chop_off + 1:
-            return item[:width - status_chop_off] + "." * status_chop_off
-        return item.ljust(width)
-
     for i, item in enumerate(strings):
-        strings[i] = maybe_chop_off(item)
-
-    if last_text_len:
-        # Erase all previous chars
-        print(f"\033[{last_text_len}A\r", end="")
+        strings[i] = maybe_chop_off_str(item, width)
 
     final_str = "\n".join(strings)
-    last_text_len = final_str.count("\n") + 1
-
     print(final_str)
 
-    return last_text_len
+    # Erase all previous chars
+    last_num = final_str.count("\n") + 1
+    print(f"\033[{last_num}A\r", end="")
