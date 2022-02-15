@@ -10,10 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from typing import Optional, List, Dict, Any
 
+import psutil as psutil
+
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, pre_status, PreMediaContainer
-from isisdl.backend.utils import error_text, is_h265, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message
+from isisdl.backend.utils import error_text, is_h265, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread
 
 
@@ -55,11 +57,14 @@ def make_temp_filename(file: PreMediaContainer) -> str:
 
 
 stop_encoding: Optional[bool] = None
+current_pid: Optional[int] = None
 
 
 @on_kill(5)
 def run_ffmpeg_till_finished() -> None:
     global stop_encoding
+    if current_pid is not None:
+        OnKill.add_pid(current_pid)
 
     if compress_status is None:
         return
@@ -190,7 +195,7 @@ class CompressStatus(Thread):
                     "",
                     f"Total files compressed this session:    {self.session_files_done}",
                     f"Total file size saved for this session: {HumanBytes.format_str(self.session_total_prev_size - self.session_total_cur_size)}",
-                    "Efficiency for the last 5 files:        " +
+                    "Efficiency for the last 5 files: " +
                     str(calculate_efficiency(calculate_average(self.last_5_files_cur_size), calculate_average(self.last_5_files_prev_size))) + "%",
                     "", "",
                     "Currently processing:",
@@ -244,8 +249,6 @@ class CompressStatus(Thread):
 
                 if self._shutdown:
                     log_strings.extend(["", "Please wait for the compression to finish ..."])
-                    if not is_windows:
-                        log_strings.extend(["", "(If you kill me again, ffmpeg will continue to run in the background)", "To kill it execute `pkill -9 ffmpeg`"])
 
                 if self._running:
                     self.last_text_len = print_log_messages(log_strings, self.last_text_len)
@@ -274,8 +277,10 @@ class CompressStatus(Thread):
 
 def compress(files: List[PreMediaContainer]) -> None:
     assert compress_status is not None
+
     try:
         global stop_encoding
+        global current_pid
         check_ffmpeg_exists()
 
         stop_encoding = False
@@ -309,9 +314,9 @@ def compress(files: List[PreMediaContainer]) -> None:
                 "-x265-params", "log-level=0",
                 new_file_name
             ], stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, preexec_fn=func_to_call, universal_newlines=True)
+            current_pid = ffmpeg.pid
 
             compress_status.start_thing(file, ffmpeg)
-
             ffmpeg.wait()
             os.rename(new_file_name, file.path)
 
@@ -323,7 +328,6 @@ def compress(files: List[PreMediaContainer]) -> None:
 
 # TODO:
 #   Remote compression?
-#   Set nice score
 
 def main() -> None:
     global compress_status

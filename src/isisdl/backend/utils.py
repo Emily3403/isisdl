@@ -377,6 +377,7 @@ class OnKill:
     _funcs: PriorityQueue[Tuple[int, Callable[[], None]]] = PriorityQueue()
     _min_priority = 0
     _already_killed = False
+    _pids_to_kill: List[int] = []
 
     def __init__(self) -> None:
         signal.signal(signal.SIGINT, OnKill.exit)
@@ -402,6 +403,14 @@ class OnKill:
 
         if OnKill._already_killed:
             print("Alright, stay calm. I am skipping cleanup and exiting!")
+
+            # Kill remaining processes
+            for pid in OnKill._pids_to_kill:
+                try:
+                    os.kill(pid, 9)
+                except Exception:
+                    pass
+
             os._exit(sig)
 
         OnKill._already_killed = True
@@ -412,6 +421,11 @@ class OnKill:
     def do_funcs() -> None:
         for _ in range(OnKill._funcs.qsize()):
             OnKill._funcs.get_nowait()[1]()
+
+    @staticmethod
+    def add_pid(pid: int) -> None:
+        OnKill._pids_to_kill.append(pid)
+
 
 
 def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
