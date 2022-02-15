@@ -16,7 +16,7 @@ nuitka3 --standalone --onefile --linux-onefile-icon=python_icon.png ../src/isisd
 
 wait
 
-mv ./__main__.bin ./isisdl
-mv ./compress.bin ./isisdl-compress
-mv ./config.bin ./isisdl-config
-mv ./sync_database.bin ./isisdl-sync
+mv ./__main__.bin ./isisdl-linux.bin
+mv ./compress.bin ./isisdl-compress-linux.bin
+mv ./config.bin ./isisdl-config-linux.bin
+mv ./sync_database.bin ./isisdl-sync-linux.bin

@@ -28,7 +28,13 @@ These may also be set with the command-line-options `-b` and `-w`.
 
 ## Installation
 
-If you have a working `pip` installment skip the following part (to [here](#pip))
+TLDR:
+
+```shell
+pip install isisdl
+```
+
+If this command does not succeed, read the detailed instructions below
 
 ### Python
 
@@ -59,6 +65,12 @@ pip install isisdl
 ```
 
 Afterwards everything is installed.
+
+## Experimental Installation
+
+I am currently in the process of testing [nuitka](https://nuitka.net/) to compile the python code into static
+executables. See the github releases page for a binary for your system. It *should* work. If it doesn't feel free to
+submit a bug report.
 
 ### Executing the program
 
