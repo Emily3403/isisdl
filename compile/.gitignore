@@ -1,6 +1,6 @@
 *.build
 *.dist
-isisdl
-isisdl-compress
-isisdl-sync
-isisdl-config
+isisdl-linux.bin
+isisdl-compress-linux.bin
+isisdl-sync-linux.bin
+isisdl-config-linux.bin
