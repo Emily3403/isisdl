@@ -105,5 +105,5 @@ it might not be worth for you, especially if you plan to delete the videos anywa
 ### Sharing of compressed videos
 
 Compressed videos could be saved and distributed from a central server. The access would be restricted, so there is no
-copyright infringement. If you want to participate in that you can request access
+copyright infringement. If you want to participate in that you can soon™ request access
 [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
