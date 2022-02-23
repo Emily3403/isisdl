@@ -132,6 +132,9 @@ class DownloadThrottler(Thread):
     With every token you may download a chunk of size `download_chunk_size`.
     """
 
+    # TODO: Automatically estimate the max download size and stay under that
+    #   Moving average
+
     def __init__(self) -> None:
         super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()

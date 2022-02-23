@@ -7,6 +7,7 @@ from typing import List, Optional, Union, Set
 
 import math
 import yaml
+from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.downloads import SessionWithKey
@@ -106,7 +107,7 @@ def filename_prompt() -> None:
     print(f"""Some programs / programming languages have restrictions or
 inconveniences when it comes to working with special characters.
 
-To combat this you can enable a safe-mode for the file names and paths.
+To combat this you can enable a {Style.BRIGHT}safe-mode for file names and paths{Style.RESET_ALL}.
 If enabled, only ASCII letters + digits + "." are permitted as filenames.
 
 In order to maintain the readability of filenames,
@@ -393,6 +394,7 @@ You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist
 
     [1] Yes
 """)
+    # TODO: Consider all courses, not just black- / whitelisted ones
 
     allowed = {"", "0", "1"}
     if check_list is not None:
@@ -542,12 +544,12 @@ def main() -> None:
 
 You can choose one of the following actions
 
-    [ ] run the configuration wizard
-
     [v] view the current configuration
 """)
     if not is_windows:
         print(f"    [e] export the current configuration to\n        `{export_config_file_location}`")
+
+    print(f"\n\n    [{Style.BRIGHT}default{Style.RESET_ALL}] run the configuration wizard\n")
 
     choice = input()
     print()

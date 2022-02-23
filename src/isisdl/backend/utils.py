@@ -25,7 +25,7 @@ from isisdl.settings import working_dir_location, is_windows, checksum_algorithm
     error_directory_location, systemd_dir_location
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer
+    from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
 
 error_text = "\033[1;91mError!\033[0m"
 
@@ -272,10 +272,24 @@ def run_cmd_with_error(args: List[str]) -> None:
         input()
 
 
+def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
+    stream = helper.session.get_(file.url, stream=True)
+    if stream is None:
+        return None
+
+    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", "-"]
+
+    p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    if p.returncode != 0:
+        return None
+
+    return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
+
+
 def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
     # This function is copied and adapted from ffmpeg-python: https://github.com/kkroening/ffmpeg-python
-    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json"]
-    args += [filename]
+    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", filename]
 
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
@@ -381,6 +395,7 @@ class OnKill:
     _pids_to_kill: List[int] = []
 
     def __init__(self) -> None:
+        # TODO: More signals for linux
         signal.signal(signal.SIGINT, OnKill.exit)
         signal.signal(signal.SIGABRT, OnKill.exit)
         signal.signal(signal.SIGTERM, OnKill.exit)
@@ -408,7 +423,10 @@ class OnKill:
             # Kill remaining processes
             for pid in OnKill._pids_to_kill:
                 try:
-                    os.kill(pid, 9)
+                    if is_windows:
+                        os.kill(pid, signal.SIGABRT)
+                    else:
+                        os.kill(pid, signal.SIGKILL)
                 except Exception:
                     pass
 
@@ -575,12 +593,18 @@ class HumanBytes:
         return num, unit
 
     @staticmethod
-    def format_str(num: float) -> str:
+    def format_str(num: Optional[float]) -> str:
+        if num is None:
+            return "?"
+
         n, unit = HumanBytes.format(num)
         return f"{n:.2f} {unit}"
 
     @staticmethod
-    def format_pad(num: float) -> str:
+    def format_pad(num: Optional[float]) -> str:
+        if num is None:
+            return "   ?"
+
         n, unit = HumanBytes.format(num)
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 

@@ -67,14 +67,14 @@ class DatabaseHelper:
         return cast(Optional[int], self._get_attr_by_equal("size", file_id))
 
     def add_course(self, course: Course) -> None:
-        with DatabaseHelper.lock:
+        with self.lock:
             self.cur.execute("""
                 INSERT OR IGNORE INTO courseinfo values (?, ?)
             """, (course.name, course.course_id))
             self.con.commit()
 
     def delete_by_checksum(self, checksum: str) -> None:
-        with DatabaseHelper.lock:
+        with self.lock:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
@@ -82,7 +82,7 @@ class DatabaseHelper:
         """
         Returns true iff the element already existed
         """
-        with DatabaseHelper.lock:
+        with self.lock:
             already_exists = self.cur.execute("SELECT * FROM fileinfo WHERE checksum = ?", (file.checksum,)).fetchone() is not None
 
             self.cur.execute("""
@@ -96,7 +96,7 @@ class DatabaseHelper:
         """
         Returns true iff the element already existed
         """
-        with DatabaseHelper.lock:
+        with self.lock:
             self.cur.executemany("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
             """, [(file._name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
@@ -104,21 +104,21 @@ class DatabaseHelper:
 
     def get_checksums_per_course(self) -> Dict[str, Set[str]]:
         ret = defaultdict(set)
-        with DatabaseHelper.lock:
+        with self.lock:
             for course_name, checksum in self.cur.execute("""SELECT courseinfo.name, checksum from fileinfo INNER JOIN courseinfo on fileinfo.course_id = courseinfo.id""").fetchall():
                 ret[course_name].add(checksum)
 
         return ret
 
     def set_config(self, config: Dict[str, Union[bool, str, int, None]]) -> None:
-        with DatabaseHelper.lock:
+        with self.lock:
             self.cur.execute("""
                 INSERT OR REPLACE INTO json_strings VALUES (?, ?)
             """, ("config", json.dumps(config)))
             self.con.commit()
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None]]:
-        with DatabaseHelper.lock:
+        with self.lock:
             data = self.cur.execute("SELECT json from json_strings where id=\"config\"").fetchone()
             if data is None:
                 return defaultdict(lambda: None)
@@ -129,14 +129,14 @@ class DatabaseHelper:
             return defaultdict(lambda: None, json.loads(data[0]))
 
     def set_video_cache(self, cache: Dict[str, int], course_name: str) -> None:
-        with DatabaseHelper.lock:
+        with self.lock:
             self.cur.execute("""
                INSERT OR REPLACE INTO json_strings VALUES (?, ?)
             """, ("video_cache_" + course_name, json.dumps(cache)))
             self.con.commit()
 
     def get_video_cache(self, course_name: str) -> Dict[str, int]:
-        with DatabaseHelper.lock:
+        with self.lock:
             data = self.cur.execute("SELECT json FROM json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
             if data is None:
                 return {}
@@ -147,7 +147,7 @@ class DatabaseHelper:
             return cast(Dict[str, int], json.loads(data[0]))
 
     def get_video_cache_exists(self) -> bool:
-        with DatabaseHelper.lock:
+        with self.lock:
             data = self.cur.execute("SELECT * FROM json_strings WHERE id LIKE '%video%'").fetchone()
             if data is None:
                 return False
@@ -156,6 +156,35 @@ class DatabaseHelper:
                 return False
 
             return True
+
+    def update_inefficient_videos(self, file: PreMediaContainer, estimated_efficiency: float) -> None:
+        with self.lock:
+            _data = self.cur.execute("SELECT json FROM json_strings where id=\"inefficient_videos\"").fetchone()
+            if _data is None or len(_data) == 0:
+                data = {}
+            else:
+                data = json.loads(_data[0])
+
+            data[self.make_inefficient_file_name(file)] = estimated_efficiency
+
+            self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("inefficient_videos", json.dumps(data)))
+            self.con.commit()
+
+    def get_inefficient_videos(self) -> Dict[str, float]:
+        with self.lock:
+            data = self.cur.execute("SELECT json FROM json_strings where id=\"inefficient_videos\"").fetchone()
+            if data is None or len(data) == 0:
+                return {}
+            return cast(Dict[str, float], json.loads(data[0]))
+
+    @staticmethod
+    def make_inefficient_file_name(file: PreMediaContainer) -> str:
+        return f"{file.course_id} {file._name}"
+
+    def delete_inefficient_videos(self) -> None:
+        with self.lock:
+            self.cur.execute("DELETE FROM json_strings where id=\"inefficient_videos\"")
+            self.con.commit()
 
     def delete_file_table(self) -> None:
         with self.lock:
