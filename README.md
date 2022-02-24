@@ -14,18 +14,19 @@ Once all files are downloaded it takes about 5s to synchronize your files with I
 
 This library will run with any python interpreter that is ≥ 3.8.
 
-Linux, macOS and Windows are supported. There are also a variety of tests that ensure everything is working properly
-across all platforms.
+Linux, macOS and Windows are supported.
+
+There are also a variety of tests that ensure everything is working properly across all platforms.
 
 ### Compression of videos
 
 You can easily save space on your hard drive by executing `isisdl-compress`. `ffmpeg` will be executed and will compress
 all the videos into the H265 codec.
 Read [here](https://www.boxcast.com/blog/hevc-h.265-vs.-h.264-avc-whats-the-difference) why it is superior to the H264
-codec. 
+codec.
 
-The compressed files will be recognized by `isisdl` the same way they would be if they were H264 even though it is an entirely
-different file. You could even lose the central database, and they can be recovered.
+The compressed files will be recognized by `isisdl` the same way they would be if they were H264 even though it is an
+entirely different file. You could even lose the central database, and they can be recovered.
 
 Read in the [wiki]() for further detail on how it is implemented.
 

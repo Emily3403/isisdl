@@ -385,7 +385,7 @@ class CompressStatus(Thread):
 
                                 log_strings.append("")
                                 log_strings.append(f"Percent done: {perc_done_file * 100:.2f}%")
-                                log_strings.append(f"ETA: {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
+                                log_strings.append(f"Finished in:  {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
                                 log_strings.append(f"Time elapsed: {format_seconds(time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else ''}")
 
                     if self._shutdown:
