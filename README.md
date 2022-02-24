@@ -30,56 +30,26 @@ entirely different file. You could even lose the central database, and they can 
 
 Read in the [wiki]() for further detail on how it is implemented.
 
-#### Is it worth tho?
-
-TLDR: Yes, if you are planning on archiving.
-
-### Automatic downloading
+### Automatic running of `isisdl`
 
 Note: This option is currently only supported on linux.
 
-If you give the ok in the configuration wizard, `isisdl` will be automagically executed every hour. This way all new
-files just appear in `~/isisdl` and you will never have to execute it again.
+If you accept the option in the configuration wizard, `isisdl` will be automatically executed every hour. Now every new file
+will automagically appear in the `~/isisdl` directory.
 
 ## Installation
-
-TLDR:
 
 ```shell
 pip install isisdl
 ```
 
-If this command does not succeed, read the detailed instructions below
+If you are having problems see the [troubleshoot guide](../../wiki/Installation.md) for solutions.
+
 
 ### Python
 
 #### Linux
 
-If you are using Linux you are in luck: Everything should be installed. Check with `pip -V` for an existing
-installation.
-
-The output should look something like this
-
-```
-pip 21.3.1 from /home/emily/.local/lib/python3.10/site-packages/pip (python 3.10)
-```
-
-Also check that `$HOME/.local/bin` is in the `PATH`. Otherwise, the executable won't be found.
-
-#### Windows
-
-First install python from [here](https://www.python.org/downloads/release/python-3101). Then ensure you have pip
-installed with [this](https://pip.pypa.io/en/stable/installation/) guide.
-
-### pip
-
-With a working python interpreter and pip installation type the following into your favorite shell
-
-```shell
-pip install isisdl
-```
-
-Afterwards everything is installed.
 
 ## Experimental Installation
 

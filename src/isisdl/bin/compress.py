@@ -553,6 +553,8 @@ compress_thread: Optional[Thread] = None
 #       Better Score:
 #           File compression rate base + for time
 #
+#   Total saved size
+#   status none fill with empty
 #   What if no database?
 
 # TODO: format_pad in downloader
