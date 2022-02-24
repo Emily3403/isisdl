@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from statistics import variance, stdev, mean
-from threading import Thread
+from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
 import numpy as np
@@ -72,6 +72,7 @@ def make_temp_filename(file: PreMediaContainer) -> str:
 
 stop_encoding: Optional[bool] = None
 current_pid: Optional[int] = None
+total_time_for_compression = 0
 
 
 @on_kill(5)
@@ -79,6 +80,8 @@ def run_ffmpeg_till_finished() -> None:
     global stop_encoding
     if current_pid is not None:
         OnKill.add_pid(current_pid)
+
+    database_helper.set_total_time_compressing(total_time_for_compression)
 
     if compress_status is None or compress_thread is None:
         return
@@ -98,6 +101,7 @@ def run_ffmpeg_till_finished() -> None:
             break
         time.sleep(status_time)
 
+    compress_status.done_thing(True)
     compress_status._running = False
     compress_status.generate_final_message()
 
@@ -156,6 +160,7 @@ class CompressStatus(Thread):
     def __init__(self, files: List[PreMediaContainer], helper: RequestHelper) -> None:
         self.files = files
         self.helper = helper
+        self.lock = Lock()
 
         self._running = True
         self._shutdown = False
@@ -205,25 +210,36 @@ class CompressStatus(Thread):
         self.last_text_len = 0
         self.last_file_size_stat = 1
 
-    def done_thing(self, file: PreMediaContainer, was_successful: bool) -> None:
-        old_file_size = file.size
-        new_file_size = os.stat(make_temp_filename(file) if was_successful else file.path).st_size
+    def done_thing(self, was_successful: bool) -> None:
+        global total_time_for_compression
 
-        self.reset_file_values()
+        with self.lock:
+            if self.start_time_for_video is not None:
+                total_time_for_compression += int(time.perf_counter() - self.start_time_for_video)
+                database_helper.set_total_time_compressing(total_time_for_compression)
 
-        self.total_now_size -= old_file_size
-        self.total_now_size += new_file_size
+            if self.cur_file is None:
+                return
 
-        self.total_prev_size_of_compressed += old_file_size
-        self.total_cur_size_of_compressed += new_file_size
+            old_file_size = self.cur_file.size
+            new_file_size = os.stat(make_temp_filename(self.cur_file) if was_successful else self.cur_file.path).st_size
 
-        self.total_files_done += 1
+            self.reset_file_values()
+
+            self.total_now_size -= old_file_size
+            self.total_now_size += new_file_size
+
+            self.total_prev_size_of_compressed += old_file_size
+            self.total_cur_size_of_compressed += new_file_size
+
+            self.total_files_done += 1
 
     def start_thing(self, file: PreMediaContainer, ffmpeg: subprocess.Popen[str]) -> None:
-        self.cur_file = file
-        self.cur_file_probe = do_ffprobe(file.path)
-        self.ffmpeg = ffmpeg
-        self.start_time_for_video = time.perf_counter()
+        with self.lock:
+            self.cur_file = file
+            self.cur_file_probe = do_ffprobe(file.path)
+            self.ffmpeg = ffmpeg
+            self.start_time_for_video = time.perf_counter()
 
     def shutdown(self) -> None:
         self._shutdown = True
@@ -237,11 +253,17 @@ class CompressStatus(Thread):
                 pass
 
     def run(self) -> None:
+        global total_time_for_compression
         try:
             while self._running:
+
                 time.sleep(status_time)
 
                 log_strings = [
+                    "",
+                    "",
+                    f"Total time: {format_seconds(total_time_for_compression)}",
+                    f"Total time / GB: {total_time_for_compression / max((self.total_prev_size_of_compressed / 1024 ** 3), 1):.2f}s",
                     "",
                     f"Compressing videos {self.total_files_done} / {self.total_files_available} ",
                     "",
@@ -252,7 +274,7 @@ class CompressStatus(Thread):
                     "Previous size of compressed files: " + HumanBytes.format_pad(self.total_prev_size_of_compressed),
                     "Current  size of compressed files: " + HumanBytes.format_pad(self.total_cur_size_of_compressed),
                     "",
-                    f"Global efficiency: {calculate_efficiency(self.total_cur_size_of_compressed, self.total_prev_size_of_compressed) * 100:.2f} %",
+                    f"Global efficiency: {calculate_efficiency(self.total_cur_size_of_compressed, self.total_prev_size_of_compressed) * 100:.2f}%",
                     "",
                     "",
                     f"Total skipped files: {len(self.inefficient_videos)}",
@@ -264,117 +286,120 @@ class CompressStatus(Thread):
                     "",
                 ]
 
-                if self.ffmpeg is not None and self.ffmpeg.stderr is not None and self.cur_file_probe is not None:
-                    ffmpeg_out = self.ffmpeg.stderr.readline()
-                    if ffmpeg_out:
-                        _frame = re.findall(r"frame= *(\d+)", ffmpeg_out)
-                        if _frame:
-                            frame: Optional[int] = int(_frame[0])
-                        else:
-                            frame = None
-
-                        _fps = re.findall(r"fps=(.+?) ", ffmpeg_out)
-                        if _fps:
-                            fps: Optional[float] = float(_fps[0])
-                        else:
-                            fps = None
-
-                        video_stream = vstream_from_probe(self.cur_file_probe)
-
-                        # Make sure all needed information exists
-                        if frame is not None and fps is not None and self.cur_file is not None and video_stream is not None and 'nb_frames' in video_stream and 'duration' in video_stream:
-
-                            cur_file = self.cur_file
-                            total_frames = int(video_stream['nb_frames'])
-                            prev_size = os.stat(cur_file.path).st_size
-                            try:
-                                current_size = os.stat(make_temp_filename(cur_file)).st_size
-                            except OSError:
-                                current_size = prev_size
-
-                            # Only update once ffmpeg has written the buffer
-                            if current_size > self.last_file_size_stat:
-                                self.curr_size_regression_estimates.append(current_size)
-                                self.curr_size_regression_frame_estimates.append(frame)
-                                self.last_file_size_stat = current_size
-
-                            if len(self.curr_size_regression_estimates) >= 2:
-                                # Textbook linear regression
-                                slope = covariance(self.curr_size_regression_frame_estimates, self.curr_size_regression_estimates) / variance(self.curr_size_regression_frame_estimates)
-                                offset = mean(self.curr_size_regression_estimates) - slope * mean(self.curr_size_regression_frame_estimates)
-
-                                _estimated_file_size = slope * total_frames + offset
-                                if _estimated_file_size < 0:
-                                    _estimated_file_size = 0
-
-                                _estimated_file_perc = calculate_efficiency(_estimated_file_size, float(prev_size))
-
-                                estimated_file_size: Optional[float] = _estimated_file_size
-                                estimated_file_perc: Optional[float] = _estimated_file_perc
-
-                                self.curr_size_estimates.append(_estimated_file_perc)
+                with self.lock:
+                    if self.ffmpeg is not None and self.ffmpeg.stderr is not None and self.cur_file_probe is not None:
+                        ffmpeg_out = self.ffmpeg.stderr.readline()
+                        if ffmpeg_out:
+                            _frame = re.findall(r"frame= *(\d+)", ffmpeg_out)
+                            if _frame:
+                                frame: Optional[int] = int(_frame[0])
                             else:
-                                estimated_file_size = None
-                                estimated_file_perc = None
+                                frame = None
 
-                            perc_done_file = frame / max(total_frames, 1)
-                            current_file_stdev = stdev(self.curr_size_estimates[-compress_std_mavg_size:]) if len(self.curr_size_estimates) > 2 else None
-
-                            if estimated_file_perc is not None and current_file_stdev is not None:
-                                # Calculate the compression score
-                                _compression_score_no_time = (1 + estimated_file_perc) ** 0.5 / math.log(1.65 + current_file_stdev)
-                                _compression_score = _compression_score_no_time - 0.5 * perc_done_file ** 0.5
-
-                                if current_file_stdev < compress_minimum_stdev:
-                                    self.curr_scores_no_time.append(_compression_score_no_time)
-                                    self.curr_scores_with_time.append(_compression_score)
-
-                                # Maybe stop the processing of the current file
-                                if self.curr_scores_with_time and current_file_stdev < compress_minimum_stdev:
-                                    compression_score = calculate_average(self.curr_scores_with_time[-compress_score_mavg_size:])
-
-                                    if compression_score > compress_minimum_score:
-                                        self.num_under_efficiency_limit += 1
-
-                                    if (compression_score > compress_insta_kill_score and len(self.curr_scores_with_time) >= compress_duration_for_insta_kill / status_time) \
-                                            or self.num_under_efficiency_limit * status_time > compress_duration_for_to_low_efficiency:
-                                        database_helper.update_inefficient_videos(cur_file, estimated_file_perc)
-                                        self.inefficient_videos[database_helper.make_inefficient_file_name(cur_file)] = estimated_file_perc
-                                        self.inefficient_videos_size += prev_size
-                                        self.kill_current()
-
-                            # Use the information to produce the status information
-                            log_strings.append("")
-                            log_strings.append(f"Original  file size: {HumanBytes.format_pad(prev_size)}")
-                            log_strings.append(f"Current   file size: {HumanBytes.format_pad(current_size)}")
-                            log_strings.append(f"Estimated file size: {HumanBytes.format_pad(estimated_file_size)}")
-                            log_strings.append("")
-
-                            if estimated_file_perc is not None:
-                                log_strings.append(f"Estimated efficiency: {estimated_file_perc * 100:6.2f}%")
+                            _fps = re.findall(r"fps=(.+?) ", ffmpeg_out)
+                            if _fps:
+                                fps: Optional[float] = float(_fps[0])
                             else:
-                                log_strings.append("Estimated efficiency:   ?")
+                                fps = None
 
-                            if self.curr_scores_with_time:
-                                log_strings.append(f"Compression score:    {calculate_average(self.curr_scores_no_time[-compress_score_mavg_size:]):6.2f}")
-                            else:
-                                log_strings.append("Compression score:      ?")
+                            video_stream = vstream_from_probe(self.cur_file_probe)
 
-                            log_strings.append("")
-                            log_strings.append(f"Percent done: {perc_done_file * 100:.2f}%")
-                            log_strings.append(f"ETA: {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
-                            log_strings.append(f"Time elapsed: {format_seconds(time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else ''}")
+                            # Make sure all needed information exists
+                            if frame is not None and fps is not None and self.cur_file is not None and video_stream is not None and 'nb_frames' in video_stream and 'duration' in video_stream:
 
-                if self._shutdown:
-                    log_strings.extend(["", "Please wait for the compression to finish ..."])
+                                cur_file = self.cur_file
+                                total_frames = int(video_stream['nb_frames'])
+                                prev_size = os.stat(cur_file.path).st_size
+                                try:
+                                    current_size = os.stat(make_temp_filename(cur_file)).st_size
+                                except OSError:
+                                    current_size = prev_size
 
-                if self._running:
-                    self.last_text_len = print_log_messages(log_strings, self.last_text_len)
+                                # Only update once ffmpeg has written the buffer
+                                if current_size > self.last_file_size_stat:
+                                    self.curr_size_regression_estimates.append(current_size)
+                                    self.curr_size_regression_frame_estimates.append(frame)
+                                    self.last_file_size_stat = current_size
+
+                                if len(self.curr_size_regression_estimates) >= 2:
+                                    # Textbook linear regression
+                                    slope = covariance(self.curr_size_regression_frame_estimates, self.curr_size_regression_estimates) / variance(self.curr_size_regression_frame_estimates)
+                                    offset = mean(self.curr_size_regression_estimates) - slope * mean(self.curr_size_regression_frame_estimates)
+
+                                    _estimated_file_size = slope * total_frames + offset
+                                    if _estimated_file_size < 0:
+                                        _estimated_file_size = 0
+
+                                    _estimated_file_perc = calculate_efficiency(_estimated_file_size, float(prev_size))
+
+                                    estimated_file_size: Optional[float] = _estimated_file_size
+                                    estimated_file_perc: Optional[float] = _estimated_file_perc
+
+                                    self.curr_size_estimates.append(_estimated_file_perc)
+                                else:
+                                    estimated_file_size = None
+                                    estimated_file_perc = None
+
+                                perc_done_file = frame / max(total_frames, 1)
+                                current_file_stdev = stdev(self.curr_size_estimates[-compress_std_mavg_size:]) if len(self.curr_size_estimates) > 2 else None
+
+                                if estimated_file_perc is not None and current_file_stdev is not None:
+                                    # Calculate the compression score
+                                    _compression_score_no_time = (1 + estimated_file_perc) ** 0.5 / math.log(1.65 + current_file_stdev)
+                                    _compression_score = _compression_score_no_time - 0.5 * perc_done_file ** 0.5
+
+                                    if current_file_stdev < compress_minimum_stdev:
+                                        self.curr_scores_no_time.append(_compression_score_no_time)
+                                        self.curr_scores_with_time.append(_compression_score)
+
+                                    # Maybe stop the processing of the current file
+                                    if self.curr_scores_with_time and current_file_stdev < compress_minimum_stdev:
+                                        compression_score = calculate_average(self.curr_scores_with_time[-compress_score_mavg_size:])
+
+                                        if compression_score > compress_minimum_score:
+                                            self.num_under_efficiency_limit += 1
+
+                                        if (compression_score > compress_insta_kill_score and len(self.curr_scores_with_time) >= compress_duration_for_insta_kill / status_time) \
+                                                or self.num_under_efficiency_limit * status_time > compress_duration_for_to_low_efficiency:
+                                            database_helper.update_inefficient_videos(cur_file, estimated_file_perc)
+                                            self.inefficient_videos[database_helper.make_inefficient_file_name(cur_file)] = estimated_file_perc
+                                            self.inefficient_videos_size += prev_size
+                                            self.kill_current()
+
+                                # Use the information to produce the status information
+                                log_strings.append("")
+                                log_strings.append(f"Original  file size: {HumanBytes.format_pad(prev_size)}")
+                                log_strings.append(f"Current   file size: {HumanBytes.format_pad(current_size)}")
+                                log_strings.append(f"Estimated file size: {HumanBytes.format_pad(estimated_file_size)}")
+                                log_strings.append("")
+
+                                if estimated_file_perc is not None:
+                                    log_strings.append(f"Estimated efficiency: {estimated_file_perc * 100:6.2f}%")
+                                else:
+                                    log_strings.append("Estimated efficiency:   ?")
+
+                                if self.curr_scores_with_time:
+                                    log_strings.append(f"Compression score:    {calculate_average(self.curr_scores_no_time[-compress_score_mavg_size:]):6.2f}")
+                                else:
+                                    log_strings.append("Compression score:      ?")
+
+                                log_strings.append("")
+                                log_strings.append(f"Percent done: {perc_done_file * 100:.2f}%")
+                                log_strings.append(f"ETA: {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
+                                log_strings.append(f"Time elapsed: {format_seconds(time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else ''}")
+
+                    if self._shutdown:
+                        log_strings.extend(["", "Please wait for the compression to finish ..."])
+
+                    if self._running:
+                        self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
         except Exception:
             generate_error_message()
 
     def generate_final_message(self) -> None:
+        # TODO: Make better
+
         sizes = {course.name: (
             sum(item.size for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size),
             sum(os.stat(item.path).st_size for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size),
@@ -434,7 +459,7 @@ def compress(files: List[PreMediaContainer]) -> None:
             compress_status.start_thing(file, ffmpeg)
             ret_code = ffmpeg.wait()
 
-            compress_status.done_thing(file, ret_code == 0)
+            compress_status.done_thing(ret_code == 0)
 
             if ret_code == 0:
                 os.replace(new_file_name, file.path)
@@ -464,6 +489,7 @@ def calculate_abort_score() -> None:
 def main() -> None:
     global compress_status
     global compress_thread
+    global total_time_for_compression
 
     acquire_file_lock_or_exit()
     if is_first_time:
@@ -471,6 +497,7 @@ def main() -> None:
         print("Press enter to continue ...\n")
         input()
 
+    total_time_for_compression = database_helper.get_total_time_compressing()
     user = get_credentials()
     pre_status.start()
     helper = RequestHelper(user)
@@ -479,7 +506,7 @@ def main() -> None:
     pre_status.stop()
     print("\n\nProcessing ...\n")
 
-    _content = list(filter(lambda x: x.is_video and os.path.exists(x.path), _content))
+    _content = list(filter(lambda x: x.is_video and x.course_id not in {24337} and os.path.exists(x.path), _content))
 
     if enable_multithread:
         with ThreadPoolExecutor(os.cpu_count()) as ex:
@@ -525,16 +552,15 @@ compress_thread: Optional[Thread] = None
 #   Cur file size info:
 #       Better Score:
 #           File compression rate base + for time
-
-
 #
+#   What if no database?
 
+# TODO: format_pad in downloader
 
-# TODO? isisdl-compress-config after initial compress execute
+#   Human readable for compression score
+
 #   Final summary: How many ignored
 #
-#   Pass all videos to status
-#   Better summary
 #   Remote compression?
 
 if __name__ == '__main__':

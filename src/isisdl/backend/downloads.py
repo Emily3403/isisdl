@@ -378,7 +378,7 @@ class DownloadStatus(Thread):
 
             # General meta-info
             log_strings.append("")
-            log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s")
+            log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {'(throttled)' if self.throttler.download_rate != -1 else ''}")
             log_strings.append(f"Downloaded {format_quick(downloaded_bytes)} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
             log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")

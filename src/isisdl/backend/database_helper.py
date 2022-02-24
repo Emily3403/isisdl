@@ -177,6 +177,22 @@ class DatabaseHelper:
                 return {}
             return cast(Dict[str, float], json.loads(data[0]))
 
+    def set_total_time_compressing(self, amount: int) -> None:
+        with self.lock:
+            self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("total_time_compressing", json.dumps(amount)))
+            self.con.commit()
+
+    def get_total_time_compressing(self) -> int:
+        data = self.cur.execute("SELECT json FROM json_strings where id=\"total_time_compressing\"").fetchone()
+        if data is None or len(data) == 0:
+            return 0
+        return cast(int, json.loads(data[0]))
+
+    def delete_total_time_compressing(self) -> None:
+        with self.lock:
+            self.cur.execute("DELETE FROM json_strings where id=\"total_time_compressing\"")
+            self.con.commit()
+
     @staticmethod
     def make_inefficient_file_name(file: PreMediaContainer) -> str:
         return f"{file.course_id} {file._name}"
