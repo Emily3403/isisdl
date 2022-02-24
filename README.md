@@ -46,15 +46,10 @@ pip install isisdl
 If you are having problems see the [troubleshoot guide](https://github.com/Emily3403/isisdl/wiki/Installation#help-my-install-isnt-working) for solutions.
 
 
-### Python
-
-#### Linux
-
-
 ## Experimental Installation
 
 I am currently in the process of testing [nuitka](https://nuitka.net/) to compile the python code into static
-executables. See the github releases page for a binary for your system. It *should* work. If it doesn't feel free to
+executables. See the GitHub releases page for a binary for your system. It *should* work. If it doesn't feel free to
 submit a bug report.
 
 ## Executing the program
@@ -83,5 +78,4 @@ it might not be worth for you, especially if you plan to delete the videos anywa
 ### Sharing of compressed videos
 
 Compressed videos could be saved and distributed from a central server. The access would be restricted, so there is no
-copyright infringement. If you want to participate in that you can soon™ request access
-[here](https://www.youtube.com/watch?v=dQw4w9WgXcQ).
+copyright infringement. If you want to participate in that you can soon™ request access.
