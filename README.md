@@ -43,7 +43,7 @@ will automagically appear in the `~/isisdl` directory.
 pip install isisdl
 ```
 
-If you are having problems see the [troubleshoot guide](https://github.com/Emily3403/isisdl/wiki/Installation) for solutions.
+If you are having problems see the [troubleshoot guide](https://github.com/Emily3403/isisdl/wiki/Installation#help-my-install-isnt-working) for solutions.
 
 
 ### Python
