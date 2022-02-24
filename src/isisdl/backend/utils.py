@@ -9,6 +9,7 @@ import random
 import signal
 import string
 import subprocess
+import sys
 import traceback
 import colorama
 from datetime import datetime
@@ -423,7 +424,7 @@ class OnKill:
             # Kill remaining processes
             for pid in OnKill._pids_to_kill:
                 try:
-                    if is_windows:
+                    if sys.platform == "win32":
                         os.kill(pid, signal.SIGABRT)
                     else:
                         os.kill(pid, signal.SIGKILL)
