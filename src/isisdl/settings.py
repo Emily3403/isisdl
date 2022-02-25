@@ -100,7 +100,7 @@ download_timeout_multiplier = 2
 is_windows = platform.system() == "Windows"
 
 # The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
-status_time = 0.25 if not is_windows else 0.75
+status_time = 0.05 if not is_windows else 0.75
 
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
@@ -117,16 +117,16 @@ token_queue_download_refresh_rate = 3
 ffmpeg_args = ["-crf", "33", "-c:v", "libx265", "-c:a", "copy", "-preset", "superfast"]
 
 # If the efficiency is too low for ↓ seconds the file will be blacklisted from compression
-compress_duration_for_to_low_efficiency = 2
+compress_duration_for_to_low_efficiency = 0.5
 
 
-compress_minimum_stdev = 0.2
+compress_minimum_stdev = 0.5
 
 compress_score_mavg_size = 5
 compress_std_mavg_size = 5
 
-compress_minimum_score = 1.3
-compress_insta_kill_score = 1.7
+compress_minimum_score = 1.6
+compress_insta_kill_score = 1.9
 
 compress_duration_for_insta_kill = 0
 

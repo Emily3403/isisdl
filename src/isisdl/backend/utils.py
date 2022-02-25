@@ -23,7 +23,7 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location
+    error_directory_location, systemd_dir_location, master_password
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
@@ -149,8 +149,8 @@ def encode_yaml(st: Union[bool, str, int, None]) -> str:
     return str(st)
 
 
-def generate_config_str(working_dir_location: str, database_file_location: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
-                        throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float,
+def generate_config_str(working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]],
+                        blacklist: Optional[List[int]], throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float,
                         video_size_discover_num_threads: int, status_progress_bar_resolution: int, download_progress_bar_resolution: int) -> str:
     return f"""---
 
@@ -164,6 +164,16 @@ working_dir_location: {working_dir_location}
 # The name of the SQlite Database (located in `working_dir_location`) used for storing metadata about files + config.
 # Possible values {{any posix path}}
 database_file_location: {database_file_location}
+
+# The password to encrypt your password, if none is provided
+# Possible values {{any string}}
+master_password: {master_password}
+
+
+# The time waited between re-renders of the status message.
+# If you have a fast terminal / PC you can easily set this value to 0.1 or even 0.01.
+# Possible values {{any float}}
+status_time: {status_time}
 
 
 # Should videos be downloaded on this device?
@@ -204,10 +214,7 @@ update_policy: {encode_yaml(update_policy)}
 telemetry_policy: {encode_yaml(telemetry_policy)}
 
 
-# The time waited between re-renders of the status message.
-# If you have a fast terminal / PC you can easily set this value to 0.1 or even 0.01.
-# Possible values {{any float}}
-status_time: {status_time}
+
 
 
 # Number of threads to use when discovering video file sizes (ISIS does not offer an API).
@@ -226,13 +233,14 @@ download_progress_bar_resolution: {download_progress_bar_resolution}
 
 
 def generate_default_config_str() -> str:
-    return generate_config_str(working_dir_location, database_file_location, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
+    return generate_config_str(working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
                                Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"),
                                Config.default("telemetry_policy"), status_time, video_size_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
 
 
 def generate_current_config_str() -> str:
-    return generate_config_str(working_dir_location, database_file_location, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist, config.throttle_rate,
+    return generate_config_str(working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist,
+                               config.throttle_rate,
                                config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, video_size_discover_num_threads, status_progress_bar_resolution,
                                download_progress_bar_resolution)
 

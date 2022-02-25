@@ -260,29 +260,25 @@ class CompressStatus(Thread):
                 time.sleep(status_time)
 
                 log_strings = [
-                    "",
-                    "",
-                    f"Total time: {format_seconds(total_time_for_compression)}",
+                    f"Total time: "
+                    f"{format_seconds(total_time_for_compression + (time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else total_time_for_compression)}",
+                    f"Total videos: {self.total_files_done} / {self.total_files_available}",
                     f"Total time / GB: {total_time_for_compression / max((self.total_prev_size_of_compressed / 1024 ** 3), 1):.2f}s",
                     "",
-                    f"Compressing videos {self.total_files_done} / {self.total_files_available} ",
-                    "",
-                    "Total size before compression: " + HumanBytes.format_pad(self.total_prev_size),
-                    "Total size after  compression: " + HumanBytes.format_pad(self.total_now_size),
-                    "Total size remaining:          " + HumanBytes.format_pad(self.total_prev_size - self.total_prev_size_of_compressed),
-                    "",
-                    "Previous size of compressed files: " + HumanBytes.format_pad(self.total_prev_size_of_compressed),
-                    "Current  size of compressed files: " + HumanBytes.format_pad(self.total_cur_size_of_compressed),
+                    "Total size before compression:  " + HumanBytes.format_pad(self.total_prev_size),
+                    "Total size after  compression:  " + HumanBytes.format_pad(self.total_now_size),
+                    "Total size done:                " + HumanBytes.format_pad(self.total_prev_size_of_compressed),
+                    "Total size remaining:           " + HumanBytes.format_pad(self.total_prev_size - self.total_prev_size_of_compressed),
+                    "Total size of compressed files: " + HumanBytes.format_pad(self.total_cur_size_of_compressed),
                     "",
                     f"Global efficiency: {calculate_efficiency(self.total_cur_size_of_compressed, self.total_prev_size_of_compressed) * 100:.2f}%",
-                    "",
                     "",
                     f"Total skipped files: {len(self.inefficient_videos)}",
                     f"Total skipped file size: {HumanBytes.format_str(self.inefficient_videos_size)}",
                     "",
                     "",
                     "Currently processing:",
-                    f"{self.cur_file.path}" if self.cur_file is not None else 'None',
+                    f"{self.cur_file._name}" if self.cur_file is not None else 'None',
                     "",
                 ]
 
@@ -367,6 +363,11 @@ class CompressStatus(Thread):
                                             self.kill_current()
 
                                 # Use the information to produce the status information
+
+                                log_strings.append(f"Percent done: {perc_done_file * 100:.2f}%")
+                                log_strings.append(f"Finished in:  {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
+                                log_strings.append(f"Time elapsed: {format_seconds(time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else ''}")
+
                                 log_strings.append("")
                                 log_strings.append(f"Original  file size: {HumanBytes.format_pad(prev_size)}")
                                 log_strings.append(f"Current   file size: {HumanBytes.format_pad(current_size)}")
@@ -383,13 +384,10 @@ class CompressStatus(Thread):
                                 else:
                                     log_strings.append("Compression score:      ?")
 
-                                log_strings.append("")
-                                log_strings.append(f"Percent done: {perc_done_file * 100:.2f}%")
-                                log_strings.append(f"Finished in:  {format_seconds((total_frames - frame) / fps) if fps > 0.1 else '∞'}")
-                                log_strings.append(f"Time elapsed: {format_seconds(time.perf_counter() - self.start_time_for_video) if self.start_time_for_video is not None else ''}")
-
                     if self._shutdown:
                         log_strings.extend(["", "Please wait for the compression to finish ..."])
+
+                    log_strings.extend(["" for _ in range(self.last_text_len - len(log_strings))])
 
                     if self._running:
                         self.last_text_len = print_log_messages(log_strings, self.last_text_len)
