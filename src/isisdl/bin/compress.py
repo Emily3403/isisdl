@@ -14,12 +14,10 @@ from statistics import variance, stdev, mean
 from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
-import numpy as np
-
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, pre_status, PreMediaContainer
-from isisdl.backend.utils import error_text, is_h265, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
+from isisdl.backend.utils import error_text, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
     compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time
 
@@ -81,7 +79,8 @@ def run_ffmpeg_till_finished() -> None:
     if current_pid is not None:
         OnKill.add_pid(current_pid)
 
-    database_helper.set_total_time_compressing(total_time_for_compression)
+    if total_time_for_compression:
+        database_helper.set_total_time_compressing(total_time_for_compression)
 
     if compress_status is None or compress_thread is None:
         return
@@ -174,6 +173,7 @@ class CompressStatus(Thread):
         self.total_prev_size_of_compressed = 0
         self.total_cur_size_of_compressed = 0
         self.total_files_done = 0
+        self.last_text_len = 0
 
         for file in files:
             self.total_prev_size += file.size
@@ -207,7 +207,6 @@ class CompressStatus(Thread):
         self.curr_size_estimates = []
 
         self.num_under_efficiency_limit = 0
-        self.last_text_len = 0
         self.last_file_size_stat = 1
 
     def done_thing(self, was_successful: bool) -> None:
@@ -265,17 +264,12 @@ class CompressStatus(Thread):
                     f"Total videos: {self.total_files_done} / {self.total_files_available}",
                     f"Total time / GB: {total_time_for_compression / max((self.total_prev_size_of_compressed / 1024 ** 3), 1):.2f}s",
                     "",
-                    "Total size before compression:  " + HumanBytes.format_pad(self.total_prev_size),
-                    "Total size after  compression:  " + HumanBytes.format_pad(self.total_now_size),
-                    "Total size done:                " + HumanBytes.format_pad(self.total_prev_size_of_compressed),
-                    "Total size remaining:           " + HumanBytes.format_pad(self.total_prev_size - self.total_prev_size_of_compressed),
-                    "Total size of compressed files: " + HumanBytes.format_pad(self.total_cur_size_of_compressed),
+                    f"Total size before:    {HumanBytes.format_pad(self.total_prev_size)}",
+                    f"Total size now:       {HumanBytes.format_pad(self.total_now_size)}",
+                    f"Total size remaining: {HumanBytes.format_pad(self.total_prev_size - self.total_prev_size_of_compressed)}",
+                    f"Total size skipped:   {HumanBytes.format_pad(self.inefficient_videos_size)}",
                     "",
                     f"Global efficiency: {calculate_efficiency(self.total_cur_size_of_compressed, self.total_prev_size_of_compressed) * 100:.2f}%",
-                    "",
-                    f"Total skipped files: {len(self.inefficient_videos)}",
-                    f"Total skipped file size: {HumanBytes.format_str(self.inefficient_videos_size)}",
-                    "",
                     "",
                     "Currently processing:",
                     f"{self.cur_file._name}" if self.cur_file is not None else 'None',
@@ -387,7 +381,7 @@ class CompressStatus(Thread):
                     if self._shutdown:
                         log_strings.extend(["", "Please wait for the compression to finish ..."])
 
-                    log_strings.extend(["" for _ in range(self.last_text_len - len(log_strings))])
+                    log_strings.extend([""] * (self.last_text_len - len(log_strings)))
 
                     if self._running:
                         self.last_text_len = print_log_messages(log_strings, self.last_text_len)
@@ -396,20 +390,54 @@ class CompressStatus(Thread):
             generate_error_message()
 
     def generate_final_message(self) -> None:
-        # TODO: Make better
+        course_name_mapping = {course.course_id: course.name for course in self.helper.courses}
 
-        sizes = {course.name: (
-            sum(item.size for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size),
-            sum(os.stat(item.path).st_size for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size),
-            sum(1 for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size),
-        ) for course in self.helper.courses if sum(item.size for item in self.files if item.course_id == course.course_id if item.size != os.stat(item.path).st_size)}
+        infos = {course.course_id: {
+            "total_size": 0,
+            "size_compressed": 0,
+            "size_skipped": 0,
+            "num_processed": 0,
+            "num_skipped": 0,
+        } for course in self.helper.courses if any((file.course_id == course.course_id for file in self.files))}
 
-        max_course_name_len = max(len(str(course)) for course in sizes)
-        max_file_len = max(len(str(num_files)) for *_, num_files in sizes.values())
+        inefficient = database_helper.get_inefficient_videos()
+
+        for file in self.files:
+            curr_size = os.stat(file.path).st_size
+
+            if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
+                continue
+
+            infos[file.course_id]["total_size"] += file.size
+
+            if file.size != curr_size:
+                infos[file.course_id]["size_compressed"] += curr_size
+                infos[file.course_id]["num_processed"] += 1
+
+            else:
+                infos[file.course_id]["size_skipped"] += curr_size
+                infos[file.course_id]["num_skipped"] += 1
+
+        max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
+        max_skipped_file_len = max(len(str(info["num_skipped"])) for info in infos.values())
+
+        max_course_name_len = max(len(str(course)) for course in self.helper.courses)
+
         log_strings = ["", "", "Summary of course size savings:", ""]
-        for course, (prev_size, cur_size, num_files) in sizes.items():
-            log_strings.append(f"{str(course).ljust(max_course_name_len)} ({str(num_files).rjust(max_file_len)} file{'s' if num_files > 1 else ' '}) "
-                               f"{HumanBytes.format_pad(prev_size)} → {HumanBytes.format_pad(cur_size)}  ({calculate_efficiency(cur_size, prev_size) * 100:.2f}%)")
+
+        for course_id, info in sorted(infos.items()):
+            out = f"{str(course_name_mapping[course_id]).ljust(max_course_name_len)} " \
+                  f"({str(info['num_processed']).rjust(max_processed_file_len)} file{'s' if info['num_processed'] != 1 else ' '})" \
+                  f"{HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} → {HumanBytes.format_pad(info['size_compressed'])}  "
+
+            if info['size_compressed']:
+                out += f"({calculate_efficiency(info['size_compressed'], info['total_size'] - info['size_skipped']) * 100:6.2f}%)  "
+            else:
+                out += "(  ---  )  "
+
+            out += f"(skipped {str(info['num_skipped']).rjust(max_skipped_file_len)}, {HumanBytes.format_pad(info['size_skipped'])})"
+
+            log_strings.append(out)
 
         print_log_messages(log_strings, 0)
 
@@ -440,10 +468,6 @@ def compress(files: List[PreMediaContainer]) -> None:
             if not file.path:
                 continue
 
-            probe = is_h265(file.path)
-            if probe is None or probe is True:
-                continue
-
             ffmpeg = popen([
                 "ffmpeg",
                 "-i", file.path,
@@ -468,20 +492,10 @@ def compress(files: List[PreMediaContainer]) -> None:
                     pass
 
         stop_encoding = False
+        compress_status.generate_final_message()
 
     except Exception:
         generate_error_message()
-
-
-def calculate_abort_score() -> None:
-    current_file_stdev = 0.1
-    for estimated_file_perc in np.arange(-0.7, -0, 0.1):
-        for perc_done_file in np.arange(0, 1, 0.1):
-            premature_abort_score = (1 + estimated_file_perc) ** 0.5 / math.log(1.65 + current_file_stdev) - 0.5 * perc_done_file ** 0.5
-            print(f"{estimated_file_perc = :.2f}, {perc_done_file = :.2f}, {current_file_stdev = :.2f}: {premature_abort_score:.2f}")
-        print()
-
-    exit(0)
 
 
 def main() -> None:
@@ -504,7 +518,7 @@ def main() -> None:
     pre_status.stop()
     print("\n\nProcessing ...\n")
 
-    _content = list(filter(lambda x: x.is_video and x.course_id not in {24337} and os.path.exists(x.path), _content))
+    _content = list(filter(lambda x: x.is_video and os.path.exists(x.path), _content))
 
     if enable_multithread:
         with ThreadPoolExecutor(os.cpu_count()) as ex:
@@ -516,6 +530,7 @@ def main() -> None:
     no_metadata = []
     content_and_score: List[Tuple[PreMediaContainer, int]] = []
     to_inefficient = database_helper.get_inefficient_videos()
+    already_h265 = []
     inefficient_videos = []
 
     for con, ff in zip(_content, ffprobes):
@@ -525,7 +540,15 @@ def main() -> None:
 
         vid_probe = vstream_from_probe(ff)
 
-        if ff is None or vid_probe is None or "bit_rate" not in vid_probe:
+        if ff is None or vid_probe is None:
+            no_metadata.append(con)
+            continue
+
+        if "codec_name" in vid_probe and vid_probe["codec_name"] == "hevc":
+            already_h265.append(con)
+            continue
+
+        if "bit_rate" not in vid_probe:
             no_metadata.append(con)
             continue
 
@@ -534,7 +557,7 @@ def main() -> None:
     content = [item for item, _ in sorted(content_and_score, key=lambda pair: int(pair[1]), reverse=True)]
     content.extend(no_metadata)
 
-    compress_status = CompressStatus(content + inefficient_videos, helper)
+    compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
 
     # Run the conversion in a separate thread so, if killed, it will still run
@@ -547,20 +570,10 @@ compress_status: Optional[CompressStatus] = None
 compress_thread: Optional[Thread] = None
 
 # TODO:
-#   Cur file size info:
-#       Better Score:
-#           File compression rate base + for time
-#
-#   Total saved size
-#   status none fill with empty
 #   What if no database?
-
-# TODO: format_pad in downloader
 
 #   Human readable for compression score
 
-#   Final summary: How many ignored
-#
 #   Remote compression?
 
 if __name__ == '__main__':

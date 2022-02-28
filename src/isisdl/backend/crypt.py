@@ -102,4 +102,4 @@ def get_credentials() -> User:
 
     return User(username, password)
 
-# TODO: Generate a random key on a per-user system. Will be stored in `.config/isisdl` / `.state.db` ?
+# TODO: Generate a random key on a per-user system. Will be stored in `.state.db` ?

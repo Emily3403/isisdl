@@ -133,7 +133,6 @@ class DownloadThrottler(Thread):
     """
 
     # TODO: Automatically estimate the max download size and stay under that
-    #   Moving average
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
@@ -360,26 +359,14 @@ class DownloadStatus(Thread):
 
             log_strings: List[str] = []
 
-            def format_num(num: float) -> str:
-                # Yes, checking float with `==` is "bad" - but it is passed as an integer in this case.
-                if num == -1:
-                    return "  ...     "
-
-                a, b = HumanBytes.format(num)
-                return f"{a: >6.2f} {b}"
-
-            def format_quick(num: float) -> str:
-                a, b = HumanBytes.format(num)
-                return f"{a:.2f} {b}"
-
-            curr_bandwidth = format_quick(self.throttler.bandwidth_used)
+            curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
             downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None)
-            total_size = format_quick(self.total_size)
+            total_size = HumanBytes.format_str(self.total_size)
 
             # General meta-info
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {'(throttled)' if self.throttler.download_rate != -1 else ''}")
-            log_strings.append(f"Downloaded {format_quick(downloaded_bytes)} / {total_size}")
+            log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
             log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
             log_strings.append("")
@@ -392,10 +379,7 @@ class DownloadStatus(Thread):
                     log_strings.append(thread_string)
                     continue
 
-                curr_size = format_num(container.curr_size)
-                max_size = format_num(container.size)
-
-                log_strings.append(f"{thread_string} {container.percent_done} [ {curr_size} | {max_size} ] - {container.name}")
+                log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.name}")
                 pass
 
             if self._shutdown:

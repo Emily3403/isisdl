@@ -71,6 +71,7 @@ def main() -> None:
 # TODO:
 #   Autolog to server
 #   Use mp4 metadata to recognize files
+#   Have only the executable `isisdl` with options
 
 if __name__ == "__main__":
     main()

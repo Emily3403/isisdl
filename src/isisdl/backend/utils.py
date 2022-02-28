@@ -404,10 +404,17 @@ class OnKill:
     _pids_to_kill: List[int] = []
 
     def __init__(self) -> None:
-        # TODO: More signals for linux
         signal.signal(signal.SIGINT, OnKill.exit)
         signal.signal(signal.SIGABRT, OnKill.exit)
         signal.signal(signal.SIGTERM, OnKill.exit)
+        signal.signal(signal.SIGILL, OnKill.exit)
+        signal.signal(signal.SIGSEGV, OnKill.exit)
+
+        if sys.platform == "win32":
+            signal.signal(signal.SIGBREAK, OnKill.exit)
+        else:
+            signal.signal(signal.SIGBUS, OnKill.exit)
+            signal.signal(signal.SIGHUP, OnKill.exit)
 
     @staticmethod
     def add(func: Any, priority: Optional[int] = None) -> None:
