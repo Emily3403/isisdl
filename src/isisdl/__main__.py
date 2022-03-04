@@ -73,5 +73,10 @@ def main() -> None:
 #   Use mp4 metadata to recognize files
 #   Have only the executable `isisdl` with options
 
+# Future todos:
+#   isisdl all into one binary → nuitka compiling
+#   Installer for windows with autorun
+
+
 if __name__ == "__main__":
     main()

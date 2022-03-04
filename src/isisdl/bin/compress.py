@@ -437,9 +437,8 @@ class CompressStatus(Thread):
             else:
                 out += "  ---    "
 
-            out += f" │ {HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} │ {HumanBytes.format_pad(info['size_compressed'])} │ "
+            out += f" │ {HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} │ {HumanBytes.format_pad(info['size_compressed'])}"
 
-            out += f"  (skipped {str(info['num_skipped']).rjust(max_skipped_file_len)}, {HumanBytes.format_pad(info['size_skipped'])})"
 
             log_strings.append(out)
 
