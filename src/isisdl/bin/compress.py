@@ -426,16 +426,20 @@ class CompressStatus(Thread):
         log_strings = ["", "", "Summary of course size savings:", ""]
 
         for course_id, info in sorted(infos.items()):
-            out = f"{str(course_name_mapping[course_id]).ljust(max_course_name_len)} " \
-                  f"({str(info['num_processed']).rjust(max_processed_file_len)} file{'s' if info['num_processed'] != 1 else ' '})" \
-                  f"{HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} → {HumanBytes.format_pad(info['size_compressed'])}  "
+            if info['num_processed'] == 0:
+                continue
+
+            out = f"{str(course_name_mapping[course_id]).ljust(max_course_name_len)} "
+            out += f"{str(info['num_processed']).rjust(max_processed_file_len)} file{'s' if info['num_processed'] != 1 else ' '}  "
 
             if info['size_compressed']:
-                out += f"({calculate_efficiency(info['size_compressed'], info['total_size'] - info['size_skipped']) * 100:6.2f}%)  "
+                out += f"{calculate_efficiency(info['size_compressed'], info['total_size'] - info['size_skipped']) * 100:6.2f}%  "
             else:
-                out += "(  ---  )  "
+                out += "  ---    "
 
-            out += f"(skipped {str(info['num_skipped']).rjust(max_skipped_file_len)}, {HumanBytes.format_pad(info['size_skipped'])})"
+            out += f" │ {HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} │ {HumanBytes.format_pad(info['size_compressed'])} │ "
+
+            out += f"  (skipped {str(info['num_skipped']).rjust(max_skipped_file_len)}, {HumanBytes.format_pad(info['size_skipped'])})"
 
             log_strings.append(out)
 
@@ -527,7 +531,6 @@ def main() -> None:
         _ffprobes = [do_ffprobe(item.path) for item in _content]
 
     ffprobes = filter(lambda x: x is not None, _ffprobes)
-    no_metadata = []
     content_and_score: List[Tuple[PreMediaContainer, int]] = []
     to_inefficient = database_helper.get_inefficient_videos()
     already_h265 = []
@@ -541,7 +544,6 @@ def main() -> None:
         vid_probe = vstream_from_probe(ff)
 
         if ff is None or vid_probe is None:
-            no_metadata.append(con)
             continue
 
         if "codec_name" in vid_probe and vid_probe["codec_name"] == "hevc":
@@ -549,13 +551,11 @@ def main() -> None:
             continue
 
         if "bit_rate" not in vid_probe:
-            no_metadata.append(con)
             continue
 
         content_and_score.append((con, int(vid_probe["bit_rate"])))
 
     content = [item for item, _ in sorted(content_and_score, key=lambda pair: int(pair[1]), reverse=True)]
-    content.extend(no_metadata)
 
     compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
