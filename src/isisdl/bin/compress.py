@@ -132,11 +132,6 @@ def covariance(x: List[int], y: List[float]) -> float:
     return cov
 
 
-if sys.version_info >= (3, 10):
-    # In case of python3.10 use the fast standard library.
-    from statistics import covariance  # type: ignore  # noqa: F811
-
-
 class CompressStatus(Thread):
     files: List[PreMediaContainer]
     helper: RequestHelper
