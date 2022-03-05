@@ -134,7 +134,7 @@ def covariance(x: List[int], y: List[float]) -> float:
 
 if sys.version_info >= (3, 10):
     # In case of python3.10 use the fast standard library.
-    from statistics import covariance  # noqa: F541 F811
+    from statistics import covariance  # type: ignore  # noqa: F811
 
 
 class CompressStatus(Thread):
@@ -419,8 +419,6 @@ class CompressStatus(Thread):
                 infos[file.course_id]["num_skipped"] += 1
 
         max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
-        max_skipped_file_len = max(len(str(info["num_skipped"])) for info in infos.values())
-
         max_course_name_len = max(len(str(course)) for course in self.helper.courses)
 
         log_strings = ["", "", "Summary of course size savings:", ""]
@@ -438,7 +436,6 @@ class CompressStatus(Thread):
                 out += "  ---    "
 
             out += f"│  {HumanBytes.format_pad(info['total_size'] - info['size_skipped'])} │  {HumanBytes.format_pad(info['size_compressed'])}"
-
 
             log_strings.append(out)
 
