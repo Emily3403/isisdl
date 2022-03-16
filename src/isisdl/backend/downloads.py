@@ -440,7 +440,7 @@ class InfoStatus(Thread):
             log_strings.append("")
             log_strings.append(f"{message} {'.' * self.i}")
 
-            if not video_cache_exists and self.status == PreStatusInfo.content and not (args.disable_videos or not config.download_videos):
+            if not video_cache_exists and self.status == PreStatusInfo.content and not config.download_videos:
                 log_strings.append("(This may take a while for the first time)")
 
             log_strings.append("")
