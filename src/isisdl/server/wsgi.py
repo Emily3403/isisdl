@@ -20,7 +20,7 @@ def application(env: Any, start_response: Any) -> List[bytes]:
         print("uhhh")
         today = datetime.now().strftime("%y-%m-%d")
         os.makedirs("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today, exist_ok=True)
-        with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today + "/" + sha256(str(time.time()).encode()).hexdigest()) as f:
+        with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today + "/" + sha256(str(time.time()).encode()).hexdigest(), "w") as f:
             f.write(json.dumps(dat, indent=4))
 
     except Exception as ex:
