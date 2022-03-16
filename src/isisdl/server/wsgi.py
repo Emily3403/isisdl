@@ -16,7 +16,8 @@ def application(env: Any, start_response: Any) -> List[bytes]:
         with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + datetime.now().strftime("%y-%m-%d")) as f:
             f.write(json.dumps(dat, indent=4))
 
-    except Exception:
+    except Exception as ex:
+        print(f"Did not work: {ex}")
         pass
 
     print(body)
