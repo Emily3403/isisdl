@@ -30,7 +30,7 @@ from isisdl.version import __version__
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location, master_password
+    error_directory_location, systemd_dir_location, master_password, is_testing
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
@@ -617,17 +617,24 @@ class DataLogger(Thread):
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
+            "is_first_time": is_first_time,
             "message": "",
         }
 
         super().__init__(daemon=True)
 
     def message(self, msg: str) -> None:
+        if is_testing:
+            return
+
         self.generic_msg["message"] = msg
 
         self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=self.generic_msg)
 
     def post(self, msg: Dict[str, Any]) -> None:
+        if is_testing:
+            return
+
         to_send = self.generic_msg.copy()
         del to_send["message"]
         to_send.update(msg)
