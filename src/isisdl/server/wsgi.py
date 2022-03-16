@@ -12,7 +12,10 @@ def application(env: Any, start_response: Any) -> List[bytes]:
     body = env['wsgi.input'].read(length)
 
     try:
+        print(str(body))
         dat = json.loads(str(body))
+
+        print("uhhh")
         with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + datetime.now().strftime("%y-%m-%d")) as f:
             f.write(json.dumps(dat, indent=4))
 

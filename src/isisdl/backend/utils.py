@@ -19,6 +19,8 @@ from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
+import requests
+
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
@@ -246,6 +248,8 @@ def generate_current_config_str() -> str:
 
 
 def startup() -> None:
+    requests.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json={"uwu": "owo"})
+
     os.makedirs(path(), exist_ok=True)
     if os.path.exists(path(error_directory_location)) and not os.listdir(path(error_directory_location)):
         os.rmdir(path(error_directory_location))
