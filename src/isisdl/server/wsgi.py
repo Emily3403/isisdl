@@ -7,5 +7,6 @@ cgitb.enable()
 
 def application(_: Any, start_response: Any) -> List[bytes]:
     start_response('200 OK', [('Content-Type', 'text/html')])
-    response = "Hello
+    response = "Hello"
+    raise ValueError
     return [response.encode()]
