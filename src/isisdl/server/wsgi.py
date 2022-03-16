@@ -2,8 +2,9 @@
 from typing import List, Any
 
 
-def application(_: Any, start_response: Any) -> List[bytes]:
+def application(env: Any, start_response: Any) -> List[bytes]:
+    print(env)
+    raise ValueError
     start_response('200 OK', [('Content-Type', 'text/html')])
     response = "Hello"
-    raise ValueError
     return [response.encode()]
