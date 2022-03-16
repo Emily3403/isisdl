@@ -79,3 +79,8 @@ it might not be worth for you, especially if you plan to delete the videos anywa
 
 Compressed videos could be saved and distributed from a central server. The access would be restricted, so there is no
 copyright infringement. If you want to participate in that you can soon™ request access.
+
+### Distributing with the AUR
+
+Binary distribution is *really* easy. Do it with the aur and the release-binaries. They will have some different features like hard-
+coded no-update and maybe some other stuff
