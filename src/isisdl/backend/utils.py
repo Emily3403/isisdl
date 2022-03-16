@@ -22,9 +22,11 @@ from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
+import distro as distro
 from requests import Session
 
 from isisdl.backend.database_helper import DatabaseHelper
+from isisdl.version import __version__
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
@@ -323,7 +325,7 @@ def is_h265(filename: str) -> Optional[bool]:
         return None
 
     if "codec_name" not in video_stream:
-        # Later: Server
+        logger.message("""Assertion failed: "codec_name" not in video_stream""")
         return None
 
     return bool(video_stream["codec_name"] == "hevc")
@@ -588,8 +590,6 @@ def calculate_online_checksum_file(file: Path, size: int) -> str:
     return checksum_algorithm(chunk + str(size).encode()).hexdigest()
 
 
-
-
 class DataLogger(Thread):
     """
     What to log:
@@ -597,7 +597,7 @@ class DataLogger(Thread):
     System:
       × Hardware info
       ? Software info
-        isisdl version
+      × isisdl version
 
 
     From ISIS:
@@ -607,21 +607,29 @@ class DataLogger(Thread):
 
 
     """
+
     def __init__(self) -> None:
         self.s = Session()
+        self.generic_msg = {
+            "username": User.sanitize_name(config.username),
+            "OS": platform.system(),
+            "OS_spec": distro.id(),
+            "version": __version__,
+            "message": "",
+        }
 
         super().__init__(daemon=True)
 
     def message(self, msg: str) -> None:
-        send = {
-            "username": config.username,
-            "OS": platform.system(),
+        self.generic_msg["message"] = msg
 
-            "message": msg,
-        }
+        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=self.generic_msg)
 
-        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=msg)
+    def post(self, msg: Dict[str, Any]) -> None:
+        to_send = self.generic_msg.copy()
+        to_send.update(msg)
 
+        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=to_send)
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503

@@ -17,9 +17,18 @@ def application(env: Any, start_response: Any) -> List[bytes]:
     try:
         today = datetime.now().strftime("%y-%m-%d")
         os.makedirs("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today, exist_ok=True)
-        with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today + "/" + sha256(str(time.time()).encode()).hexdigest(), "w") as f:
+
+        data = json.loads(body.decode())
+
+        if "message" in data and data["message"].startswith("Assertion failed:"):
+            subdir = "errors/"
+        else:
+            subdir = "logs/"
+
+
+        with open(os.path.join("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1", subdir, today, sha256(str(time.time()).encode()).hexdigest() + ".json"), "w") as f:
             # Validate that the data is json
-            f.write(json.dumps(json.loads(body.decode()), indent=4))  # TODO: indent away
+            f.write(json.dumps(data, indent=4))
 
     except Exception:
         pass

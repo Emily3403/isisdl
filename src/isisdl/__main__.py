@@ -38,8 +38,6 @@ def _main() -> None:
     check_online()
     install_latest_version()
 
-    logger.message("Starting up...")
-
     # is_first_time = True
     if is_first_time:
         print("""It seems as if this is your first time executing isisdl. Welcome 💖
@@ -71,12 +69,10 @@ def main() -> None:
 
 
 # TODO:
-#   Autolog to server
 #   Use mp4 metadata to recognize files
 #   Have only the executable `isisdl` with options
 
 # Future todos:
-#   isisdl all into one binary → nuitka compiling
 #   Installer for windows with autorun
 
 

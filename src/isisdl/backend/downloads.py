@@ -99,7 +99,7 @@ class SessionWithKey(Session):
                 return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except Exception:
-                # Later: Server
+                # Later: ?Server
                 time.sleep(sleep_time_for_isis)
                 i += 1
 

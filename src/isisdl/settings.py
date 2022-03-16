@@ -38,7 +38,7 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # Lock settings
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"

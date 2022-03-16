@@ -13,8 +13,13 @@ from typing import Optional, Dict, List, Any, cast, Tuple
 from urllib.parse import urlparse, urljoin
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message
+from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
+
+ignored_urls = {
+    "https://isis.tu-berlin.de/webservice/pluginfile.php/1484020/mod_resource/content/1/armv7-a-r-manual-VBAR-EXTRACT.pdf",
+
+}
 
 
 @dataclass
@@ -53,7 +58,7 @@ class PreMediaContainer:
         time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
-            # Later: Server
+            logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
             pass
 
         return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
@@ -164,11 +169,15 @@ class Course:
                     continue
 
                 url: str = file["url"]
+
+                if url in ignored_urls:
+                    continue
+
                 # This is a definite blacklist on stuff we don't want to follow.
                 ignore = re.match(
                     ".*mod/(?:"
                     "forum|url|choicegroup|assign|videoservice|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-                    "page"
+                    "page|data|ratingallocate"
                     ")/.*", url
                 )
 
@@ -177,11 +186,13 @@ class Course:
                     continue
 
                 if re.match(".*mod/(?:folder|resource)/.*", url) is None:
-                    # Later: Server
+                    # Probably the black/white- list didn't match.
+                    logger.message(f"""Assertion failed: re.match(".*mod/(?:folder|resource)/.*", url) is None\n\nCurrent url: {url}""")
                     pass
 
                 if "contents" not in file:
-                    # Later: Server
+                    # Probably the black/white- list didn't match.
+                    logger.message(f"""Assertion failed: "contents" not in file\n\nCurrent url: {url}""")
                     continue
 
                 prev_len = len(all_content)
@@ -191,11 +202,11 @@ class Course:
 
                 if len(all_content) == prev_len:
                     known_bad_urls = {
-                        "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174"
+                        "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
                     }
 
                     if url not in known_bad_urls:
-                        # Later: Server
+                        logger.message("""Assertion failed: url not in known_bad_urls""")
                         pass
 
         return all_content
@@ -288,16 +299,19 @@ class RequestHelper:
 
     def get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self.userid}))
-        courses = []
+        self.courses = []
+        self._courses = []
+
         for item in res:
             course = Course.from_dict(item)
             self.course_id_mapping.update({course.course_id: course})
             database_helper.add_course(course)
 
+            self._courses.append(course)
             if course.ok:
-                courses.append(course)
+                self.courses.append(course)
 
-        self.courses = sorted(courses, reverse=True)
+        self.courses = sorted(self.courses, reverse=True)
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
@@ -440,7 +454,7 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
 
         locations = {k: v for k, v in locations.items() if len(v) > 1}
 
-        # Later: Server
+        # Later: ?Server
 
         for new_row in locations.values():
             for i, item in enumerate(new_row):
@@ -480,6 +494,21 @@ class CourseDownloader:
         pre_status.stop()
         downloader.start()
         status.start()
+        # Funny ideas:
+        #   Oldest file on ISIS
+        #   Biggest file on ISIS
+
+        logger.post({
+            "num_g_files": len(pre_containers),
+            "num_c_files": len(media_containers),
+
+            "total_g_bytes": sum((item.size for item in pre_containers)),
+            "total_c_bytes": sum((item.size for item in media_containers)),
+
+            "course_ids": [course.course_id for course in self.helper._courses],
+
+            "config": config.to_dict(),
+        })
 
         downloader.join()
         status.join(0)
