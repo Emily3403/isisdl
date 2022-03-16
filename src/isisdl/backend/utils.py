@@ -33,8 +33,6 @@ from isisdl.settings import working_dir_location, is_windows, checksum_algorithm
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
     error_directory_location, systemd_dir_location, master_password, is_testing
 
-
-
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
 
@@ -591,6 +589,7 @@ def calculate_online_checksum_file(file: Path, size: int) -> str:
 def subscribe_to_all_courses() -> None:
     print("subscribe_to_all_courses is not implemented yet.")
     exit(1)
+
 
 def unsubscribe_from_courses() -> None:
     print("unsubscribe_from_courses is not implemented yet.")

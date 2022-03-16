@@ -49,10 +49,10 @@ def _main() -> None:
     install_latest_version()
 
     if args.sync:
-        sync_database()
+        sync_database.main()
 
     elif args.compress:
-        compress()
+        compress.main()
 
     elif args.subscribe:
         subscribe_to_all_courses()
@@ -66,7 +66,7 @@ def _main() -> None:
 
         if is_first_time:
             print("""It seems as if this is your first time executing isisdl. Welcome 💖
-    
+
 I will guide you through a short configuration phase of about 5min.
 It is recommended that you read the options carefully.
 If you wish to re-configure me run `isisdl-config`.
