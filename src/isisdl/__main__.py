@@ -4,7 +4,7 @@ from http.client import HTTPSConnection
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.update import install_latest_version
-from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message
+from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, logger
 from isisdl.bin.config import run_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
@@ -37,6 +37,8 @@ def _main() -> None:
     acquire_file_lock_or_exit()
     check_online()
     install_latest_version()
+
+    logger.message("Starting up...")
 
     # is_first_time = True
     if is_first_time:

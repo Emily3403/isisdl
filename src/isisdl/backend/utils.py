@@ -5,12 +5,15 @@ import argparse
 import atexit
 import json
 import os
+import platform
 import random
 import signal
 import string
 import subprocess
 import sys
 import traceback
+from threading import Thread
+
 import colorama
 from datetime import datetime
 from functools import wraps
@@ -19,7 +22,7 @@ from queue import PriorityQueue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
-import requests
+from requests import Session
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
@@ -248,8 +251,6 @@ def generate_current_config_str() -> str:
 
 
 def startup() -> None:
-    requests.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json={"uwu": "owo"})
-
     os.makedirs(path(), exist_ok=True)
     if os.path.exists(path(error_directory_location)) and not os.listdir(path(error_directory_location)):
         os.rmdir(path(error_directory_location))
@@ -587,6 +588,42 @@ def calculate_online_checksum_file(file: Path, size: int) -> str:
     return checksum_algorithm(chunk + str(size).encode()).hexdigest()
 
 
+
+
+class DataLogger(Thread):
+    """
+    What to log:
+
+    System:
+      × Hardware info
+      ? Software info
+        isisdl version
+
+
+    From ISIS:
+      × Username
+        How many courses
+        How
+
+
+    """
+    def __init__(self) -> None:
+        self.s = Session()
+
+        super().__init__(daemon=True)
+
+    def message(self, msg: str) -> None:
+        send = {
+            "username": config.username,
+            "OS": platform.system(),
+
+            "message": msg,
+        }
+
+        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=msg)
+
+
+
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
@@ -687,6 +724,10 @@ if is_first_time:
 colorama.init()
 startup()
 OnKill()
-database_helper = DatabaseHelper()
+
 args = get_args()
+database_helper = DatabaseHelper()
 config = Config()
+
+logger = DataLogger()
+logger.start()
