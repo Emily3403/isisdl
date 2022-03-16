@@ -453,7 +453,7 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
 
         locations = {k: v for k, v in locations.items() if len(v) > 1}
 
-        # Later: ?Server
+        # Later: Server?
 
         for new_row in locations.values():
             for i, item in enumerate(new_row):
@@ -493,10 +493,8 @@ class CourseDownloader:
         pre_status.stop()
         downloader.start()
         status.start()
-        # Funny ideas:
-        #   Oldest file on ISIS
-        #   Biggest file on ISIS
 
+        # Log the metadata
         conf = config.to_dict()
         del conf["password"]
         logger.post({
