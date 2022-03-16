@@ -134,7 +134,10 @@ class Config:
         return Config._user[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None]]:
-        return {name: getattr(self, name) for name in self.__slots__}
+        ret = {name: getattr(self, name) for name in self.__slots__}
+        del ret["password"]
+        ret["username"] = User.sanitize_name(ret["username"])
+        return ret
 
     def start_backup(self) -> None:
         Config._backup = self.to_dict()
@@ -627,6 +630,7 @@ class DataLogger(Thread):
 
     def post(self, msg: Dict[str, Any]) -> None:
         to_send = self.generic_msg.copy()
+        del to_send["message"]
         to_send.update(msg)
 
         self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=to_send)

@@ -52,9 +52,13 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
                 except KeyError:
                     pass
 
+    count = 0
     for row in checksums.values():
         for item in row:
             database_helper.delete_by_checksum(item)
+            count += 1
+
+    print(f"Dropped {count} entries from the database to be re-downloaded.")
 
 
 def restore_database_state(helper: RequestHelper) -> None:

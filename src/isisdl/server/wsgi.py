@@ -13,9 +13,9 @@ def application(env: Any, start_response: Any) -> List[bytes]:
         length = 0
 
     body: bytes = env['wsgi.input'].read(length)
+    today = datetime.now().strftime("%y-%m-%d")
 
     try:
-        today = datetime.now().strftime("%y-%m-%d")
         data = json.loads(body.decode())
 
         subdir = "errors/" if "message" in data and data["message"].startswith("Assertion failed:") else "logs/"
@@ -27,8 +27,14 @@ def application(env: Any, start_response: Any) -> List[bytes]:
             f.write(json.dumps(data, indent=4))
 
     except Exception:
-        pass
+        try:
+            with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/snoops/" + today) as f:
+                num = int(f.read())
+        except Exception:
+            num = 0
 
+        with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/snoops/" + today, "w") as f:
+            f.write(str(num + 1))
 
     start_response('200 OK', [('Content-Type', 'text/html')])
     return [b"Nothing to see here ..."]

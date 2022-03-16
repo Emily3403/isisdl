@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 from http.client import HTTPSConnection
 
+import isisdl.bin.sync_database as sync_database
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.update import install_latest_version
-from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, logger
+from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message
 from isisdl.bin.config import run_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
-import isisdl.bin.sync_database as sync_database
 
 
 def maybe_print_version_and_exit() -> None:

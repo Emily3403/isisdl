@@ -17,8 +17,7 @@ from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, datab
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
 
 ignored_urls = {
-    "https://isis.tu-berlin.de/webservice/pluginfile.php/1484020/mod_resource/content/1/armv7-a-r-manual-VBAR-EXTRACT.pdf",
-
+    'https://isis.tu-berlin.de/mod/resource/view.php?id=756880'
 }
 
 
