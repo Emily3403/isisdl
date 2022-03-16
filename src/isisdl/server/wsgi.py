@@ -6,6 +6,7 @@ from datetime import datetime
 from hashlib import sha256
 from typing import List, Any
 
+
 def application(env: Any, start_response: Any) -> List[bytes]:
     try:
         length = int(env.get('CONTENT_LENGTH', '0'))
