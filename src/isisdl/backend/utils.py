@@ -617,7 +617,7 @@ class DataLogger(Thread):
     def __init__(self) -> None:
         self.s = Session()
         self.generic_msg = {
-            "username": config.username,
+            "username": User.sanitize_name(config.username),
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,

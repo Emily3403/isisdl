@@ -17,7 +17,9 @@ from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, datab
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
 
 ignored_urls = {
-    'https://isis.tu-berlin.de/mod/resource/view.php?id=756880'
+    "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
+    "https://isis.tu-berlin.de/mod/resource/view.php?id=910864",
+
 }
 
 
@@ -100,7 +102,7 @@ class Course:
             os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
-        if config.download_videos:
+        if not config.download_videos:
             return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
@@ -170,6 +172,7 @@ class Course:
                     continue
 
                 # This is a definite blacklist on stuff we don't want to follow.
+                # TODO: mod/book
                 ignore = re.match(
                     ".*mod/(?:"
                     "forum|url|choicegroup|assign|videoservice|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
