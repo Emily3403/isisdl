@@ -10,7 +10,7 @@ def application(env: Any, start_response: Any) -> List[bytes]:
     except ValueError:
         length = 0
 
-    body = env['wsgi.input'].read(length)
+    body = env['wsgi.input'].read()
 
     print(body)
 
