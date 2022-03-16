@@ -21,8 +21,9 @@ def application(env: Any, start_response: Any) -> List[bytes]:
             # Validate that the data is json
             f.write(json.dumps(json.loads(body.decode()), indent=4))  # TODO: indent away
 
-    except Exception as ex:
+    except Exception:
         pass
 
 
+    start_response('200 OK')
     return []
