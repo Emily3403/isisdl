@@ -32,7 +32,7 @@ Read in the [wiki]() for further detail on how it is implemented.
 
 ### Automatic running of `isisdl`
 
-Note: This option is currently only supported on linux.
+Note: This option is currently only supported on linux. 
 
 If you accept the option in the configuration wizard, `isisdl` will be automatically executed every hour. Now every new file
 will automagically appear in the `~/isisdl` directory.
