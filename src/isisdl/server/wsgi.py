@@ -12,7 +12,7 @@ def application(env: Any, start_response: Any) -> List[bytes]:
     body = env['wsgi.input'].read(length)
 
     try:
-        print(str(body))
+        print(repr(str(body)))
         dat = json.loads(str(body))
 
         print("uhhh")
