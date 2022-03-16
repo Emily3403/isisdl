@@ -33,6 +33,8 @@ from isisdl.settings import working_dir_location, is_windows, checksum_algorithm
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
     error_directory_location, systemd_dir_location, master_password, is_testing
 
+
+
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
 
@@ -41,21 +43,22 @@ error_text = "\033[1;91mError!\033[0m"
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
-    This program downloads all content of your ISIS page.""")
+    This program downloads all content from your ISIS profile.""")
 
-    parser.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
-    parser.add_argument("-v", "--verbose", help="Enable debug output\n ", action="store_true")
-    parser.add_argument("-n", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="num")
+    parser.add_argument("-t", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="num")
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="num")
-    parser.add_argument("-o", "--overwrite", help="Overwrites all existing files\n ", action="store_true")
 
-    parser.add_argument("-w", "--whitelist", help="A whitelist of course ID's.\n ", nargs="+", type=int, metavar="ID")
-    parser.add_argument("-b", "--blacklist", help="A blacklist of course ID's.\n ", nargs="+", type=int, metavar="ID")
+    operations = parser.add_mutually_exclusive_group()
 
-    parser.add_argument("-dv", "--disable-videos", help="Disables downloading of videos\n ", action="store_true")
-    parser.add_argument("-dd", "--disable-documents", help="Disables downloading of documents", action="store_true")
+    operations.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
+    operations.add_argument("--init", help="Guides you through the initial configuration and setup process.", action="store_true")
+    operations.add_argument("--config", help="Guides you through addtitional configuration which focuses on what to download from ISIS.", action="store_true")
+    operations.add_argument("--sync", help="Synchronizes the local database with ISIS. Will delete not existent or corrupted entries.", action="store_true")
+    operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
+    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
+    operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
 
-    the_args, unknown = parser.parse_known_args()
+    the_args, _ = parser.parse_known_args()
 
     return the_args
 
@@ -110,14 +113,6 @@ class Config:
 
         for name in self.__slots__:
             super().__setattr__(name, next(iter(item for item in [config_file_data[name], stored_config[name]] if item is not None), self.default_config[name]))
-
-        def set_list(name: str) -> None:
-            if getattr(args, name):
-                new_list = (getattr(self, name) or []) + getattr(args, name)
-                super(Config, self).__setattr__(name, new_list)
-
-        set_list("whitelist")
-        set_list("blacklist")
 
     def __setattr__(self, key: str, value: Union[bool, str, int, None]) -> None:
         super().__setattr__(key, value)
@@ -593,6 +588,15 @@ def calculate_online_checksum_file(file: Path, size: int) -> str:
     return checksum_algorithm(chunk + str(size).encode()).hexdigest()
 
 
+def subscribe_to_all_courses() -> None:
+    print("subscribe_to_all_courses is not implemented yet.")
+    exit(1)
+
+def unsubscribe_from_courses() -> None:
+    print("unsubscribe_from_courses is not implemented yet.")
+    exit(1)
+
+
 class DataLogger(Thread):
     """
     What to log:
@@ -614,7 +618,7 @@ class DataLogger(Thread):
     def __init__(self) -> None:
         self.s = Session()
         self.generic_msg = {
-            "username": User.sanitize_name(config.username),
+            "username": config.username,
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
@@ -642,6 +646,9 @@ class DataLogger(Thread):
         to_send.update(msg)
 
         self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=to_send)
+
+    def set_username(self, name: str) -> None:
+        self.generic_msg["username"] = User.sanitize_name(name)
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503

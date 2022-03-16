@@ -505,7 +505,7 @@ def isis_config_wizard() -> None:
     #   decide if sub-folders should be created inside a course folder.
     #   set if external linked files should be downloaded (files like youtube videos).
     #
-    print("Not yet supported!")
+    print("Isis config wizard not implemented yet.")
     exit(1)
 
 

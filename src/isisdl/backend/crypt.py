@@ -6,10 +6,11 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.backend.utils import User, config, error_text, path
+from isisdl.backend.utils import User, config, error_text, path, logger
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location
 
 last_password: Optional[str] = None
+last_username: Optional[str] = None
 
 
 def generate_key(password: str) -> bytes:
@@ -59,8 +60,10 @@ def store_user(user: User, password: Optional[str] = None) -> None:
 def get_credentials() -> User:
     """
     Prioritizes:
-        Cached Password Environment variable > Database > Input
+        Cached Password > Environment variable > Database > Input
     """
+    global last_username
+
     # First check the environment variables for username *and* password
     env_username, env_password = os.getenv(env_var_name_username), os.getenv(env_var_name_password)
     if env_username is not None and env_password is not None:
@@ -99,6 +102,7 @@ def get_credentials() -> User:
     print("Please provide authentication for ISIS.")
     username = input("Username: ")
     password = getpass.getpass("Password: ")
+    logger.set_username(username)
 
     return User(username, password)
 

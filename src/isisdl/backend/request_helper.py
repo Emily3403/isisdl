@@ -100,7 +100,7 @@ class Course:
             os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
-        if args.disable_videos or not config.download_videos:
+        if config.download_videos:
             return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
@@ -151,9 +151,6 @@ class Course:
                 for item in videos_json]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
-        if args.disable_documents:
-            return []
-
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
         if content is None:
             return []
@@ -415,9 +412,6 @@ class RequestHelper:
         return all_files
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
-        if args.disable_documents:
-            return []
-
         all_content = []
         _assignments = self.post_REST('mod_assign_get_assignments')
         if _assignments is None:

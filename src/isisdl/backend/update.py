@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from tempfile import TemporaryDirectory
 from typing import Optional, Union
 
@@ -50,8 +51,10 @@ def install_latest_version() -> None:
     if is_first_time:
         return
 
+    s = time.perf_counter()
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
+    print(f"{time.perf_counter() - s:.3f}")
 
     update_policy = config.update_policy
     if update_policy is None:

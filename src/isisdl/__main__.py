@@ -2,19 +2,18 @@
 from http.client import HTTPSConnection
 
 import isisdl.bin.sync_database as sync_database
+import isisdl.bin.compress as compress
+
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.update import install_latest_version
-from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message
-from isisdl.bin.config import run_config_wizard
+from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses
+from isisdl.bin.config import run_config_wizard, isis_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
 
 
-def maybe_print_version_and_exit() -> None:
-    if not args.version:
-        return
-
+def print_version_and_exit() -> None:
     print(f"isisdl Version {__version__}")
     exit(0)
 
@@ -33,15 +32,41 @@ def check_online() -> None:
 
 
 def _main() -> None:
-    maybe_print_version_and_exit()
-    acquire_file_lock_or_exit()
+    if args.version:
+        print_version_and_exit()
+        exit(0)
+
+    elif args.init:
+        run_config_wizard()
+        exit(0)
+
+    elif args.config:
+        isis_config_wizard()
+        exit(0)
+
+    # Now only routines follow that need the ISIS online database
     check_online()
     install_latest_version()
 
-    # is_first_time = True
-    if is_first_time:
-        print("""It seems as if this is your first time executing isisdl. Welcome 💖
+    if args.sync:
+        sync_database()
 
+    elif args.compress:
+        compress()
+
+    elif args.subscribe:
+        subscribe_to_all_courses()
+
+    elif args.unsubscribe:
+        unsubscribe_from_courses()
+
+    else:
+        # Main routine
+        acquire_file_lock_or_exit()
+
+        if is_first_time:
+            print("""It seems as if this is your first time executing isisdl. Welcome 💖
+    
 I will guide you through a short configuration phase of about 5min.
 It is recommended that you read the options carefully.
 If you wish to re-configure me run `isisdl-config`.
@@ -50,9 +75,9 @@ If you think this is a mistake, click yourself through the wizard
 and I will rediscover your files afterwards.
 
 Please press enter to continue.""")
-        input()
-        run_config_wizard()
-        sync_database._main()
+            input()
+            run_config_wizard()
+            sync_database._main()
 
     dl = CourseDownloader(get_credentials())
 

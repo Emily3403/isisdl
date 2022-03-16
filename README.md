@@ -12,7 +12,7 @@ Once all files are downloaded it takes about 5s to synchronize your files with I
 
 ### Compatibility
 
-This library will run with any python interpreter that is ≥ 3.8.
+This library will run with any python interpreter that is >=  3.8.
 
 Linux, macOS and Windows are supported.
 

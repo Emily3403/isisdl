@@ -236,10 +236,9 @@ class MediaContainer:
 
     @staticmethod
     def from_pre_container(container: PreMediaContainer, s: SessionWithKey) -> Optional[MediaContainer]:
-        if not args.overwrite:
-            other_size = database_helper.get_size_from_file_id(container.file_id)
-            if container.size == other_size:
-                return None
+        other_size = database_helper.get_size_from_file_id(container.file_id)
+        if container.size == other_size:
+            return None
 
         media_type = MediaType.video if container.is_video else MediaType.document
         return MediaContainer(container._name, container.url, container.path, media_type, s, container, container.size)
