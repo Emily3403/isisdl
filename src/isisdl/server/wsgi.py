@@ -9,11 +9,10 @@ def application(env: Any, start_response: Any) -> List[bytes]:
     except ValueError:
         length = 0
 
-    body = env['wsgi.input'].read(length)
+    body: bytes = env['wsgi.input'].read(length)
 
     try:
-        print(repr(str(body)))
-        dat = json.loads(str(body))
+        dat = json.loads(body.decode())
 
         print("uhhh")
         with open("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + datetime.now().strftime("%y-%m-%d")) as f:
