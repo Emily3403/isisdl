@@ -11,6 +11,7 @@ import signal
 import string
 import subprocess
 import sys
+import time
 import traceback
 from threading import Thread
 
@@ -617,6 +618,7 @@ class DataLogger(Thread):
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
+            "time": int(time.time()),
             "is_first_time": is_first_time,
             "message": "",
         }
