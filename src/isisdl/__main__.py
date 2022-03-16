@@ -12,28 +12,12 @@ from isisdl.bin.config import run_config_wizard, isis_config_wizard
 from isisdl.settings import is_first_time
 from isisdl.version import __version__
 
-
-def print_version_and_exit() -> None:
-    print(f"isisdl Version {__version__}")
-    exit(0)
-
-
-def check_online() -> None:
-    # Copied from https://stackoverflow.com/a/29854274
-    conn = HTTPSConnection("8.8.8.8", timeout=5)
-    try:
-        conn.request("HEAD", "/")
-        return
-    except Exception:
-        print("I cannot establish an internet connection.")
-        exit(1)
-    finally:
-        conn.close()
+from isisdl.settings import is_online
 
 
 def _main() -> None:
     if args.version:
-        print_version_and_exit()
+        print(f"isisdl Version {__version__}")
         exit(0)
 
     elif args.init:
@@ -44,8 +28,25 @@ def _main() -> None:
         isis_config_wizard()
         exit(0)
 
-    # Now only routines follow that need the ISIS online database
-    check_online()
+    if is_first_time:
+        print("""It seems as if this is your first time executing isisdl. Welcome 💖
+
+I will guide you through a short configuration phase of about 5min.
+It is recommended that you read the options carefully.
+If you wish to re-configure me run `isisdl-config`.
+
+If you think this is a mistake, click yourself through the wizard
+and I will rediscover your files afterwards.
+
+Please press enter to continue.""")
+        input()
+        run_config_wizard()
+        sync_database._main()
+
+    if not is_online:
+        print("I cannot establish an internet connection.")
+        exit(1)
+
     install_latest_version()
 
     if args.sync:
@@ -63,27 +64,10 @@ def _main() -> None:
     else:
         # Main routine
         acquire_file_lock_or_exit()
+        dl = CourseDownloader(get_credentials())
+        dl.start()
 
-        if is_first_time:
-            print("""It seems as if this is your first time executing isisdl. Welcome 💖
-
-I will guide you through a short configuration phase of about 5min.
-It is recommended that you read the options carefully.
-If you wish to re-configure me run `isisdl-config`.
-
-If you think this is a mistake, click yourself through the wizard
-and I will rediscover your files afterwards.
-
-Please press enter to continue.""")
-            input()
-            run_config_wizard()
-            sync_database._main()
-
-    dl = CourseDownloader(get_credentials())
-
-    dl.start()
-
-    print("\n\nDone! Have a nice day ^.^")
+        print("\n\nDone! Have a nice day ^.^")
 
 
 def main() -> None:

@@ -15,6 +15,8 @@ from isisdl.backend.request_helper import RequestHelper
 from isisdl.backend.utils import get_input, User, clear, config, error_text, generate_current_config_str, on_kill, run_cmd_with_error, acquire_file_lock_or_exit
 from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, export_config_file_location, working_dir_location
 
+from isisdl.settings import is_online
+
 was_in_configuration = False
 
 
@@ -385,16 +387,11 @@ def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
     print(f"""Do you wish to {'whitelist' if is_whitelist else 'blacklist'} any of your courses?
 
 
---- Note ---
-You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist else '-b, --blacklist'}` flag.
-------------
-
-
     [0] No  [default]
 
     [1] Yes
 """)
-    # TODO: Consider all courses, not just black- / whitelisted ones
+    # TODO: Why no bool prompt?
 
     allowed = {"", "0", "1"}
     if check_list is not None:
@@ -408,20 +405,26 @@ You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist
     if choice == "0" or choice == "":
         return False
 
+    if choice == "1" and not is_online:
+        print("\nSince you are offline I am unable to retrieve the required information.\nPress enter to continue.\n")
+        input()
+        return True
+
     if RequestHelper._instance is None:
         print("\n(Getting information about courses ...)\n")
 
     user = get_credentials()
     helper = RequestHelper(user)
-    if not helper.courses:
+    courses = helper._courses
+    if not courses:
         print("No courses available ...   (cricket sounds)")
         input()
         return True
 
     print("Please provide a comma-seperated list of the course-numbers.\nE.g. \"0, 2, 3\"\n")
 
-    max_len = math.ceil(math.log(len(helper.courses), 10))
-    for i, course in enumerate(helper.courses):
+    max_len = math.ceil(math.log(len(courses), 10))
+    for i, course in enumerate(courses):
         print(f"    [{i}]{' ' * (max_len - len(str(i)))}   {course.name}")
 
     print()
@@ -429,7 +432,7 @@ You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist
         user_input = input()
         try:
             lst = [int(item) for item in user_input.split(",")]
-            if not all(0 <= item < len(helper.courses) for item in lst):
+            if not all(0 <= item < len(courses) for item in lst):
                 raise ValueError("Your input was not constrained to the listed choices.")
 
             break
@@ -437,7 +440,7 @@ You may overwrite this option by setting the `{'-w, --whitelist' if is_whitelist
         except Exception as ex:
             print(f"\nI did not quite catch that:\n{ex}\n")
 
-    return [helper.courses[i].course_id for i in lst]
+    return [courses[i].course_id for i in lst]
 
 
 def whitelist_prompt() -> None:
@@ -475,6 +478,56 @@ def blacklist_prompt() -> None:
     RequestHelper(user).get_courses()
 
 
+def rename_courses_prompt() -> None:
+    clear()
+
+    print(f"""Do you wish to rename any of your courses?
+
+
+    [0] No  [default]
+
+    [1] Yes
+    """)
+
+    prev = config.user("download_videos")
+    assert prev is None or isinstance(prev, bool)
+    choice = bool_prompt(prev, True)
+
+    if choice is None:
+        return
+
+    if choice is False:
+        config.renamed_courses = None
+        return
+
+    print("Please provide a ")
+    # TODO
+
+
+def make_subdirs_prompt() -> None:
+    clear()
+
+    print(f"""Do you wish to create subdirectories in the Course folder?
+    
+If enabled, things like assignments get their own directory containing all files.
+Otherwise the files are stored along with all others in the root directory of the course.
+
+
+    [0] No  [default]
+
+    [1] Yes
+""")
+
+    prev = config.user("make_subdirs")
+    assert prev is None or isinstance(prev, bool)
+    choice = bool_prompt(prev, True)
+
+    if choice is None:
+        return
+
+    config.make_subdirs = choice
+
+
 def dont_download_videos_prompt() -> None:
     clear()
     print("""Do you want to download videos on this device?
@@ -497,16 +550,36 @@ a long time to download if you have a slow internet connection.
 
     config.download_videos = choice
 
+def follow_external_links_prompt() -> None:
+    # Later: Check if this is useful
+    clear()
+    print("""Do you want me to follow all external links mentioned in a course and also download those files?
+
+    [0] No
+
+    [1] Yes  [default]
+    """)
+
+    prev = config.user("follow_links")
+    assert prev is None or isinstance(prev, bool)
+    choice = bool_prompt(prev, True)
+
+    if choice is None:
+        return
+
+    config.follow_links = choice
+
 
 def isis_config_wizard() -> None:
     # TODO:
-    #   Select courses to be downloaded
     #   Rename each course individually
-    #   decide if sub-folders should be created inside a course folder.
-    #   set if external linked files should be downloaded (files like youtube videos).
-    #
-    print("Isis config wizard not implemented yet.")
-    exit(1)
+
+    rename_courses_prompt()
+    whitelist_prompt()
+    blacklist_prompt()
+    dont_download_videos_prompt()
+    follow_external_links_prompt()
+
 
 
 def run_config_wizard() -> None:
@@ -514,12 +587,7 @@ def run_config_wizard() -> None:
     was_in_configuration = True
 
     authentication_prompt()
-
-    whitelist_prompt()
-    blacklist_prompt()
-    dont_download_videos_prompt()
     filename_prompt()
-
     timer_prompt()
     throttler_prompt()
     update_policy_prompt()

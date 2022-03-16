@@ -68,6 +68,9 @@ class Config:
 
     whitelist: Optional[List[int]]
     blacklist: Optional[List[int]]
+    renamed_courses: Optional[Dict[int, str]]  # TODO
+    make_subdirs: bool  # TODO
+    follow_links: bool  # TODO
 
     download_videos: bool
     filename_replacing: bool
@@ -83,6 +86,9 @@ class Config:
 
         "whitelist": None,
         "blacklist": None,
+        "renamed_courses": None,
+        "make_subdirs": True,
+        "follow_links": True,
 
         "download_videos": True,
         "filename_replacing": False,
@@ -92,9 +98,7 @@ class Config:
         "telemetry_policy": True,
     }
 
-    __slots__ = tuple(
-        k for k in default_config
-    )
+    __slots__ = tuple(default_config)
 
     _user: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
     _stored: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}

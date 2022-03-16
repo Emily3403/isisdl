@@ -4,6 +4,7 @@ import shutil
 import sys
 from collections import defaultdict
 from hashlib import sha256
+from http.client import HTTPSConnection
 from linecache import getline
 from typing import Any, DefaultDict
 
@@ -119,7 +120,6 @@ ffmpeg_args = ["-crf", "33", "-c:v", "libx265", "-c:a", "copy", "-preset", "supe
 # If the efficiency is too low for ↓ seconds the file will be blacklisted from compression
 compress_duration_for_to_low_efficiency = 0.5
 
-
 compress_minimum_stdev = 0.5
 
 compress_score_mavg_size = 5
@@ -178,6 +178,21 @@ if not is_windows:
 
 # Check if the user is executing the library for the first time → .state.db should be missing
 is_first_time = not os.path.exists(os.path.join(working_dir_location, database_file_location))
+
+
+def check_online() -> bool:
+    # Copied from https://stackoverflow.com/a/29854274
+    conn = HTTPSConnection("8.8.8.8", timeout=5)
+    try:
+        conn.request("HEAD", "/")
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+is_online = check_online()
 
 # Yes, changing behaviour when testing is evil. But I'm doing so in order to protect my `~/isisdl_downloads` directory.
 is_testing = "pytest" in sys.modules
