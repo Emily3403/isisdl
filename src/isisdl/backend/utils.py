@@ -135,7 +135,6 @@ class Config:
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None]]:
         ret = {name: getattr(self, name) for name in self.__slots__}
-        del ret["password"]
         ret["username"] = User.sanitize_name(ret["username"])
         return ret
 

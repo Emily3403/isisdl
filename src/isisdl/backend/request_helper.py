@@ -497,6 +497,8 @@ class CourseDownloader:
         #   Oldest file on ISIS
         #   Biggest file on ISIS
 
+        conf = config.to_dict()
+        del conf["password"]
         logger.post({
             "num_g_files": len(pre_containers),
             "num_c_files": len(media_containers),
@@ -506,7 +508,7 @@ class CourseDownloader:
 
             "course_ids": [course.course_id for course in self.helper._courses],
 
-            "config": config.to_dict(),
+            "config": conf,
         })
 
         downloader.join()
