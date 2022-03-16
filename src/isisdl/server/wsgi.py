@@ -16,17 +16,13 @@ def application(env: Any, start_response: Any) -> List[bytes]:
 
     try:
         today = datetime.now().strftime("%y-%m-%d")
-        os.makedirs("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1/" + today, exist_ok=True)
-
         data = json.loads(body.decode())
 
-        if "message" in data and data["message"].startswith("Assertion failed:"):
-            subdir = "errors/"
-        else:
-            subdir = "logs/"
+        subdir = "errors/" if "message" in data and data["message"].startswith("Assertion failed:") else "logs/"
+        subpath = os.path.join("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1", subdir, today)
+        os.makedirs(subpath, exist_ok=True)
 
-
-        with open(os.path.join("/home/isisdl-server/isisdl/src/isisdl/server/logs/v1", subdir, today, sha256(str(time.time()).encode()).hexdigest() + ".json"), "w") as f:
+        with open(os.path.join(subpath, sha256(str(time.time()).encode()).hexdigest() + ".json"), "w") as f:
             # Validate that the data is json
             f.write(json.dumps(data, indent=4))
 
