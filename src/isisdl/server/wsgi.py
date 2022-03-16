@@ -3,8 +3,6 @@ import json
 from datetime import datetime
 from typing import List, Any
 
-working_dir =
-
 def application(env: Any, start_response: Any) -> List[bytes]:
     try:
         length = int(env.get('CONTENT_LENGTH', '0'))
@@ -19,12 +17,10 @@ def application(env: Any, start_response: Any) -> List[bytes]:
             f.write(json.dumps(dat, indent=4))
 
     except Exception:
-        dat = None
-
+        pass
 
     print(body)
 
 
     start_response('200 OK', [('Content-Type', 'text/html')])
-    response = "Hello"
-    return [response.encode()]
+    return []
