@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 from getpass import getpass
-from typing import List, Optional, Union, Set
+from typing import List, Optional, Union, Set, Dict
 
 import math
 import yaml
@@ -489,8 +489,8 @@ def rename_courses_prompt() -> None:
     [1] Yes
     """)
 
-    prev = config.user("download_videos")
-    assert prev is None or isinstance(prev, bool)
+    prev = config.user("renamed_courses")
+    assert prev is None or isinstance(prev, dict)
     choice = bool_prompt(prev, True)
 
     if choice is None:
@@ -500,8 +500,113 @@ def rename_courses_prompt() -> None:
         config.renamed_courses = None
         return
 
-    print("Please provide a ")
-    # TODO
+    if choice and not is_online:
+        print("\nSince you are offline I am unable to retrieve the required information.\nPress enter to continue.\n")
+        input()
+        return
+
+    if RequestHelper._instance is None:
+        print("\n(Getting information about courses ...)\n")
+
+    user = get_credentials()
+    helper = RequestHelper(user)
+    courses = helper._courses
+    if not courses:
+        print("No courses available ...   (cricket sounds)")
+        input()
+        return
+
+    print("Please provide a mapping between course numbers and their new names.")
+
+    last_error = ""
+    mapping: Dict[int, str] = config.renamed_courses or {}
+    course_id_to_str = {course.course_id: course.name for course in courses}
+    allowed = {course.course_id for course in courses}
+    while True:
+        print("Available courses:\n")
+        max_len = math.ceil(math.log(len(courses), 10))
+        for course in courses:
+            print(f"    [{course.course_id}]{' ' * (max_len - len(str(course.course_id)))}   {course.name}")
+
+        print("""
+
+When encountering {number} replace it with the course number you want to make changes to.
+
+Controls:
+    input "q" to exit.
+    input "d {number}" to delete a mapping.
+    input "{number} {new_name}" to create a new entry.
+
+
+For example:
+    "3 Hello world!" will rename the course number 3 into "Hello World!"
+    "d 5" will delete the mapping of course number 5.
+
+    "{3} abc" will *not* work.
+    "5 {def}" will rename the course to the literal "{def}" (with brackets).
+""")
+        print("Current mapping:\n")
+        if mapping:
+            print("{")
+            for k, v in mapping.items():
+                print(f"    {k} ({course_id_to_str[k]}) => {repr(v)},")
+            print("}\n")
+        else:
+            print("{}\n")
+
+        if last_error:
+            print(f"{error_text} {last_error}\n")
+            last_error = ""
+
+        inp = input()
+        if inp == "q":
+            break
+
+        clear()
+
+        # TODO: Test this more
+        if inp == "":
+            print("Please provide anything.")
+
+        parts = inp.split(" ")
+        if len(parts) < 2:
+            last_error = "Please separate your values with a space."
+            continue
+
+        if parts[0] == "d":
+            if parts[1] == "":
+                last_error = "Please provide a course number."
+
+            try:
+                num = int(parts[1])
+            except ValueError as ex:
+                last_error = "Parsing the integer failed.\nReason: " + str(ex)
+                continue
+
+            if num not in mapping:
+                last_error = f"The entered value ({repr(num)}) is not in the mapping."
+                continue
+
+            del mapping[num]
+
+        else:
+            try:
+                num = int(parts[0])
+            except ValueError as ex:
+                last_error = "Parsing the integer failed.\nReason: " + str(ex)
+                continue
+
+            if num not in allowed:
+                last_error = f"The entered value ({repr(num)}) not in allowed course ID's."
+                continue
+
+            if parts[1] == "":
+                last_error = "The course name is empty. To untrack a course put it into the blacklist."
+                continue
+
+            mapping[num] = " ".join(parts[1:])
+
+    config.renamed_courses = mapping
 
 
 def make_subdirs_prompt() -> None:
@@ -550,6 +655,7 @@ a long time to download if you have a slow internet connection.
 
     config.download_videos = choice
 
+
 def follow_external_links_prompt() -> None:
     # Later: Check if this is useful
     clear()
@@ -571,15 +677,17 @@ def follow_external_links_prompt() -> None:
 
 
 def isis_config_wizard() -> None:
-    # TODO:
-    #   Rename each course individually
+    global was_in_configuration
+    was_in_configuration = True
 
     rename_courses_prompt()
     whitelist_prompt()
     blacklist_prompt()
     dont_download_videos_prompt()
     follow_external_links_prompt()
+    was_in_configuration = False
 
+    print("Thank you for your time - everything is saved!\n")
 
 
 def run_config_wizard() -> None:
