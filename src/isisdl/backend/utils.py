@@ -19,7 +19,7 @@ import colorama
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from queue import PriorityQueue
+from queue import PriorityQueue, Queue
 from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from urllib.parse import unquote
 
@@ -620,25 +620,30 @@ class DataLogger(Thread):
 
     def __init__(self) -> None:
         self.s = Session()
-        self.generic_msg = {
+        self.generic_msg: Dict[str, Any] = {
             "username": User.sanitize_name(config.username),
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
             "time": int(time.time()),
             "is_first_time": is_first_time,
-            "message": "",
         }
-
+        self.messages: Queue[Union[str, Dict[str, Any]]] = Queue()
         super().__init__(daemon=True)
 
-    def message(self, msg: str) -> None:
+    def run(self) -> None:
+        while True:
+            item = self.messages.get()
+            self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=item)
+
+    def message(self, msg: Union[str, Dict[str, Any]]) -> None:
         if is_testing:
             return
 
-        self.generic_msg["message"] = msg
+        deliver = self.generic_msg.copy()
+        deliver["message"] = msg
+        self.messages.put(deliver)
 
-        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=self.generic_msg)
 
     def post(self, msg: Dict[str, Any]) -> None:
         if is_testing:

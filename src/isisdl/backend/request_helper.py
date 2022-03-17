@@ -176,7 +176,7 @@ class Course:
                 ignore = re.match(
                     ".*mod/(?:"
                     "forum|url|choicegroup|assign|videoservice|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-                    "page|data|ratingallocate"
+                    "page|data|ratingallocate|book"
                     ")/.*", url
                 )
 
@@ -492,6 +492,7 @@ class CourseDownloader:
         status.start()
 
         # Log the metadata
+        # TODO: When not downloading videos, maybe still include their size?
         conf = config.to_dict()
         del conf["password"]
         logger.post({
@@ -501,8 +502,9 @@ class CourseDownloader:
             "total_g_bytes": sum((item.size for item in pre_containers)),
             "total_c_bytes": sum((item.size for item in media_containers)),
 
-            "course_ids": [course.course_id for course in self.helper._courses],
+            "course_ids": sorted([course.course_id for course in self.helper._courses]),
 
+            # TODO: Add auto update
             "config": conf,
         })
 
