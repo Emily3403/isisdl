@@ -168,6 +168,7 @@ def parse_config_file() -> DefaultDict[str, Any]:
     return defaultdict(lambda: None)
 
 
+
 if not is_windows:
     data = parse_config_file()
     if data is not None:
@@ -175,6 +176,7 @@ if not is_windows:
         for k, v in data.items():
             if k in glob:
                 glob[k] = v
+
 
 # Check if the user is executing the library for the first time → .state.db should be missing
 is_first_time = not os.path.exists(os.path.join(working_dir_location, database_file_location))
@@ -191,7 +193,6 @@ def check_online() -> bool:
     finally:
         conn.close()
 
-
 is_online = check_online()
 
 # Yes, changing behaviour when testing is evil. But I'm doing so in order to protect my `~/isisdl_downloads` directory.
@@ -207,6 +208,6 @@ if is_testing:
 testing_download_video_size = 1_000_000_000
 
 # Number of bytes downloaded for documents.
-testing_download_documents_size = 1_00_000_000
+testing_download_documents_size = 1_000_000_000
 
 # </ Test Options >

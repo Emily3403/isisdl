@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import enum
+import os
 import shutil
 import time
 from base64 import standard_b64decode
@@ -19,7 +20,7 @@ import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows
 
@@ -40,56 +41,60 @@ class SessionWithKey(Session):
 
     @classmethod
     def from_scratch(cls, user: User, status: Union[InfoStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
-        s = cls("", "")
-        s.headers.update({"User-Agent": "isisdl (Python Requests)"})
-
-        status.set_status(PreStatusInfo.authenticating0)
-        s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
-
-        status.set_status(PreStatusInfo.authenticating1)
-        s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-               data={
-                   "shib_idp_ls_exception.shib_idp_session_ss": "",
-                   "shib_idp_ls_success.shib_idp_session_ss": "false",
-                   "shib_idp_ls_value.shib_idp_session_ss": "",
-                   "shib_idp_ls_exception.shib_idp_persistent_ss": "",
-                   "shib_idp_ls_success.shib_idp_persistent_ss": "false",
-                   "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                   "shib_idp_ls_supported": "", "_eventId_proceed": "",
-               })
-
-        status.set_status(PreStatusInfo.authenticating3)
-        response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
-                          params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
-
-        status.set_status(PreStatusInfo.authenticating4)
-
-        if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
-            # The redirection did not work → credentials are wrong
-            return None
-
-        # Extract the session key
-        key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
-
         try:
-            # This is a somewhat dirty hack.
-            # In order to obtain a token one usually calls the `login/token.php` site.
-            # ISIS handles authentication via SSO, which leads to an invalid password every time.
+            s = cls("", "")
+            s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
-            # In [1] this way of obtaining the token is described.
-            # I would love to get a better way working, but unfortunately it seems as if it is not supported.
-            #
-            # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
+            status.set_status(PreStatusInfo.authenticating0)
+            s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
 
-            s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
-            raise InvalidSchema
-        except InvalidSchema as ex:
-            token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
+            status.set_status(PreStatusInfo.authenticating1)
+            s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+                   data={
+                       "shib_idp_ls_exception.shib_idp_session_ss": "",
+                       "shib_idp_ls_success.shib_idp_session_ss": "false",
+                       "shib_idp_ls_value.shib_idp_session_ss": "",
+                       "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                       "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                       "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                       "shib_idp_ls_supported": "", "_eventId_proceed": "",
+                   })
 
-        s.key = key
-        s.token = token
+            status.set_status(PreStatusInfo.authenticating3)
+            response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                              params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
 
-        return s
+            status.set_status(PreStatusInfo.authenticating4)
+
+            if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+                # The redirection did not work → credentials are wrong
+                return None
+
+            # Extract the session key
+            key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
+
+            try:
+                # This is a somewhat dirty hack.
+                # In order to obtain a token one usually calls the `login/token.php` site.
+                # ISIS handles authentication via SSO, which leads to an invalid password every time.
+
+                # In [1] this way of obtaining the token is described.
+                # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+                #
+                # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
+
+                s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
+                raise InvalidSchema
+            except InvalidSchema as ex:
+                token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
+
+            s.key = key
+            s.token = token
+
+            return s
+        except Exception as ex:
+            print(f"{error_text} I was unable to establish a connection.\n\nReason: {ex}\n\nBailing out!")
+            os._exit(1)
 
     @staticmethod
     def _timeouter(func: Any, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:

@@ -31,7 +31,7 @@ from isisdl.version import __version__
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location, master_password, is_testing
+    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
@@ -74,12 +74,13 @@ class Config:
 
     download_videos: bool
     filename_replacing: bool
+    timer_enable: bool
     throttle_rate: int
     throttle_rate_autorun: int
     update_policy: Optional[str]
     telemetry_policy: bool
 
-    default_config: Dict[str, Union[bool, str, int, None]] = {
+    default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
         "username": None,
         "password": None,
@@ -92,6 +93,7 @@ class Config:
 
         "download_videos": True,
         "filename_replacing": False,
+        "timer_enable": True,
         "throttle_rate": None,
         "throttle_rate_autorun": None,
         "update_policy": "install_pip",
@@ -100,14 +102,22 @@ class Config:
 
     __slots__ = tuple(default_config)
 
-    _user: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
-    _stored: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
-    _backup: Dict[str, Union[bool, str, int, None]] = {k: None for k in default_config}
+    _user: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
+    _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
+    _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
     _in_backup: bool = False
 
     def __init__(self) -> None:
         config_file_data = parse_config_file()
         stored_config = database_helper.get_config()
+
+        # Json only allows for keys to be strings (https://stackoverflow.com/a/8758771)
+        # Set the keys manually back to ints, so we can work with them.
+
+        for item in [config_file_data, stored_config]:
+            if item["renamed_courses"] is not None:
+                assert isinstance(item["renamed_courses"], dict)
+                item["renamed_courses"] = {int(k): v for k, v in item["renamed_courses"].items()}
 
         Config._user.update(stored_config)
         Config._user.update(config_file_data)
@@ -116,7 +126,7 @@ class Config:
         for name in self.__slots__:
             super().__setattr__(name, next(iter(item for item in [config_file_data[name], stored_config[name]] if item is not None), self.default_config[name]))
 
-    def __setattr__(self, key: str, value: Union[bool, str, int, None]) -> None:
+    def __setattr__(self, key: str, value: Union[bool, str, int, None, Dict[int, str]]) -> None:
         super().__setattr__(key, value)
         if not self._in_backup:
             Config._user[key] = value
@@ -131,7 +141,7 @@ class Config:
     def user(attr: str) -> Any:
         return Config._user[attr]
 
-    def to_dict(self) -> Dict[str, Union[bool, str, int, None]]:
+    def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
         ret = {name: getattr(self, name) for name in self.__slots__}
         ret["username"] = User.sanitize_name(ret["username"])
         return ret
@@ -146,7 +156,7 @@ class Config:
             super().__setattr__(name, self._backup[name])
 
 
-def encode_yaml(st: Union[bool, str, int, None]) -> str:
+def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
     if st is None:
         return "null"
     elif st is True:
@@ -333,6 +343,59 @@ def is_h265(filename: str) -> Optional[bool]:
 
 def path(*args: str) -> str:
     return os.path.join(working_dir_location, *args)
+
+
+def remove_systemd_timer() -> None:
+    if not os.path.exists(timer_file_location):
+        return
+
+    run_cmd_with_error(["systemctl", "--user", "disable", "--now", "isisdl.timer"])
+    run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
+
+    if os.path.exists(timer_file_location):
+        os.remove(timer_file_location)
+
+    if os.path.exists(service_file_location):
+        os.remove(service_file_location)
+
+
+def install_systemd_timer() -> None:
+    import isisdl.bin.autorun
+    with open(service_file_location, "w") as f:
+        # TODO: static support: other executable
+        f.write(f"""# isisdl autorun service
+# This file was autogenerated by `isisdl --init`.
+
+[Unit]
+Description=isisdl autorun
+Wants=isisdl.timer
+
+[Service]
+Type=oneshot
+ExecStart={sys.executable} {isisdl.bin.autorun.__file__}
+
+[Install]
+WantedBy=multi-user.target
+""")
+
+    with open(timer_file_location, "w") as f:
+        f.write("""# isisdl autorun timer
+# This file was autogenerated by the `isisdl-config` utility.
+
+[Unit]
+Description=isisdl
+Wants=isisdl.service
+
+[Timer]
+Unit=isisdl.service
+OnCalendar=hourly
+
+[Install]
+WantedBy=timers.target
+""")
+
+    run_cmd_with_error(["systemctl", "--user", "enable", "--now", "isisdl.timer"])
+    run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
 
 def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
@@ -644,16 +707,14 @@ class DataLogger(Thread):
         deliver["message"] = msg
         self.messages.put(deliver)
 
-
     def post(self, msg: Dict[str, Any]) -> None:
         if is_testing:
             return
 
-        to_send = self.generic_msg.copy()
-        del to_send["message"]
-        to_send.update(msg)
+        deliver = self.generic_msg.copy()
+        deliver.update(msg)
 
-        self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=to_send)
+        self.messages.put(deliver)
 
     def set_username(self, name: str) -> None:
         self.generic_msg["username"] = User.sanitize_name(name)

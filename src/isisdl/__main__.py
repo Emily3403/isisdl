@@ -16,7 +16,23 @@ from isisdl.settings import is_online
 
 
 def _main() -> None:
-    if args.version:
+    if is_first_time:
+        print(f"""
+It seems as if this is your first time executing isisdl. Welcome 💖
+
+I will guide you through a short configuration phase of about 5min.
+It is recommended that you read the options carefully.
+
+If you wish to re-configure me run `isisdl --init` or `isisdl --config`.
+
+
+Please press enter to continue.
+""")
+        input()
+        run_config_wizard()
+        sync_database._main()
+
+    elif args.version:
         print(f"isisdl Version {__version__}")
         exit(0)
 
@@ -27,21 +43,6 @@ def _main() -> None:
     elif args.config:
         isis_config_wizard()
         exit(0)
-
-    if is_first_time:
-        print("""It seems as if this is your first time executing isisdl. Welcome 💖
-
-I will guide you through a short configuration phase of about 5min.
-It is recommended that you read the options carefully.
-If you wish to re-configure me run `isisdl-config`.
-
-If you think this is a mistake, click yourself through the wizard
-and I will rediscover your files afterwards.
-
-Please press enter to continue.""")
-        input()
-        run_config_wizard()
-        sync_database._main()
 
     if not is_online:
         print("I cannot establish an internet connection.")

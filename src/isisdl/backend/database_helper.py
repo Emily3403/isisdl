@@ -110,14 +110,14 @@ class DatabaseHelper:
 
         return ret
 
-    def set_config(self, config: Dict[str, Union[bool, str, int, None]]) -> None:
+    def set_config(self, config: Dict[str, Union[bool, str, int, None, Dict[int, str]]]) -> None:
         with self.lock:
             self.cur.execute("""
                 INSERT OR REPLACE INTO json_strings VALUES (?, ?)
             """, ("config", json.dumps(config)))
             self.con.commit()
 
-    def get_config(self) -> DefaultDict[str, Union[bool, str, int, None]]:
+    def get_config(self) -> DefaultDict[str, Union[bool, str, int, None, Dict[int, str]]]:
         with self.lock:
             data = self.cur.execute("SELECT json from json_strings where id=\"config\"").fetchone()
             if data is None:
