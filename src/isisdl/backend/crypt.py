@@ -7,7 +7,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from isisdl.backend.utils import User, config, error_text, path, logger
-from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location
+from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location, \
+    checksum_algorithm
 
 last_password: Optional[str] = None
 last_username: Optional[str] = None
@@ -55,6 +56,8 @@ def store_user(user: User, password: Optional[str] = None) -> None:
     config.username = user.username
     config.password = encrypted
     config.password_encrypted = bool(password)
+
+
 
 
 def get_credentials() -> User:
@@ -106,4 +109,3 @@ def get_credentials() -> User:
 
     return User(username, password)
 
-# TODO: Generate a random key on a per-user system. Will be stored in `.state.db` ?

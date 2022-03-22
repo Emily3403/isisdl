@@ -8,69 +8,208 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
+from email.utils import parsedate, parsedate_to_datetime
+from itertools import repeat
 from threading import Thread
-from typing import Optional, Dict, List, Any, cast, Tuple
+from typing import Optional, Dict, List, Any, cast, Tuple, Set
 from urllib.parse import urlparse, urljoin
 
+import gdown as gdown
+import requests
+
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger
+from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
 
 ignored_urls = {
     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
     "https://isis.tu-berlin.de/mod/resource/view.php?id=910864",
-
 }
+
+known_bad_isis_urls = {
+    "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
+}
+
+known_bad_extern_urls = {
+    "https://www.sese.tu-berlin.de/kloes",
+    "https://www.qemu.org/docs/master/system/index.html",
+    "https://developer.arm.com/documentation/ihi0042/j/?lang=en",
+    "http://infocenter.arm.com/help/topic/com.arm.doc.qrc0001m/QRC0001_UAL.pdf",
+    "https://gcc.gnu.org/onlinedocs/gcc-10.2.0/gcc/",
+    "https://sourceware.org/gdb/current/onlinedocs/gdb/",
+    "https://elinux.org/BCM2835_datasheet_errata",
+    "http://www.gnu.org/software/make/manual/make.html",
+    "http://de.wikibooks.org/wiki/C-Programmierung",
+    "http://openbook.galileocomputing.de/c_von_a_bis_z/",
+    "https://www.qemu.org/",
+    "https://sourceware.org/binutils/docs-2.35/",
+    "https://developer.arm.com/documentation/ddi0406/latest",
+}
+
+# Regex copied from https://gist.github.com/gruber/8891611
+url_finder = re.compile(
+    r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")
+
+# TODO: mod/book
+isis_ignored = re.compile(
+    ".*(?:"
+    # Ignore mod/{whatever}
+    "mod/(?:"
+    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
+    "page|data|ratingallocate|book"
+    ")"
+    # Ignore other websites
+    "|tu-berlin.zoom.us"
+    "|arm.com/products"
+    ")/.*")
 
 
 @dataclass
 class PreMediaContainer:
     _name: str
-    file_id: str
     url: str
+    download_url: str
     location: str
-    time: datetime
+    time: int
     course_id: int
-    is_video: bool
+    media_type: MediaType
     size: int = -1
     checksum: Optional[str] = None
 
     @classmethod
-    def from_api(cls, file_dict: Dict[str, Any], file_id: str, course: Course) -> PreMediaContainer:
-        file_id = f"{file_id}_{checksum_algorithm(file_dict['fileurl'].encode()).hexdigest()}"
+    def from_dump(cls, url: str) -> Optional[PreMediaContainer]:
+        info = database_helper.get_pre_container_by_url(url)
+        if info is None:
+            return None
 
-        return cls.from_course(file_dict["filename"], file_id, file_dict["fileurl"], course, file_dict["timemodified"], file_dict["filepath"], file_dict["filesize"])
+        container = cls(*info)
+        container.media_type = MediaType(container.media_type)
+
+        return container
 
     @classmethod
-    def from_course(cls, name: str, file_id: str, url: str, course: Course, last_modified: int, relative_location: str = "", size: int = -1) -> PreMediaContainer:
+    def from_extern_link(cls, url: str, course_id: int, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
+        # Use the cache
+        container = cls.from_dump(url)
+        if container is not None:
+            return container
+
+        # Now check if some things like authentication / form post have to be done
+        if isis_ignored.match(url):
+            return None
+
+        download_url = ""
+        if "tu-berlin.hosted.exlibrisgroup.com" in url:
+            pass
+
+        elif "https://drive.google.com/" in url:
+            # page = session.get_(url)
+            drive_id = parse_google_drive_url(url)
+            if drive_id is None:
+                return None
+
+            temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
+
+            try:
+                con = session.get_(temp_url, stream=True)
+            except Exception:
+                return None
+
+            if con is None:
+                return None
+
+            if "Content-Disposition" in con.headers:
+                # This is the file
+                download_url = temp_url
+            else:
+                _url = get_url_from_gdrive_confirmation(con.text)
+                if _url is None:
+                    return None
+                download_url = _url
+
+            con.close()
+
+        elif "tubcloud.tu-berlin.de" in url:
+            if url.endswith("/download"):
+                download_url = url
+            else:
+                download_url = url + "/download"
+
+        try:
+            con = session.get_(download_url or url, allow_redirects=True, stream=True)
+        except Exception:
+            return None
+
+        if con is None:
+            return None
+
+        if download_url == "":
+            download_url = con.url
+
+        if "Content-Type" in con.headers:
+            if con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"):
+                if filename is not None:
+                    name = filename
+                else:
+                    maybe_names = re.findall("filename=\"(.*?)\"", str(con.headers))
+                    if maybe_names:
+                        name = maybe_names[0]
+                    else:
+                        name = os.path.basename(url)
+
+                size = int(con.headers["Content-Length"])
+                location = media_type.dir_name
+                if "" in con.headers:
+                    time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
+                else:
+                    time = int(datetime.now().timestamp())
+
+                container = PreMediaContainer(name, url, download_url, location, time, course_id, media_type, size)
+
+
+            else:
+                database_helper.add_bad_url(url)
+                if url not in known_bad_extern_urls:
+                    logger.message(f"Assertion failed: url not ignored: {url}")
+
+        if container is not None:
+            container.dump()
+
+        return container
+
+    @classmethod
+    def document_from_api(cls, name: str, url: str, download_url: str, course: Course, last_modified: int, relative_location: Optional[str] = "", size: int = -1) -> PreMediaContainer:
         # Sanitize bad names
+        relative_location = relative_location or ""
         relative_location = relative_location.strip("/")
+        if config.make_subdirs is False:
+            relative_location = ""
+
         if relative_location:
-            if database_helper.get_size_from_file_id(file_id) is None:
+            if database_helper.get_size_from_url(url) is None:
                 os.makedirs(course.path(sanitize_name(relative_location)), exist_ok=True)
 
         is_video = "mod/videoservice/file.php" in url
         if is_video:
             relative_location = os.path.join(relative_location, "Videos")
 
-        sanitized_url = urljoin(url, urlparse(url).path)
+        if url.endswith("?forcedownload=1"):
+            url = url[:-len("?forcedownload=1")]
 
         location = course.path(sanitize_name(relative_location))
-        time = datetime.fromtimestamp(last_modified)
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
             logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
             pass
 
-        return cls(name, file_id, sanitized_url, location, time, course.course_id, is_video, size)
+        return cls(name, url, download_url, location, last_modified, course.course_id, MediaType.document, size)
 
     @property
     def path(self) -> str:
         return os.path.join(self.location, sanitize_name(self._name))
 
-    def dump(self) -> bool:
-        assert self.checksum is not None
-        return database_helper.add_pre_container(self)
+    def dump(self) -> None:
+        database_helper.add_pre_container(self)
 
     def __str__(self) -> str:
         return sanitize_name(self._name)
@@ -79,20 +218,26 @@ class PreMediaContainer:
         return self.__str__()
 
     def __hash__(self) -> int:
-        return self.file_id.__hash__()
+        return self.url.__hash__()
 
 
 @dataclass
 class Course:
-    name: str
+    _name: str
+    name: str  # TODO: Test if this hits all locations
     course_id: int
 
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:
-        name = cast(str, info["displayname"])
+        _name = cast(str, info["displayname"])
         id = cast(int, info["id"])
 
-        return cls(name, id)
+        if config.renamed_courses is None:
+            name = _name
+        else:
+            name = config.renamed_courses.get(id, "") or _name
+
+        return cls(_name, name, id)
 
     def __post_init(self) -> None:
         self.make_directories()
@@ -102,7 +247,7 @@ class Course:
             os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
-        if not config.download_videos:
+        if config.download_videos is False:
             return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
@@ -140,17 +285,16 @@ class Course:
             except ValueError:
                 return None
 
-        video_cache = database_helper.get_video_cache(self.name)
-        not_found_videos = [item for item in videos_json if item["url"] not in video_cache]
+        video_urls = [item["url"] for item in videos_json]
+        video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
 
-        with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
-            sizes = list(ex.map(find_out_size, not_found_videos))
+        if enable_multithread:
+            with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
+                containers = list(ex.map(PreMediaContainer.from_extern_link, video_urls, repeat(self.course_id), repeat(s), repeat(MediaType.video), video_names))
+        else:
+            containers = [PreMediaContainer.from_extern_link(item, self.course_id, s, MediaType.video, name) for item, name in zip(video_urls, video_names)]
 
-        video_cache.update({video["url"]: size for video, size in zip(videos_json, sizes)})
-        database_helper.set_video_cache(video_cache, self.name)
-
-        return [PreMediaContainer.from_course(item["title"].strip() + item["fileext"], item["id"], item["url"], self, item["date"], size=video_cache.get(item["url"], -1))
-                for item in videos_json]
+        return [item for item in containers if item is not None]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
@@ -159,26 +303,32 @@ class Course:
 
         content = cast(List[Dict[str, Any]], content)
 
+        external_links: Set[str] = set()
         all_content: List[PreMediaContainer] = []
+        bad_urls = database_helper.get_bad_urls()
+
         for week in content:
-            file: Dict[str, Any]
-            for file in week["modules"]:
-                if "url" not in file:
+            module: Dict[str, Any]
+            for module in week["modules"]:
+                if "description" in module:
+                    links = url_finder.findall(module["description"])
+                    for link in links:
+                        if link in ignored_urls or link in bad_urls:
+                            continue
+
+                        parse = urlparse(link)
+                        if parse.scheme and parse.netloc:
+                            external_links.add(link)
+
+                if "url" not in module:
                     continue
 
-                url: str = file["url"]
+                url: str = module["url"]
 
                 if url in ignored_urls:
                     continue
 
-                # This is a definite blacklist on stuff we don't want to follow.
-                # TODO: mod/book
-                ignore = re.match(
-                    ".*mod/(?:"
-                    "forum|url|choicegroup|assign|videoservice|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-                    "page|data|ratingallocate|book"
-                    ")/.*", url
-                )
+                ignore = isis_ignored.match(url)
 
                 if ignore is not None:
                     # Blacklist hit
@@ -189,24 +339,37 @@ class Course:
                     logger.message(f"""Assertion failed: re.match(".*mod/(?:folder|resource)/.*", url) is None\n\nCurrent url: {url}""")
                     pass
 
-                if "contents" not in file:
+                if "contents" not in module:
                     # Probably the black/white- list didn't match.
                     logger.message(f"""Assertion failed: "contents" not in file\n\nCurrent url: {url}""")
                     continue
 
                 prev_len = len(all_content)
-                if "contents" in file:
-                    for item in file["contents"]:
-                        all_content.append(PreMediaContainer.from_api(item, file["id"], self))
+                if "contents" in module:
+                    for file in module["contents"]:
+                        if "type" in file and file["type"] == "url":
+                            external_links.add(file["fileurl"])
+                        else:
+                            all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
 
                 if len(all_content) == prev_len:
-                    known_bad_urls = {
-                        "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
-                    }
 
-                    if url not in known_bad_urls:
+                    if url not in known_bad_isis_urls:
                         logger.message("""Assertion failed: url not in known_bad_urls""")
                         pass
+
+        def add_extern_link(link: str) -> None:
+            container = PreMediaContainer.from_extern_link(link, self.course_id, helper.session, MediaType.extern)
+            if container is not None:
+                all_content.append(container)
+
+        if external_links:
+            if enable_multithread:
+                with ThreadPoolExecutor(len(external_links)) as ex:
+                    ex.map(add_extern_link, external_links)
+            else:
+                for link in external_links:
+                    add_extern_link(link)
 
         return all_content
 
@@ -234,7 +397,7 @@ class Course:
         return self.name
 
     def __repr__(self) -> str:
-        return f"{self.name} ({self.course_id})"
+        return f"{self._name} ({self.course_id})"
 
     def __eq__(self, other: Any) -> bool:
         if other is True:
@@ -304,7 +467,6 @@ class RequestHelper:
         for item in res:
             course = Course.from_dict(item)
             self.course_id_mapping.update({course.course_id: course})
-            database_helper.add_course(course)
 
             self._courses.append(course)
             if course.ok:
@@ -424,12 +586,17 @@ class RequestHelper:
         assignments = cast(Dict[str, Any], _assignments)
 
         allowed_ids = {item.course_id for item in self.courses}
-        for course in assignments["courses"]:
-            if course["id"] in allowed_ids:
-                for assignment in course["assignments"]:
+        for _course in assignments["courses"]:
+            course = next((item for item in self.courses if item.course_id == _course["id"]), None)
+            if course is None:
+                logger.message("Assertion failed: course is None")
+                continue
+
+            if _course["id"] in allowed_ids:
+                for assignment in _course["assignments"]:
                     for file in assignment["introattachments"]:
                         file["filepath"] = assignment["name"]
-                        all_content.append(PreMediaContainer.from_api(file, assignment["id"], self.course_id_mapping[course["id"]]))
+                        all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
 
         return all_content
 
@@ -456,7 +623,7 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
         for new_row in locations.values():
             for i, item in enumerate(new_row):
                 basename, ext = os.path.splitext(item._name)
-                item._name = basename + f"({i}-{len(new_row) - 1})" + ext
+                item._name = basename + f".{i}" + ext
 
 
 class CourseDownloader:
@@ -493,7 +660,6 @@ class CourseDownloader:
         status.start()
 
         # Log the metadata
-        # TODO: When not downloading videos, maybe still include their size?
         conf = config.to_dict()
         del conf["password"]
         logger.post({
@@ -505,7 +671,6 @@ class CourseDownloader:
 
             "course_ids": sorted([course.course_id for course in self.helper._courses]),
 
-            # TODO: Add auto update
             "config": conf,
         })
 

@@ -98,13 +98,18 @@ class SessionWithKey(Session):
 
     @staticmethod
     def _timeouter(func: Any, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+        if "tubcloud.tu-berlin.de" in args[0]:
+            # The tubcloud is *really* slow
+            _download_timeout = 20
+        else:
+            _download_timeout = download_timeout
+
         i = 0
         while i < num_tries_download:
             try:
-                return func(*args, timeout=download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
+                return func(*args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except Exception:
-                # Later: Server?
                 time.sleep(sleep_time_for_isis)
                 i += 1
 
@@ -210,19 +215,22 @@ class DownloadThrottler(Thread):
 
 # This is kinda bloated. Maybe I'll remove it in the future.
 class MediaType(enum.Enum):
-    video = enum.auto()
-    document = enum.auto()
+    video = 1
+    document = 2
+    extern = 3
 
     @property
     def dir_name(self) -> str:
         if self == MediaType.video:
             return "Videos"
+        if self == MediaType.extern:
+            return "Extern"
 
         return ""
 
     @staticmethod
     def list_dirs() -> Iterable[str]:
-        return "Videos",
+        return "Videos", "Extern"
 
 
 @dataclass
@@ -241,12 +249,11 @@ class MediaContainer:
 
     @staticmethod
     def from_pre_container(container: PreMediaContainer, s: SessionWithKey) -> Optional[MediaContainer]:
-        other_size = database_helper.get_size_from_file_id(container.file_id)
+        other_size = database_helper.get_size_from_url(container.url)
         if container.size == other_size:
             return None
 
-        media_type = MediaType.video if container.is_video else MediaType.document
-        return MediaContainer(container._name, container.url, container.path, media_type, s, container, container.size)
+        return MediaContainer(container._name, container.download_url, container.path, container.media_type, s, container, container.size)
 
     def download(self, throttler: DownloadThrottler) -> None:
         if self._exit:
@@ -428,6 +435,7 @@ class InfoStatus(Thread):
         while self._running:
             time.sleep(status_time)
 
+            # TODO: Better progress bar
             log_strings = []
 
             if self.status == PreStatusInfo.startup:

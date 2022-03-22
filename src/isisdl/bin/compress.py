@@ -15,7 +15,7 @@ from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import print_log_messages
+from isisdl.backend.downloads import print_log_messages, MediaType
 from isisdl.backend.request_helper import RequestHelper, pre_status, PreMediaContainer
 from isisdl.backend.utils import error_text, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
@@ -513,7 +513,7 @@ def main() -> None:
     pre_status.stop()
     print("\n\nProcessing ...\n")
 
-    _content = list(filter(lambda x: x.is_video and os.path.exists(x.path), _content))
+    _content = list(filter(lambda x: x.media_type == MediaType.video and os.path.exists(x.path), _content))
 
     if enable_multithread:
         with ThreadPoolExecutor(os.cpu_count()) as ex:
@@ -561,11 +561,9 @@ compress_status: Optional[CompressStatus] = None
 compress_thread: Optional[Thread] = None
 
 # TODO:
-#   What if no database?
-
 #   Human readable for compression score
-
 #   Remote compression?
+#   Online ffprobe
 
 if __name__ == '__main__':
     main()

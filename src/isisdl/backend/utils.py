@@ -7,34 +7,40 @@ import json
 import os
 import platform
 import random
+import re
 import signal
 import string
 import subprocess
 import sys
 import time
 import traceback
-from threading import Thread
-
-import colorama
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from queue import PriorityQueue, Queue
-from typing import Union, Callable, Optional, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
-from urllib.parse import unquote
+from tempfile import TemporaryDirectory
+from threading import Thread
+from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
+from typing import Optional, Union
+from urllib.parse import unquote, parse_qs, urlparse
 
+import colorama
 import distro as distro
+import requests
+from packaging import version
+from packaging.version import Version, LegacyVersion
 from requests import Session
 
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.version import __version__
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location
+    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location
+from isisdl.version import __version__
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
+    from isisdl.backend.downloads import MediaType
 
 error_text = "\033[1;91mError!\033[0m"
 
@@ -43,8 +49,8 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
 
-    parser.add_argument("-t", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="num")
-    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="num")
+    parser.add_argument("-t", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="{num}")
+    parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="{num}")
 
     operations = parser.add_mutually_exclusive_group()
 
@@ -53,12 +59,14 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--config", help="Guides you through addtitional configuration which focuses on what to download from ISIS.", action="store_true")
     operations.add_argument("--sync", help="Synchronizes the local database with ISIS. Will delete not existent or corrupted entries.", action="store_true")
     operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
-    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
+    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")  # TODO
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
+    operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
 
-    the_args, _ = parser.parse_known_args()
+    if is_testing:
+        return parser.parse_known_args()[0]
 
-    return the_args
+    return parser.parse_args()
 
 
 class Config:
@@ -68,8 +76,8 @@ class Config:
 
     whitelist: Optional[List[int]]
     blacklist: Optional[List[int]]
-    renamed_courses: Optional[Dict[int, str]]  # TODO
-    make_subdirs: bool  # TODO
+    renamed_courses: Optional[Dict[int, str]]
+    make_subdirs: bool
     follow_links: bool  # TODO
 
     download_videos: bool
@@ -262,6 +270,11 @@ def generate_current_config_str() -> str:
                                download_progress_bar_resolution)
 
 
+def export_config() -> None:
+    with open(export_config_file_location, "w") as f:
+        f.write(generate_current_config_str())
+
+
 def startup() -> None:
     os.makedirs(path(), exist_ok=True)
     if os.path.exists(path(error_directory_location)) and not os.listdir(path(error_directory_location)):
@@ -288,6 +301,66 @@ def clear() -> None:
         os.system('clear')
 
 
+def parse_google_drive_url(url: str) -> Optional[str]:
+    """
+    Copied from https://github.com/wkentaro/gdown
+
+    Parse URLs especially for Google Drive links.
+    drive_id: ID of file on Google Drive.
+    is_download_link: Flag if it is download link of Google Drive.
+    """
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+
+    drive_id = None
+    if "id" in query:
+        drive_ids = query["id"]
+        if len(drive_ids) == 1:
+            drive_id = drive_ids[0]
+    else:
+        patterns = [r"^/file/d/(.*?)/view$", r"^/presentation/d/(.*?)/edit$"]
+        for pattern in patterns:
+            match = re.match(pattern, parsed.path)
+            if match:
+                drive_id = match.groups()[0]
+                break
+
+    return drive_id
+
+
+def get_url_from_gdrive_confirmation(contents: str) -> Optional[str]:
+    """
+    Copied from https://github.com/wkentaro/gdown
+    """
+
+    url = ""
+    for line in contents.splitlines():
+        m = re.search(r'href="(\/uc\?export=download[^"]+)', line)
+        if m:
+            url = "https://docs.google.com" + m.groups()[0]
+            url = url.replace("&amp;", "&")
+            break
+        m = re.search('id="downloadForm" action="(.+?)"', line)
+        if m:
+            url = m.groups()[0]
+            url = url.replace("&amp;", "&")
+            break
+        m = re.search('"downloadUrl":"([^"]+)', line)
+        if m:
+            url = m.groups()[0]
+            url = url.replace("\\u003d", "=")
+            url = url.replace("\\u0026", "&")
+            break
+        m = re.search('<p class="uc-error-subcaption">(.*)</p>', line)
+        if m:
+            error = m.groups()[0]
+            raise RuntimeError(error)
+    if not url:
+        return None
+
+    return url
+
+
 def run_cmd_with_error(args: List[str]) -> None:
     result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
@@ -299,7 +372,7 @@ def run_cmd_with_error(args: List[str]) -> None:
 
 
 def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
-    stream = helper.session.get_(file.url, stream=True)
+    stream = helper.session.get_(file.download_url, stream=True)
     if stream is None:
         return None
 
@@ -339,6 +412,92 @@ def is_h265(filename: str) -> Optional[bool]:
         return None
 
     return bool(video_stream["codec_name"] == "hevc")
+
+
+def check_pypi_for_version() -> Optional[Union[LegacyVersion, Version]]:
+    # Inspired from https://pypi.org/project/pypi-search
+    to_search = requests.get("https://pypi.org/project/isisdl/").text
+    found_version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
+
+    if found_version is None:
+        return None
+
+    groups = found_version.groups()
+    if groups is None or len(groups) != 1:
+        return None
+
+    return version.parse(groups[0].split()[1])
+
+
+def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
+    badge = requests.get("https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg").text
+    if "passing" not in badge:
+        return None
+
+    res = requests.get("https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/version.py")
+    if not res.ok:
+        return None
+
+    found_version = re.match("__version__ = \"(.*)?\"", res.text)
+    if found_version is None:
+        return None
+
+    return version.parse(found_version.group(1))
+
+
+def install_latest_version() -> None:
+    if is_first_time:
+        return
+
+    # s = time.perf_counter()
+    version_github = check_github_for_version()
+    version_pypi = check_pypi_for_version()
+    # print(f"{time.perf_counter() - s:.3f}")
+
+    update_policy = config.update_policy
+    if update_policy is None:
+        return
+
+    correct_version = version_github if update_policy.endswith("git") else version_pypi
+
+    if correct_version is None:
+        return
+
+    if correct_version <= version.parse(__version__):
+        return
+
+    print(f"\nThere is a new version of isisdl available: {correct_version} (current: {__version__}).")
+
+    if update_policy.startswith("notify"):
+        return
+
+    print("According to your update policy I will auto-install it.\n")
+    if update_policy == "install_pip":
+        ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
+
+    elif update_policy == "install_github":
+        old_dir = os.getcwd()
+        with TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            print(f"Cloning the repository into {tmp} ...")
+            ret = subprocess.call(["git", "clone", "https://github.com/Emily3403/isisdl"])
+            if ret:
+                print(f"Cloning failed with exit code {ret}")
+                return
+
+            print("Installing with pip ...")
+            ret = subprocess.call([sys.executable, "-m", "pip", "install", "./isisdl"])
+            os.chdir(old_dir)
+
+    else:
+        assert False
+
+    if ret == 0:
+        print("\n\nSuccessfully updated!")
+        exit(0)
+    else:
+        print("\n\nUpdating failed… why?")
+        exit(ret)
 
 
 def path(*args: str) -> str:
@@ -394,7 +553,7 @@ OnCalendar=hourly
 WantedBy=timers.target
 """)
 
-    run_cmd_with_error(["systemctl", "--user", "enable", "--now", "isisdl.timer"])
+    run_cmd_with_error(["systemctl", "--user", "enable", "isisdl.timer"])
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
 
@@ -700,7 +859,7 @@ class DataLogger(Thread):
             self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=item)
 
     def message(self, msg: Union[str, Dict[str, Any]]) -> None:
-        if is_testing:
+        if config.telemetry_policy is False or is_testing:
             return
 
         deliver = self.generic_msg.copy()
@@ -708,7 +867,7 @@ class DataLogger(Thread):
         self.messages.put(deliver)
 
     def post(self, msg: Dict[str, Any]) -> None:
-        if is_testing:
+        if config.telemetry_policy is False or is_testing:
             return
 
         deliver = self.generic_msg.copy()
@@ -767,10 +926,10 @@ def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -
     possible_documents: List[PreMediaContainer] = []
 
     # Get a random sample of lower half
-    video_containers = sorted([item for item in pre_containers if item.is_video], key=lambda x: x.size)
+    video_containers = sorted([item for item in pre_containers if item.media_type == MediaType.video], key=lambda x: x.size)
     video_containers = video_containers[:int(len(video_containers) / 2)]
 
-    document_containers = [item for item in pre_containers if not item.is_video]
+    document_containers = [item for item in pre_containers if not item.media_type == MediaType.document]
 
     random.shuffle(video_containers)
     random.shuffle(document_containers)

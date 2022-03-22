@@ -4,7 +4,8 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict, Tuple
+
 
 from isisdl.settings import database_file_location
 
@@ -25,12 +26,7 @@ class DatabaseHelper:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
-                (name text, file_id text primary key unique, url text, time int, course_id int, checksum text, size int)
-            """)
-
-            self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS courseinfo
-                (name text, id int primary key)
+                (name text, url text primary key unique, download_url text, location text, time int, course_id int, media_type int, size int, checksum text)
             """)
 
             self.cur.execute("""
@@ -51,46 +47,35 @@ class DatabaseHelper:
         self.cur.close()
         self.con.close()
 
-    def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str = "file_id", table: str = "fileinfo") -> Any:
+    def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str, table: str = "fileinfo") -> Any:
         with self.lock:
             res = self.cur.execute(f"""SELECT {attr} FROM {table} WHERE {eq_name} = ?""", (eq_val,)).fetchone()
 
         if res is None:
             return None
 
-        return res[0]
+        if len(res) == 1:
+            return res[0]
+        return res
 
     def get_name_by_checksum(self, checksum: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
 
-    def get_size_from_file_id(self, file_id: str) -> Optional[int]:
-        return cast(Optional[int], self._get_attr_by_equal("size", file_id))
-
-    def add_course(self, course: Course) -> None:
-        with self.lock:
-            self.cur.execute("""
-                INSERT OR IGNORE INTO courseinfo values (?, ?)
-            """, (course.name, course.course_id))
-            self.con.commit()
+    def get_size_from_url(self, url: str) -> Optional[int]:
+        return cast(Optional[int], self._get_attr_by_equal("size", url, "url"))
 
     def delete_by_checksum(self, checksum: str) -> None:
         with self.lock:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
-    def add_pre_container(self, file: PreMediaContainer) -> bool:
-        """
-        Returns true iff the element already existed
-        """
+    def add_pre_container(self, file: PreMediaContainer) -> None:
         with self.lock:
-            already_exists = self.cur.execute("SELECT * FROM fileinfo WHERE checksum = ?", (file.checksum,)).fetchone() is not None
-
             self.cur.execute("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
-            """, (file._name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size))
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (file._name, file.url, file.download_url, file.location, file.time, file.course_id, file.media_type.value, file.size, file.checksum))
             self.con.commit()
 
-            return already_exists
 
     def add_pre_containers(self, files: List[PreMediaContainer]) -> None:
         """
@@ -98,15 +83,16 @@ class DatabaseHelper:
         """
         with self.lock:
             self.cur.executemany("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?)
-            """, [(file._name, file.file_id, file.url, int(file.time.timestamp()), file.course_id, file.checksum, file.size) for file in files])
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [(file._name, file.url, file.download_url, file.location, file.time, file.course_id, file.media_type.value, file.size, file.checksum)
+                  for file in files])
             self.con.commit()
 
-    def get_checksums_per_course(self) -> Dict[str, Set[str]]:
+    def get_checksums_per_course(self) -> Dict[int, Set[str]]:
         ret = defaultdict(set)
         with self.lock:
-            for course_name, checksum in self.cur.execute("""SELECT courseinfo.name, checksum from fileinfo INNER JOIN courseinfo on fileinfo.course_id = courseinfo.id""").fetchall():
-                ret[course_name].add(checksum)
+            for course_id, checksum in self.cur.execute("""SELECT course_id, checksum from fileinfo""").fetchall():
+                ret[course_id].add(checksum)
 
         return ret
 
@@ -128,16 +114,39 @@ class DatabaseHelper:
 
             return defaultdict(lambda: None, json.loads(data[0]))
 
-    def set_video_cache(self, cache: Dict[str, int], course_name: str) -> None:
+    def get_pre_container_by_url(self, url: str) -> Optional[Any]:
+        return self._get_attr_by_equal("*", url, "url")
+
+    def add_bad_url(self, url: str) -> None:
         with self.lock:
-            self.cur.execute("""
-               INSERT OR REPLACE INTO json_strings VALUES (?, ?)
-            """, ("video_cache_" + course_name, json.dumps(cache)))
+            _data = self.cur.execute("SELECT json FROM json_strings where id=\"bad_url_cache\"").fetchone()
+            if _data is None or len(_data) == 0:
+                data = []
+            else:
+                data = json.loads(_data[0])
+
+            data.append(url)
+            if len(data) != len(set(data)):
+                from isisdl.backend.utils import logger
+                logger.message("Assertion failed: len(data) != len(set(data))")
+
+            self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("bad_url_cache", json.dumps(data)))
             self.con.commit()
 
-    def get_video_cache(self, course_name: str) -> Dict[str, int]:
+    def get_bad_urls(self) -> List[str]:
         with self.lock:
-            data = self.cur.execute("SELECT json FROM json_strings where id=\"video_cache_" + course_name + "\"").fetchone()
+            data = self.cur.execute("SELECT json FROM json_strings where id=\"bad_url_cache\"").fetchone()
+            if data is None:
+                return []
+
+            if len(data) == 0:
+                return []
+
+            return cast(List[str], json.loads(data[0]))
+
+    def get_cached_pre_containers(self, course_id: int) -> Dict[str, int]:
+        with self.lock:
+            data = self.cur.execute(f"SELECT json FROM json_strings where id=\"video_cache_{course_id}\"").fetchone()
             if data is None:
                 return {}
 

@@ -76,7 +76,7 @@ def bool_prompt(name: str) -> Optional[bool]:
 
 def authentication_prompt() -> None:
     clear()
-    print("""Do you wish to store your password?
+    print("""Do you want to store your password?
 
     [0] No
 
@@ -271,11 +271,12 @@ if you want to tune the time manually
     if not choice:
         remove_systemd_timer()
     else:
+
         if config.user("password_encrypted"):
             print(f"""
 {error_text} I cannot run `isisdl` automatically if the password is encrypted.
 
-Do you wish to store the password unencrypted?
+Do you want to store the password unencrypted?
 
     [0] No
 
@@ -361,21 +362,18 @@ It is usually pushed a few days after the github release.
 def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
     clear()
     check_list = config.whitelist if is_whitelist else config.blacklist
-    print(f"""Do you wish to {'whitelist' if is_whitelist else 'blacklist'} any of your courses?
+    print(f"""Do you want to {'whitelist' if is_whitelist else 'blacklist'} any of your courses?
 
 
     [0] No  [default]
 
     [1] Yes
 """)
-    # TODO: Why no bool prompt?
-
     allowed = {"", "0", "1"}
-    if check_list is not None:
-        print(f"\n    [s] Use the stored option {sorted(check_list)}")
-        allowed.add("s")
 
+    stored_prompt(check_list, allowed)
     choice = get_input(allowed)
+
     if choice == "s":
         return True
 
@@ -398,26 +396,41 @@ def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
         input()
         return True
 
-    print("Please provide a comma-seperated list of the course-numbers.\nE.g. \"0, 2, 3\"\n")
+    max_len = max(len(str(course.course_id)) for course in courses)
+    allowed_ids = {course.course_id for course in courses}
+    last_error = ""
 
-    max_len = math.ceil(math.log(len(courses), 10))
-    for i, course in enumerate(courses):
-        print(f"    [{i}]{' ' * (max_len - len(str(i)))}   {course.name}")
-
-    print()
     while True:
-        user_input = input()
+        clear()
+        print(f"""Please provide a comma-seperated list of the course ID's you want to {'whitelist' if is_whitelist else 'blacklist'}.
+
+For example:
+"17686, 24000, 26956"
+"17686"
+
+""")
+
+        for course in courses:
+            print(f"    [{course.course_id}]{' ' * (max_len - len(str(course.course_id)))}   {course._name}")
+
+        if last_error:
+            print(f"\n\n{error_text} {last_error}")
+
+        print()
+
+        inp = input()
         try:
-            lst = [int(item) for item in user_input.split(",")]
-            if not all(0 <= item < len(courses) for item in lst):
-                raise ValueError("Your input was not constrained to the listed choices.")
+            ids = sorted([int(item) for item in inp.split(",")])
+            for item in ids:
+                if item not in allowed_ids:
+                    raise ValueError(f"The entered course ID {item} was not in the allowed ID's.")
 
             break
 
         except Exception as ex:
-            print(f"\nI did not quite catch that:\n{ex}\n")
+            last_error = str(ex)
 
-    return [courses[i].course_id for i in lst]
+    return sorted(list(set(ids)))
 
 
 def whitelist_prompt() -> None:
@@ -454,22 +467,30 @@ def blacklist_prompt() -> None:
     user = get_credentials()
     RequestHelper(user).get_courses()
 
-
+# TODO: Test this... maybe
 def rename_courses_prompt() -> None:
     clear()
-
-    print(f"""Do you wish to rename any of your courses?
+    print(f"""Do you want to rename any of your courses?
 
 
     [0] No  [default]
-
+    
     [1] Yes
     """)
 
-    choice = bool_prompt("renamed_courses")
+    allowed = {"", "0", "1"}
+    stored_prompt(config.renamed_courses, allowed)
+    choice = get_input(allowed)
 
-    if choice and not is_online:
-        print("\nSince you are offline I am unable to retrieve the required information.\nPress enter to continue.\n")
+    if choice == "s":
+        return
+
+    if choice == "0" or choice == "":
+        config.renamed_courses = None
+        return
+
+    if not is_online:
+        print(f"\n{error_text} Since you are offline I am unable to retrieve the required information.\nPress enter to continue.\n")
         input()
         return
 
@@ -486,13 +507,14 @@ def rename_courses_prompt() -> None:
 
     last_error = ""
     mapping: Dict[int, str] = config.renamed_courses or {}
-    course_id_to_str = {course.course_id: course.name for course in courses}
-    allowed = {course.course_id for course in courses}
+    course_id_to_str = {course.course_id: course._name for course in courses}
+    allowed_ids = {course.course_id for course in courses}
 
     while True:
+        clear()
         print("Please provide a mapping between course ID's and their new names.\n")
         print("Available courses:\n")
-        max_len = math.ceil(math.log(len(courses), 10))
+        max_len = max(len(str(course.course_id)) for course in courses)
         for course in courses:
             print(f"    [{course.course_id}]{' ' * (max_len - len(str(course.course_id)))}   {course.name}")
 
@@ -537,7 +559,6 @@ For example:
 
         clear()
 
-        # TODO: Test this more
         if inp == "":
             print("Please provide anything.")
 
@@ -557,7 +578,7 @@ For example:
                 continue
 
             if num not in mapping:
-                last_error = f"The entered value ({repr(num)}) is not in the mapping."
+                last_error = f"The entered ID ({repr(num)}) is not in the mapping."
                 continue
 
             del mapping[num]
@@ -566,11 +587,11 @@ For example:
             try:
                 num = int(parts[0])
             except ValueError as ex:
-                last_error = "Parsing the number failed.\nReason: " + str(ex)
+                last_error = "Parsing the course ID failed.\nReason: " + str(ex)
                 continue
 
-            if num not in allowed:
-                last_error = f"The entered value ({repr(num)}) not in allowed course ID's."
+            if num not in allowed_ids:
+                last_error = f"The entered ID ({repr(num)}) not in allowed course ID's."
                 continue
 
             if parts[1] == "":
@@ -585,11 +606,10 @@ For example:
 def make_subdirs_prompt() -> None:
     clear()
 
-    print(f"""Do you wish to create subdirectories in the Course folder?
+    print(f"""Do you want to create subdirectories in the course directory?
     
 If enabled, things like assignments get their own directory containing all files.
 Otherwise the files are stored along with all others in the root directory of the course.
-
 """)
 
     bool_prompt("make_subdirs")
@@ -601,7 +621,6 @@ def dont_download_videos_prompt() -> None:
 
 This usually takes up a lot of space on your hard drive and may take
 a long time to download if you have a slow internet connection.
-
 """)
 
     bool_prompt("download_videos")
@@ -610,83 +629,42 @@ a long time to download if you have a slow internet connection.
 def follow_external_links_prompt() -> None:
     # Later: Check if this is useful
     clear()
-    print("Do you want me to follow all external links mentioned in a course and also download those files?")
+    print("Do you want me to follow external links?")
 
     bool_prompt("follow_links")
 
 
-def isis_config_wizard() -> None:
-    global was_in_configuration
-    was_in_configuration = True
-
-    rename_courses_prompt()
-    whitelist_prompt()
-    blacklist_prompt()
-    dont_download_videos_prompt()
-    follow_external_links_prompt()
-    was_in_configuration = False
-
-    print("Thank you for your time - everything is saved!\n")
-
-
-def run_config_wizard() -> None:
+def init_wizard() -> None:
     global was_in_configuration
     was_in_configuration = True
 
     authentication_prompt()
+    update_policy_prompt()
     filename_prompt()
     timer_prompt()
-
     throttler_prompt()
-    update_policy_prompt()
     telemetry_data_prompt()
-    was_in_configuration = False
 
+    was_in_configuration = False
     print("Thank you for your time - everything is saved!\n")
 
 
-@on_kill(3)
+def config_wizard() -> None:
+    global was_in_configuration
+    was_in_configuration = True
+
+    dont_download_videos_prompt()
+    whitelist_prompt()
+    blacklist_prompt()
+    rename_courses_prompt()
+    make_subdirs_prompt()
+    follow_external_links_prompt()
+
+    was_in_configuration = False
+    print("Thank you for your time - everything is saved!\n")
+
+
+@on_kill()
 def unexpected_exit_in_wizard() -> None:
     if was_in_configuration:
-        print("\nThe configuration wizard was killed unexpectedly.\nI will continue with the default for all options which you have not configured.")
-
-
-def main() -> None:
-    acquire_file_lock_or_exit()
-    if is_autorun:
-        exit(1)
-
-    print("""Hello there 👋
-
-You can choose one of the following actions
-
-    [v] view the current configuration
-""")
-    if not is_windows:
-        print(f"    [e] export the current configuration to\n        `{export_config_file_location}`")
-
-    print(f"\n\n    [{Style.BRIGHT}default{Style.RESET_ALL}] run the configuration wizard\n")
-
-    choice = input()
-    print()
-
-    # if choice.lower() == "i":
-    #     isis_config_wizard()
-    #     return
-
-    if choice.lower() == "v":
-        print("\nThe configuration is the following:\n")
-        print(yaml.dump(config.to_dict()))
-        return
-
-    if not is_windows and choice.lower() == "e":
-        print("Exporting current configuration ...")
-        with open(export_config_file_location, "w") as f:
-            f.write(generate_current_config_str())
-        return
-
-    run_config_wizard()
-
-
-if __name__ == "__main__":
-    main()
+        print("\nThe configuration wizard was killed unexpectedly.\n\nAll previous configuration is saved.\nFor choices which you haven't configured yet I'll stick with the default.")

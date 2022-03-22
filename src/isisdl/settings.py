@@ -39,7 +39,7 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # Lock settings
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"
@@ -59,7 +59,7 @@ password_hash_iterations = 390_000
 password_hash_length = 32
 
 # The password used to encrypt if no password is provided
-master_password = "peanuts"
+master_password = "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
 
 # The number of spaces the first progress bar has
 status_progress_bar_resolution = 50
@@ -81,6 +81,7 @@ cache_user_and_websites = True
 enable_multithread = True
 
 # Number of threads to discover video sizes
+# TODO: Experiment with sizes
 video_size_discover_num_threads = 32
 
 # Sets the chunk size for a download.

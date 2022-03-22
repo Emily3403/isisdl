@@ -86,11 +86,12 @@ def test_normal_course_downloader(request_helper: RequestHelper, database_helper
 
     not_downloaded = [item for row in dupl.values() for item in row if len(row) > 1]
 
-    for item in not_downloaded:
-        try:
-            prev_ids.remove(item.file_id)
-        except KeyError:
-            pass
+    # TODO
+    # for item in not_downloaded:
+    #     try:
+    #         prev_ids.remove(item.file_id)
+    #     except KeyError:
+    #         pass
 
     monkeypatch.setattr("builtins.input", lambda _=None: "n")
     database_helper.delete_file_table()

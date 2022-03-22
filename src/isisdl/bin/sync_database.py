@@ -41,14 +41,14 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
 
     global corrupted_files
     for course in helper.courses:
-        if course.name not in checksums:
+        if course.course_id not in checksums:
             continue
 
         for file in Path(path(course.path())).rglob("*"):
             if file.is_file():
                 checksum = calculate_local_checksum(file)
                 try:
-                    checksums[course.name].remove(checksum)
+                    checksums[course.course_id].remove(checksum)
                 except KeyError:
                     pass
 
@@ -195,10 +195,11 @@ def main() -> None:
         import isisdl.bin.config as config_run
         print("No database found. Running the config wizard ...\n\nPress Enter to continue\n")
         input()
-        config_run.run_config_wizard()
+        config_run.init_wizard()
 
     _main()
 
+# TODO: This is kinda slow... Why?
 
 if __name__ == "__main__":
     main()

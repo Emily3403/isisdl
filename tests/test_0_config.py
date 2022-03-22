@@ -1,13 +1,13 @@
 import random
 import string
-from typing import Any
+from typing import Any, Optional
 
 from yaml import safe_load
 
-import isisdl.bin.config as config_run
 from isisdl.backend.crypt import decryptor
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import config, User
+from isisdl.backend.utils import config, User, export_config
+from isisdl.bin.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
 from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
 
 
@@ -16,31 +16,53 @@ def generate_random_string() -> str:
     return alphabet + "".join(random.choice(alphabet) for _ in range(32))
 
 
-def assert_config_expected(password_encrypted: Any, username: Any, password: Any, filename_replacing: Any, throttle_rate: Any, throttle_rate_autorun: Any,
-                           update_policy: Any, telemetry_policy: Any, **_: Any) -> None:
+def assert_config_expected(
+        password_encrypted: Optional[Any] = None,
+        username: Optional[Any] = None,
+        password: Optional[Any] = None,
+        filename_replacing: Optional[Any] = None,
+        throttle_rate: Optional[Any] = None,
+        throttle_rate_autorun: Optional[Any] = None,
+        update_policy: Optional[Any] = None,
+        telemetry_policy: Optional[Any] = None,
+        **_: Any) -> None:
     from isisdl.backend.utils import config
 
-    assert config.password_encrypted == password_encrypted
-    assert config.username == username
-    assert config.password == password
-    assert config.filename_replacing == filename_replacing
-    assert config.throttle_rate == throttle_rate
-    assert config.throttle_rate_autorun == throttle_rate_autorun
-    assert config.update_policy == update_policy
-    assert config.telemetry_policy == telemetry_policy
+    if password_encrypted is not None:
+        assert config.password_encrypted == password_encrypted
+
+    if username is not None:
+        assert config.username == username
+
+    if password is not None:
+        assert config.password == password
+
+    if filename_replacing is not None:
+        assert config.filename_replacing == filename_replacing
+
+    if throttle_rate is not None:
+        assert config.throttle_rate == throttle_rate
+
+    if throttle_rate_autorun is not None:
+        assert config.throttle_rate_autorun == throttle_rate_autorun
+
+    if update_policy is not None:
+        assert config.update_policy == update_policy
+
+    if telemetry_policy is not None:
+        assert config.telemetry_policy == telemetry_policy
 
 
 def test_config_export(monkeypatch: Any) -> None:
     if is_windows:
         return
 
-    monkeypatch.setattr("builtins.input", lambda _=None: "e")
-    config_run.main()
+    export_config()
 
     with open(export_config_file_location) as f:
         exported_config = safe_load(f)
 
-    assert_config_expected(username=config.username, password=config.password, password_encrypted=config.password_encrypted, **exported_config)
+    assert_config_expected(**exported_config)
 
 
 def test_config_backup() -> None:
@@ -64,7 +86,7 @@ def test_config_authentication_prompt_no(monkeypatch: Any) -> None:
     config.password = "world"
     config.password_encrypted = False
 
-    config_run.authentication_prompt()
+    authentication_prompt()
 
     assert config.username is None
     assert config.password is None  # type: ignore
@@ -79,7 +101,7 @@ def authentication_prompt_with_password(monkeypatch: Any, username: str, passwor
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
     monkeypatch.setattr("isisdl.bin.config.getpass", lambda _=None: next(passwords))
 
-    config_run.authentication_prompt()
+    authentication_prompt()
 
     assert config.username == username
     assert config.password is not None
@@ -101,15 +123,49 @@ def test_config_authentication_prompt_with_pw(monkeypatch: Any, user: User) -> N
     config.restore_backup()
 
 
+def test_update_policy_prompt(monkeypatch: Any) -> None:
+    config.start_backup()
+
+    monkeypatch.setattr("builtins.input", lambda _=None: "2")
+    config.update_policy = "notify_pip"
+    update_policy_prompt()
+    assert config.update_policy == "install_github"
+
+    config.restore_backup()
+
+
+def test_filename_prompt(monkeypatch: Any) -> None:
+    config.start_backup()
+    monkeypatch.setattr("builtins.input", lambda _=None: "1")
+
+    config.filename_replacing = False
+    filename_prompt()
+
+    assert config.filename_replacing is True
+    config.restore_backup()
+
+def test_throttler_prompt(monkeypatch: Any) -> None:
+    config.start_backup()
+    choices = iter(["1", "42069"])
+    monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
+
+    config.throttle_rate_autorun = None
+    throttler_prompt()
+
+    assert config.throttle_rate_autorun == 42069
+    config.restore_backup()
+
+
 def test_whitelist_prompt_no(monkeypatch: Any) -> None:
     config.start_backup()
     monkeypatch.setattr("builtins.input", lambda _=None: "0")
 
     config.whitelist = [42, 69]
-    config_run.whitelist_prompt()
+    whitelist_prompt()
 
     assert config.whitelist is None
     config.restore_backup()  # type: ignore
+
 
 
 def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:
@@ -117,14 +173,11 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     monkeypatch.setenv(env_var_name_username, user.username)
     monkeypatch.setenv(env_var_name_password, user.password)
 
-    prev_courses = request_helper.courses.copy()
-    indexes = [0, 3, 5]
+    indexes = [item.course_id for item in request_helper.courses[:5]]
     choices = iter(["1", ",".join(str(item) for item in indexes)])
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
 
-    config_run.whitelist_prompt()
+    whitelist_prompt()
+    assert config.whitelist == indexes
 
-    should_be_chosen = [prev_courses[i].course_id for i in indexes]
-
-    assert should_be_chosen == config.whitelist
     config.restore_backup()
