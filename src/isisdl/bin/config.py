@@ -667,4 +667,4 @@ def config_wizard() -> None:
 @on_kill()
 def unexpected_exit_in_wizard() -> None:
     if was_in_configuration:
-        print("\nThe configuration wizard was killed unexpectedly.\n\nAll previous configuration is saved.\nFor choices which you haven't configured yet I'll stick with the default.")
+        print("\nThe configuration wizard was killed unexpectedly.\n\nAll previous configuration is saved.\nFor choices which you haven't configured yet, I'll stick with the default.")

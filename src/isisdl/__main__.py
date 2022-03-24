@@ -21,9 +21,9 @@ def _main() -> None:
 It seems as if this is your first time executing isisdl. Welcome 💖
 
 I will guide you through a short configuration phase of about 5min.
-It is recommended that you read the options carefully.
+It is recommended that you read these options carefully.
 
-If you wish to re-configure me run `isisdl --init` or `isisdl --config`.
+If you wish to re-configure me, run `isisdl --init` or `isisdl --config`.
 
 
 Please press enter to continue.

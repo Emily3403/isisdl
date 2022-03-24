@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any, List
 
 from isisdl.backend.database_helper import DatabaseHelper
+from isisdl.backend.downloads import MediaType
 from isisdl.backend.request_helper import CourseDownloader, RequestHelper, PreMediaContainer
-from isisdl.backend.utils import args, path, calculate_local_checksum, User, config, _course_downloader_transformation
+from isisdl.backend.utils import args, path, calculate_local_checksum, User, config
 from isisdl.bin.sync_database import restore_database_state, delete_missing_files_from_database
-from isisdl.settings import database_file_location, lock_file_location
+from isisdl.settings import database_file_location, lock_file_location, testing_download_video_size, testing_download_documents_size
 
 
 def test_database_helper(database_helper: DatabaseHelper) -> None:
@@ -29,6 +30,41 @@ def remove_old_files(database_helper: DatabaseHelper) -> None:
             shutil.rmtree(path(item))
 
     return
+
+
+def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
+    possible_videos: List[PreMediaContainer] = []
+    possible_documents: List[PreMediaContainer] = []
+
+    # Get a random sample of lower half
+    video_containers = sorted([item for item in pre_containers if item.media_type == MediaType.video], key=lambda x: x.size)
+    video_containers = video_containers[:int(len(video_containers) / 2)]
+
+    document_containers = [item for item in pre_containers if not item.media_type == MediaType.document]
+
+    random.shuffle(video_containers)
+    random.shuffle(document_containers)
+
+    def maybe_add(lst: List[Any], file: PreMediaContainer, max_size: int) -> bool:
+        maybe_new_size = sum(item.size for item in lst) + file.size
+        if maybe_new_size > max_size:
+            return True
+
+        lst.append(file)
+        return False
+
+    # Select videos such that the total number of seconds does not overflow.
+    for item in video_containers:
+        if maybe_add(possible_videos, item, testing_download_video_size):
+            break
+
+    for item in document_containers:
+        if maybe_add(possible_documents, item, testing_download_documents_size):
+            break
+
+    ret = possible_videos + possible_documents
+    random.shuffle(ret)
+    return ret
 
 
 def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaContainer]:

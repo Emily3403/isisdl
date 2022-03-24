@@ -40,15 +40,12 @@ class SessionWithKey(Session):
         self.token = token
 
     @classmethod
-    def from_scratch(cls, user: User, status: Union[InfoStatus, Dummy] = Dummy()) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
         try:
             s = cls("", "")
             s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
-            status.set_status(PreStatusInfo.authenticating0)
             s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
-
-            status.set_status(PreStatusInfo.authenticating1)
             s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
                    data={
                        "shib_idp_ls_exception.shib_idp_session_ss": "",
@@ -60,11 +57,8 @@ class SessionWithKey(Session):
                        "shib_idp_ls_supported": "", "_eventId_proceed": "",
                    })
 
-            status.set_status(PreStatusInfo.authenticating3)
             response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                               params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
-
-            status.set_status(PreStatusInfo.authenticating4)
 
             if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
                 # The redirection did not work → credentials are wrong
@@ -250,7 +244,7 @@ class MediaContainer:
     @staticmethod
     def from_pre_container(container: PreMediaContainer, s: SessionWithKey) -> Optional[MediaContainer]:
         other_size = database_helper.get_size_from_url(container.url)
-        if container.size == other_size:
+        if container.size == other_size and database_helper.get_checksum_from_url(container.url) is not None:
             return None
 
         return MediaContainer(container._name, container.download_url, container.path, container.media_type, s, container, container.size)
@@ -401,34 +395,33 @@ class DownloadStatus(Thread):
 
 class PreStatusInfo(enum.Enum):
     startup = 0
-    authenticating0 = 5
-    authenticating1 = 10
-    authenticating2 = 20
-    authenticating3 = 25
-    authenticating4 = 30
-
-    content: Any = []
-    get_content = 70
-
-    done = 100
+    authenticating = 1
+    getting_content = 2
+    done = 3
 
 
 class InfoStatus(Thread):
     def __init__(self) -> None:
         self._running = True
-        self.last_text_len = 0
         self.status = PreStatusInfo.startup
+
+        self.last_text_len = 0
         self.i = 0
         self.max_content = 0
+        self.done = 0
 
         super().__init__(daemon=True)
 
     def set_status(self, status: PreStatusInfo) -> None:
         self.status = status
+        self.done = 0
         self.i = 0
 
     def set_max_content(self, num: int) -> None:
         self.max_content = num
+
+    def done_thing(self) -> None:
+        self.done += 1
 
     def run(self) -> None:
         video_cache_exists = database_helper.get_video_cache_exists()
@@ -441,10 +434,10 @@ class InfoStatus(Thread):
             if self.status == PreStatusInfo.startup:
                 message = "Starting up"
 
-            elif self.status.name.startswith("authenticating"):
+            elif self.status == PreStatusInfo.authenticating:
                 message = "Authenticating with ISIS"
 
-            elif self.status == PreStatusInfo.content:
+            elif self.status == PreStatusInfo.getting_content:
                 message = "Getting the content of the Courses"
 
             else:

@@ -53,7 +53,7 @@ checksum_num_bytes = 1024 * 4
 # Skips $`checksum_base_skip` ^ i$ bytes per calculation → O(log(n)) time :O
 checksum_base_skip = 2
 
-# This is what Django recommends as of January 2021 (https://github.com/django/django/blob/main/django/contrib/auth/hashers.py#L274)
+# This is what Django recommends as of January 2021
 password_hash_algorithm = SHA3_512
 password_hash_iterations = 390_000
 password_hash_length = 32

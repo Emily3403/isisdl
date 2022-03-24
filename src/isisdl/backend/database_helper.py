@@ -61,6 +61,9 @@ class DatabaseHelper:
     def get_name_by_checksum(self, checksum: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
 
+    def get_checksum_from_url(self, url: str) -> Optional[str]:
+        return cast(Optional[str], self._get_attr_by_equal("checksum", url, "url"))
+
     def get_size_from_url(self, url: str) -> Optional[int]:
         return cast(Optional[int], self._get_attr_by_equal("size", url, "url"))
 

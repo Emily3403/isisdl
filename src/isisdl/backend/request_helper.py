@@ -88,7 +88,7 @@ class PreMediaContainer:
         return container
 
     @classmethod
-    def from_extern_link(cls, url: str, course_id: int, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
+    def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
         # Use the cache
         container = cls.from_dump(url)
         if container is not None:
@@ -158,13 +158,16 @@ class PreMediaContainer:
                         name = os.path.basename(url)
 
                 size = int(con.headers["Content-Length"])
-                location = media_type.dir_name
+                relative_location = media_type.dir_name
+
+                location = course.path(sanitize_name(relative_location))
+
                 if "" in con.headers:
                     time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
                 else:
                     time = int(datetime.now().timestamp())
 
-                container = PreMediaContainer(name, url, download_url, location, time, course_id, media_type, size)
+                container = PreMediaContainer(name, url, download_url, location, time, course.course_id, media_type, size)
 
 
             else:
@@ -186,7 +189,7 @@ class PreMediaContainer:
             relative_location = ""
 
         if relative_location:
-            if database_helper.get_size_from_url(url) is None:
+            if database_helper.get_checksum_from_url(url) is None:
                 os.makedirs(course.path(sanitize_name(relative_location)), exist_ok=True)
 
         is_video = "mod/videoservice/file.php" in url
@@ -268,31 +271,14 @@ class Course:
             return []
 
         videos_json = videos_json["data"]["videos"]
-
-        def find_out_size(info: Dict[str, str]) -> Optional[int]:
-            req = s.head_(info["url"], allow_redirects=True)
-            if req is None:
-                return None
-
-            if "content-length" not in req.headers:
-                return None
-
-            try:
-                size = int(req.headers["content-length"])
-                req.close()
-                return size
-
-            except ValueError:
-                return None
-
         video_urls = [item["url"] for item in videos_json]
         video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
 
         if enable_multithread:
             with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
-                containers = list(ex.map(PreMediaContainer.from_extern_link, video_urls, repeat(self.course_id), repeat(s), repeat(MediaType.video), video_names))
+                containers = list(ex.map(PreMediaContainer.from_extern_link, video_urls, repeat(self), repeat(s), repeat(MediaType.video), video_names))
         else:
-            containers = [PreMediaContainer.from_extern_link(item, self.course_id, s, MediaType.video, name) for item, name in zip(video_urls, video_names)]
+            containers = [PreMediaContainer.from_extern_link(item, self, s, MediaType.video, name) for item, name in zip(video_urls, video_names)]
 
         return [item for item in containers if item is not None]
 
@@ -359,7 +345,7 @@ class Course:
                         pass
 
         def add_extern_link(link: str) -> None:
-            container = PreMediaContainer.from_extern_link(link, self.course_id, helper.session, MediaType.extern)
+            container = PreMediaContainer.from_extern_link(link, self, helper.session, MediaType.extern)
             if container is not None:
                 all_content.append(container)
 
@@ -432,7 +418,9 @@ class RequestHelper:
             return
 
         self.user = user
-        session = SessionWithKey.from_scratch(self.user, pre_status)
+        pre_status.set_status(PreStatusInfo.authenticating)
+        session = SessionWithKey.from_scratch(self.user)
+
         if session is None:
             print(f"I had a problem getting the user {self.user}. You have probably entered the wrong credentials.\nBailing out…")
             exit(1)
@@ -441,6 +429,7 @@ class RequestHelper:
         self.courses = []
         self.course_id_mapping = {}
 
+        pre_status.set_status(PreStatusInfo.getting_content)
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
 
         self.get_courses()
@@ -498,7 +487,7 @@ class RequestHelper:
     def download_content(self) -> List[PreMediaContainer]:
         exception_lock = threading.Lock()
 
-        pre_status.set_status(PreStatusInfo.content)
+        pre_status.set_status(PreStatusInfo.getting_content)
 
         # The number of threads that are going to spawn
         pre_status.set_max_content(len(self.courses) * 2 + 1)
@@ -635,9 +624,6 @@ class CourseDownloader:
     def start(self) -> None:
         global pre_status
         pre_status = InfoStatus()
-        while PreStatusInfo.content.value:
-            PreStatusInfo.content.value.pop()
-
         pre_status.start()
 
         self.helper = RequestHelper(self.user)
