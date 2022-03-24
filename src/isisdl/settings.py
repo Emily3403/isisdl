@@ -41,6 +41,14 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 lock_file_location = ".lock"
 enable_lock = False
 
+# Static settings
+is_static = True
+
+if is_static:
+    isisdl_executable = os.readlink(sys.argv[0])
+else:
+    isisdl_executable = sys.executable
+
 error_directory_location = ".errors"
 error_file_location = "error in isisdl %Y-%m-%d %H-%M-%S"
 
@@ -60,6 +68,8 @@ password_hash_length = 32
 
 # The password used to encrypt if no password is provided
 master_password = "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
+
+external_links_num_slow = 50
 
 # The number of spaces the first progress bar has
 status_progress_bar_resolution = 50

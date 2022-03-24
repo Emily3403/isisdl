@@ -22,10 +22,10 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer
+    from isisdl.backend.request_helper import PreMediaContainer, external_links
 
 
 class Dummy:
@@ -397,7 +397,8 @@ class PreStatusInfo(enum.Enum):
     startup = 0
     authenticating = 1
     getting_content = 2
-    done = 3
+    getting_extern = 3
+    done = 4
 
 
 class InfoStatus(Thread):
@@ -407,13 +408,14 @@ class InfoStatus(Thread):
 
         self.last_text_len = 0
         self.i = 0
-        self.max_content = 0
+        self.max_content: Optional[int] = None
         self.done = 0
 
         super().__init__(daemon=True)
 
     def set_status(self, status: PreStatusInfo) -> None:
         self.status = status
+        self.max_content = None
         self.done = 0
         self.i = 0
 
@@ -424,11 +426,8 @@ class InfoStatus(Thread):
         self.done += 1
 
     def run(self) -> None:
-        video_cache_exists = database_helper.get_video_cache_exists()
         while self._running:
             time.sleep(status_time)
-
-            # TODO: Better progress bar
             log_strings = []
 
             if self.status == PreStatusInfo.startup:
@@ -440,29 +439,23 @@ class InfoStatus(Thread):
             elif self.status == PreStatusInfo.getting_content:
                 message = "Getting the content of the Courses"
 
+            elif self.status == PreStatusInfo.getting_extern:
+                message = "Getting external links"
+
             else:
                 message = ""
 
             log_strings.append("")
             log_strings.append(f"{message} {'.' * self.i}")
 
-            if not video_cache_exists and self.status == PreStatusInfo.content and not config.download_videos:
-                log_strings.append("(This may take a while for the first time)")
+            if len(external_links) > external_links_num_slow:
+                log_strings.append(f"(Getting {len(external_links)} links, will be cached)")
 
             log_strings.append("")
 
-            if isinstance(self.status.value, int):
-                perc_done = int(self.status.value / PreStatusInfo.done.value * status_progress_bar_resolution)
-
-            elif isinstance(self.status.value, list):
-                assert self.max_content > 0
-                threads_finished_perc = PreStatusInfo.get_content.value * len(self.status.value) / self.max_content
-                perc_done = int((PreStatusInfo.authenticating4.value + threads_finished_perc) / PreStatusInfo.done.value * status_progress_bar_resolution)
-
-            else:
-                perc_done = 0
-
-            log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
+            if self.max_content is not None:
+                perc_done = int(self.max_content / self.done * status_progress_bar_resolution)
+                log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             if self._running:
                 self.last_text_len = print_log_messages(log_strings, self.last_text_len)

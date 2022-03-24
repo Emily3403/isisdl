@@ -14,9 +14,6 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple, Set
 from urllib.parse import urlparse, urljoin
 
-import gdown as gdown
-import requests
-
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation
 from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
@@ -45,6 +42,8 @@ known_bad_extern_urls = {
     "https://sourceware.org/binutils/docs-2.35/",
     "https://developer.arm.com/documentation/ddi0406/latest",
 }
+
+external_links: Set[Tuple[str, Course]] = set()
 
 # Regex copied from https://gist.github.com/gruber/8891611
 url_finder = re.compile(
@@ -227,7 +226,7 @@ class PreMediaContainer:
 @dataclass
 class Course:
     _name: str
-    name: str  # TODO: Test if this hits all locations
+    name: str
     course_id: int
 
     @classmethod
@@ -289,7 +288,6 @@ class Course:
 
         content = cast(List[Dict[str, Any]], content)
 
-        external_links: Set[str] = set()
         all_content: List[PreMediaContainer] = []
         bad_urls = database_helper.get_bad_urls()
 
@@ -303,8 +301,8 @@ class Course:
                             continue
 
                         parse = urlparse(link)
-                        if parse.scheme and parse.netloc:
-                            external_links.add(link)
+                        if parse.scheme and parse.netloc and config.follow_links:
+                            external_links.add((link, self))
 
                 if "url" not in module:
                     continue
@@ -333,8 +331,8 @@ class Course:
                 prev_len = len(all_content)
                 if "contents" in module:
                     for file in module["contents"]:
-                        if "type" in file and file["type"] == "url":
-                            external_links.add(file["fileurl"])
+                        if config.follow_links and "type" in file and file["type"] == "url":
+                            external_links.add((file["fileurl"], self))
                         else:
                             all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
 
@@ -344,20 +342,11 @@ class Course:
                         logger.message("""Assertion failed: url not in known_bad_urls""")
                         pass
 
-        def add_extern_link(link: str) -> None:
-            container = PreMediaContainer.from_extern_link(link, self, helper.session, MediaType.extern)
-            if container is not None:
-                all_content.append(container)
-
-        if external_links:
-            if enable_multithread:
-                with ThreadPoolExecutor(len(external_links)) as ex:
-                    ex.map(add_extern_link, external_links)
-            else:
-                for link in external_links:
-                    add_extern_link(link)
 
         return all_content
+
+
+
 
     def path(self, *args: str) -> str:
         # Custom path function that prepends the args with the course name.
@@ -495,9 +484,8 @@ class RequestHelper:
         def download_videos(ret: List[PreMediaContainer], course: Course, session: SessionWithKey) -> None:
             try:
                 ret.extend(course.download_videos(session))
+                pre_status.done_thing()
 
-                assert pre_status.status == PreStatusInfo.content
-                pre_status.status.value.append(None)
             except Exception:
                 with exception_lock:
                     generate_error_message()
@@ -505,9 +493,8 @@ class RequestHelper:
         def download_documents(ret: List[PreMediaContainer], course: Course) -> None:
             try:
                 ret.extend(course.download_documents(self))
+                pre_status.done_thing()
 
-                assert pre_status.status == PreStatusInfo.content
-                pre_status.status.value.append(None)
             except Exception:
                 with exception_lock:
                     generate_error_message()
@@ -515,9 +502,16 @@ class RequestHelper:
         def download_mod_assign(ret: List[PreMediaContainer]) -> None:
             try:
                 ret.extend(self.download_mod_assign())
+                pre_status.done_thing()
 
-                assert pre_status.status == PreStatusInfo.content
-                pre_status.status.value.append(None)
+            except Exception:
+                with exception_lock:
+                    generate_error_message()
+
+        def download_extern(ret: List[PreMediaContainer]) -> None:
+            try:
+                ret.extend(self.download_extern())
+                pre_status.done_thing()
 
             except Exception:
                 with exception_lock:
@@ -526,8 +520,8 @@ class RequestHelper:
         if enable_multithread:
             collect: List[Tuple[List[PreMediaContainer], List[PreMediaContainer]]] = [([], []) for _ in range(len(self.courses))]
             threads = []
-
             mod_assign: List[PreMediaContainer] = []
+
             mod_assign_thread = Thread(target=download_mod_assign, args=(mod_assign,))
             for col, course in zip(collect, self.courses):
                 threads.append(Thread(target=download_documents, args=(col[0], course)))
@@ -549,13 +543,15 @@ class RequestHelper:
 
         else:
             mod_assign = self.download_mod_assign()
-            pre_status.status.value.append(None)
             documents, videos = [], []
             for course in self.courses:
                 documents.extend(course.download_documents(self))
-                pre_status.status.value.append(None)
                 videos.extend(course.download_videos(self.session))
-                pre_status.status.value.append(None)
+
+        if external_links:
+            pre_status.set_status(PreStatusInfo.getting_extern)
+            pre_status.set_max_content(len(external_links))
+            self.download_extern()
 
         def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
             return sorted(lst, key=lambda x: x.time, reverse=True)
@@ -570,7 +566,7 @@ class RequestHelper:
         all_content = []
         _assignments = self.post_REST('mod_assign_get_assignments')
         if _assignments is None:
-            return []
+                return []
 
         assignments = cast(Dict[str, Any], _assignments)
 
@@ -588,6 +584,26 @@ class RequestHelper:
                         all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
 
         return all_content
+
+    def download_extern(self) -> List[PreMediaContainer]:
+        all_content = []
+
+        def add_extern_link(extern: Tuple[str, Course]) -> None:
+            container = PreMediaContainer.from_extern_link(extern[0], extern[1], self.session, MediaType.extern)
+            if container is not None:
+                all_content.append(container)
+            pre_status.done_thing()
+
+        if external_links:
+            if enable_multithread:
+                with ThreadPoolExecutor(len(external_links)) as ex:
+                    ex.map(add_extern_link, external_links)
+            else:
+                for link in external_links:
+                    add_extern_link(link)
+
+        return all_content
+
 
     @property
     def userid(self) -> str:

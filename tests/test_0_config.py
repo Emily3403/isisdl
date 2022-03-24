@@ -149,7 +149,7 @@ def test_throttler_prompt(monkeypatch: Any) -> None:
     choices = iter(["1", "42069"])
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
 
-    config.throttle_rate_autorun = None
+    config.throttle_rate_autorun = -1
     throttler_prompt()
 
     assert config.throttle_rate_autorun == 42069

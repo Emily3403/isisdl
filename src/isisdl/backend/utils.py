@@ -35,7 +35,7 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location
+    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static
 from isisdl.version import __version__
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ class Config:
     blacklist: Optional[List[int]]
     renamed_courses: Optional[Dict[int, str]]
     make_subdirs: bool
-    follow_links: bool  # TODO
+    follow_links: bool
 
     download_videos: bool
     filename_replacing: bool
@@ -458,24 +458,29 @@ def install_latest_version() -> None:
     if update_policy is None:
         return
 
-    correct_version = version_github if update_policy.endswith("git") else version_pypi
+    new_version = version_github if update_policy.endswith("git") else version_pypi
 
-    if correct_version is None:
+    if new_version is None:
         return
 
-    if correct_version <= version.parse(__version__):
+    if new_version <= version.parse(__version__):
         return
 
-    print(f"\nThere is a new version of isisdl available: {correct_version} (current: {__version__}).")
+    print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
 
     if update_policy.startswith("notify"):
         return
 
+    if is_static:
+
+
     print("According to your update policy I will auto-install it.\n")
+    # TODO: static support: implement auto-update
     if update_policy == "install_pip":
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
     elif update_policy == "install_github":
+        # TODO: pip github clone
         old_dir = os.getcwd()
         with TemporaryDirectory() as tmp:
             os.chdir(tmp)
@@ -531,7 +536,7 @@ Wants=isisdl.timer
 
 [Service]
 Type=oneshot
-ExecStart={sys.executable} {isisdl.bin.autorun.__file__}
+ExecStart={isisdl_executable} {isisdl.bin.autorun.__file__}
 
 [Install]
 WantedBy=multi-user.target

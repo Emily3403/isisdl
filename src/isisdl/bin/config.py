@@ -14,7 +14,7 @@ from isisdl.backend.downloads import SessionWithKey
 from isisdl.backend.request_helper import RequestHelper
 from isisdl.backend.utils import get_input, User, clear, config, error_text, generate_current_config_str, on_kill, run_cmd_with_error, acquire_file_lock_or_exit, remove_systemd_timer, logger, \
     install_systemd_timer
-from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, export_config_file_location, working_dir_location
+from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, export_config_file_location, working_dir_location, is_static
 
 from isisdl.settings import is_online
 
@@ -312,7 +312,7 @@ If you allow it, the program `isisdl` will automatically contact a server when i
 """)
     bool_prompt("telemetry_policy")
 
-
+# TODO: test this
 def update_policy_prompt() -> None:
     clear()
     print("""Do you want me to auto-install updates when available?
@@ -323,8 +323,26 @@ if it passes all of the tests.
 
 The version on pip should be always working and with no issues.
 It is usually pushed a few days after the github release.
+""")
 
+    if is_static:
+        print("""
+--- Note ---
+This is a static build of isisdl meaning the updates are infrequent, but stable. 
+New releases will only be installed if there is a new, major update available.
+------------
 
+    [0] No
+
+    [1] Install the newest version from github  [default]
+    
+    [2] Notify me when there is an update available
+""")
+        choice_mapping = {"": "install_github", "0": None, "1": "install_github", "2": "notify_github"}
+
+    else:
+
+        print("""
     [0] No
 
     [1] Install from pip  [default]
@@ -335,28 +353,14 @@ It is usually pushed a few days after the github release.
 
     [4] Notify me when an update is available on github
 """)
-    # TODO: static support: More options
 
-    allowed = {"", "0", "1", "2", "3", "4"}
+        choice_mapping = {"": "install_pip", "0": None, "1": "install_pip", "2": "install_github", "3": "notify_pip", "4": "notify_github"}
 
+    allowed = set(choice_mapping.keys())
     stored_prompt(config.user("update_policy"), allowed)
-    choice: Optional[str] = get_input(allowed)
+    choice = get_input(allowed)
 
-    if choice == "s":
-        return
-
-    elif choice == "0":
-        choice = None
-    elif choice == "1" or choice == "":
-        choice = "install_pip"
-    elif choice == "2":
-        choice = "install_github"
-    elif choice == "3":
-        choice = "notify_pip"
-    else:
-        choice = "notify_github"
-
-    config.update_policy = choice
+    config.update_policy = choice_mapping[choice]
 
 
 def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
@@ -467,7 +471,8 @@ def blacklist_prompt() -> None:
     user = get_credentials()
     RequestHelper(user).get_courses()
 
-# TODO: Test this... maybe
+
+# TODO: Pytest this... maybe
 def rename_courses_prompt() -> None:
     clear()
     print(f"""Do you want to rename any of your courses?

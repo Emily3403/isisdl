@@ -86,12 +86,11 @@ def main() -> None:
 
 # TODO:
 #   Use mp4 metadata to recognize files
-#   Have only the executable `isisdl` with options
 #   Better support for streaming
 #   Subscribe to *all* courses
 
 # Future todos:
-#   Installer for windows with autorun
+#   Windows autorun
 
 
 if __name__ == "__main__":
