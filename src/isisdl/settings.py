@@ -45,7 +45,7 @@ enable_lock = False
 is_static = True
 
 if is_static:
-    isisdl_executable = os.readlink(sys.argv[0])
+    isisdl_executable = os.path.realpath(sys.argv[0])
 else:
     isisdl_executable = sys.executable
 
@@ -69,7 +69,7 @@ password_hash_length = 32
 # The password used to encrypt if no password is provided
 master_password = "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
 
-external_links_num_slow = 50
+external_links_num_slow = 0
 
 # The number of spaces the first progress bar has
 status_progress_bar_resolution = 50

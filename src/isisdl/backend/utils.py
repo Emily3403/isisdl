@@ -471,8 +471,6 @@ def install_latest_version() -> None:
     if update_policy.startswith("notify"):
         return
 
-    if is_static:
-
 
     print("According to your update policy I will auto-install it.\n")
     # TODO: static support: implement auto-update

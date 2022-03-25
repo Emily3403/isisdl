@@ -256,6 +256,9 @@ class MediaContainer:
 
         running_download = self.s.get_(self.url, params={"token": self.s.token}, stream=True)
 
+        if running_download is not None and running_download.status_code == 451:
+            database_helper.add_bad_url(self.url)
+
         if running_download is None or not running_download.ok:
             self.done = True
             return
@@ -426,7 +429,9 @@ class InfoStatus(Thread):
         self.done += 1
 
     def run(self) -> None:
+
         while self._running:
+            from isisdl.backend.request_helper import num_uncached_external_links
             time.sleep(status_time)
             log_strings = []
 
@@ -448,13 +453,13 @@ class InfoStatus(Thread):
             log_strings.append("")
             log_strings.append(f"{message} {'.' * self.i}")
 
-            if len(external_links) > external_links_num_slow:
-                log_strings.append(f"(Getting {len(external_links)} links, will be cached)")
+            if self.status == PreStatusInfo.getting_extern and num_uncached_external_links > external_links_num_slow:
+                log_strings.append(f"({num_uncached_external_links} links, will be cached)")
 
             log_strings.append("")
 
             if self.max_content is not None:
-                perc_done = int(self.max_content / self.done * status_progress_bar_resolution)
+                perc_done = int(self.done / self.max_content * status_progress_bar_resolution)
                 log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             if self._running:
