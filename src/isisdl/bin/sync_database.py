@@ -199,7 +199,5 @@ def main() -> None:
 
     _main()
 
-# TODO: This is kinda slow... Why?
-
 if __name__ == "__main__":
     main()

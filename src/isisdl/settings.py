@@ -92,10 +92,12 @@ enable_multithread = True
 
 # Number of threads to discover video sizes
 # TODO: Experiment with sizes
-video_size_discover_num_threads = 32
+extern_discover_num_threads = 32
 
 # Sets the chunk size for a download.
 download_chunk_size = 2 ** 16
+
+video_discover_download_size = 0
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
 sleep_time_for_isis = 3
@@ -122,6 +124,8 @@ is_autorun = sys.argv[0] == isisdl.bin.autorun.__file__
 
 # DownloadThrottler refresh rate in s
 token_queue_refresh_rate = 0.01
+
+throttler_low_prio_sleep_time = 0.1
 
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3

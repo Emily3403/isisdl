@@ -14,9 +14,13 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple, Set
 from urllib.parse import urlparse, urljoin
 
+import pyinotify
+import watchdog as watchdog
+from pyinotify import ProcessEvent
+
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation
-from isisdl.settings import enable_multithread, checksum_algorithm, video_size_discover_num_threads
+from isisdl.settings import enable_multithread, checksum_algorithm, extern_discover_num_threads, video_discover_download_size
 
 ignored_urls = {
     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
@@ -50,7 +54,6 @@ num_uncached_external_links = 0
 url_finder = re.compile(
     r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")
 
-# TODO: mod/book
 isis_ignored = re.compile(
     ".*(?:"
     # Ignore mod/{whatever}
@@ -140,7 +143,7 @@ class PreMediaContainer:
                 download_url = url + "/download"
 
         try:
-            con = session.get_(download_url or url, allow_redirects=True, stream=True)
+            con = session.get_(download_url or url, stream=True)
         except Exception:
             return None
 
@@ -181,6 +184,7 @@ class PreMediaContainer:
         if container is not None:
             container.dump()
 
+        con.close()
         return container
 
     @classmethod
@@ -243,14 +247,12 @@ class Course:
         else:
             name = config.renamed_courses.get(id, "") or _name
 
-        return cls(_name, name, id)
+        obj = cls(_name, name, id)
 
-    def __post_init(self) -> None:
-        self.make_directories()
-
-    def make_directories(self) -> None:
         for item in MediaType.list_dirs():
-            os.makedirs(self.path(item), exist_ok=True)
+            os.makedirs(obj.path(item), exist_ok=True)
+
+        return obj
 
     def download_videos(self, s: SessionWithKey) -> None:
         if config.download_videos is False:
@@ -425,12 +427,6 @@ class RequestHelper:
 
         return RequestHelper._instance
 
-    def make_course_paths(self) -> None:
-        for course in self.courses:
-            if not os.path.exists(course.path()):
-                os.makedirs(course.path(), exist_ok=True)
-            course.make_directories()
-
     def get_courses(self) -> None:
         res = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self.userid}))
         self.courses = []
@@ -487,6 +483,7 @@ class RequestHelper:
             except Exception:
                 with exception_lock:
                     generate_error_message()
+                    return []
 
         def download_mod_assign(ret: List[PreMediaContainer]) -> None:
             try:
@@ -529,11 +526,11 @@ class RequestHelper:
             return sorted(lst, key=lambda x: x.time, reverse=True)
 
         videos = []
-        for item in extern:
-            if item.media_type == MediaType.video:
-                videos.append(item)
+        for thing in extern:
+            if thing.media_type == MediaType.video:
+                videos.append(thing)
             else:
-                documents.append(item)
+                documents.append(thing)
         # Download the newest files first
         all_files = sort(documents + mod_assign) + sort(videos)
         check_for_conflicts_in_files(all_files)
@@ -576,7 +573,7 @@ class RequestHelper:
 
         if external_links:
             if enable_multithread:
-                with ThreadPoolExecutor(video_size_discover_num_threads) as ex:
+                with ThreadPoolExecutor(extern_discover_num_threads) as ex:
                     ex.map(add_extern_link, external_links)
             else:
                 for link in external_links:
@@ -626,18 +623,24 @@ class CourseDownloader:
         pre_containers = self.helper.download_content()
         media_containers = self.make_files(pre_containers)
 
+        # Make all files so that they can be streamed
+        for container in media_containers:
+            if not os.path.exists(container.location):
+                open(container.location, "w").close()
+
         global downloading_files
         downloading_files = media_containers
-        self.helper.make_course_paths()
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         global status
         throttler = DownloadThrottler()
         status = DownloadStatus(media_containers, args.num_threads, throttler)
         downloader = Thread(target=self.download_files, args=(media_containers, throttler))
+        streamer = Thread(target=self.stream_files, args=(media_containers, throttler))
 
         pre_status.stop()
         downloader.start()
+        streamer.start()
         status.start()
 
         # Log the metadata
@@ -665,6 +668,35 @@ class CourseDownloader:
         filtered_files = [item for item in new_files if item is not None]
 
         return filtered_files
+
+    def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
+        class EventHandler(pyinotify.ProcessEvent):  # type: ignore
+            def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
+                self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
+                self.throttler = throttler
+                super().__init__(**kwargs)
+
+            def process_IN_OPEN(self, event: pyinotify.Event) -> None:
+                if event.dir:
+                    return
+
+                file = self.files.get(event.pathname, None)
+                if file is not None and file.curr_size is not None:
+                    return
+
+                if file is None:
+                    return
+
+                if file.curr_size is not None:
+                    return
+
+                file.download(self.throttler, True)
+
+        wm = pyinotify.WatchManager()
+        notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
+        wm.add_watch(path(), pyinotify.IN_OPEN, rec=True)
+
+        notifier.loop()
 
     def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
         exception_lock = threading.Lock()

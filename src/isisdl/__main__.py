@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 from http.client import HTTPSConnection
 
+import nuitka as nuitka
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
+
 import isisdl.bin.sync_database as sync_database
 import isisdl.bin.compress as compress
 
@@ -31,7 +35,7 @@ Please press enter to continue.
         input()
         init_wizard()
         config_wizard()
-        sync_database._main()
+        # sync_database._main()
 
     elif args.version:
         print(f"isisdl Version {__version__}")
@@ -94,4 +98,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # testing()
     main()

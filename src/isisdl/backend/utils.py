@@ -8,9 +8,11 @@ import os
 import platform
 import random
 import re
+import shutil
 import signal
 import string
 import subprocess
+import stat
 import sys
 import time
 import traceback
@@ -20,7 +22,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
+from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, NoReturn
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -33,7 +35,7 @@ from requests import Session
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, video_size_discover_num_threads, \
+    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
     error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static
 from isisdl.version import __version__
@@ -260,13 +262,13 @@ download_progress_bar_resolution: {download_progress_bar_resolution}
 def generate_default_config_str() -> str:
     return generate_config_str(working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
                                Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"),
-                               Config.default("telemetry_policy"), status_time, video_size_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
+                               Config.default("telemetry_policy"), status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
 
 
 def generate_current_config_str() -> str:
     return generate_config_str(working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist,
                                config.throttle_rate,
-                               config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, video_size_discover_num_threads, status_progress_bar_resolution,
+                               config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution,
                                download_progress_bar_resolution)
 
 
@@ -430,23 +432,34 @@ def check_pypi_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 
 def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
-    badge = requests.get("https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg").text
-    if "passing" not in badge:
-        return None
+    if is_static:
+        latest_release = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()
+        if "tag_name" not in latest_release:
+            return None
 
-    res = requests.get("https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/version.py")
-    if not res.ok:
-        return None
+        return version.parse(latest_release["tag_name"][1:])
 
-    found_version = re.match("__version__ = \"(.*)?\"", res.text)
-    if found_version is None:
-        return None
+    else:
+        badge = requests.get("https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg").text
+        if "passing" not in badge:
+            return None
 
-    return version.parse(found_version.group(1))
+        res = requests.get("https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/version.py")
+        if not res.ok:
+            return None
+
+        found_version = re.match("__version__ = \"(.*)?\"", res.text)
+        if found_version is None:
+            return None
+
+        return version.parse(found_version.group(1))
 
 
 def install_latest_version() -> None:
     if is_first_time:
+        return
+
+    if config.update_policy is None:
         return
 
     # s = time.perf_counter()
@@ -454,11 +467,7 @@ def install_latest_version() -> None:
     version_pypi = check_pypi_for_version()
     # print(f"{time.perf_counter() - s:.3f}")
 
-    update_policy = config.update_policy
-    if update_policy is None:
-        return
-
-    new_version = version_github if update_policy.endswith("git") else version_pypi
+    new_version = version_github if config.update_policy.endswith("github") else version_pypi
 
     if new_version is None:
         return
@@ -468,29 +477,40 @@ def install_latest_version() -> None:
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
 
-    if update_policy.startswith("notify"):
+    if config.update_policy.startswith("notify"):
         return
 
-
     print("According to your update policy I will auto-install it.\n")
-    # TODO: static support: implement auto-update
-    if update_policy == "install_pip":
+    if config.update_policy == "install_pip":
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
-    elif update_policy == "install_github":
-        # TODO: pip github clone
-        old_dir = os.getcwd()
-        with TemporaryDirectory() as tmp:
-            os.chdir(tmp)
-            print(f"Cloning the repository into {tmp} ...")
-            ret = subprocess.call(["git", "clone", "https://github.com/Emily3403/isisdl"])
-            if ret:
-                print(f"Cloning failed with exit code {ret}")
-                return
+    # TODO: test if this will work
+    elif config.update_policy == "install_github":
+        if is_static:
+            with TemporaryDirectory() as tmp:
+                assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
+                correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
+                for asset in assets:
+                    if asset["name"] == correct_name:
+                        break
 
-            print("Installing with pip ...")
-            ret = subprocess.call([sys.executable, "-m", "pip", "install", "./isisdl"])
-            os.chdir(old_dir)
+                else:
+                    print(f"{error_text} I cannot find the release for your platform.")
+                    exit(1)
+
+                new_file = requests.get(asset["browser_download_url"], stream=True)
+                new_isisdl = os.path.join(tmp, correct_name)
+                with open(new_isisdl, "wb") as f:
+                    shutil.copyfileobj(new_file.raw, f)
+
+                st = os.stat(new_isisdl)
+                os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
+                os.replace(isisdl_executable, new_isisdl)
+
+        else:
+            ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
+
+
 
     else:
         assert False
@@ -524,7 +544,6 @@ def remove_systemd_timer() -> None:
 def install_systemd_timer() -> None:
     import isisdl.bin.autorun
     with open(service_file_location, "w") as f:
-        # TODO: static support: other executable
         f.write(f"""# isisdl autorun service
 # This file was autogenerated by `isisdl --init`.
 
@@ -922,8 +941,6 @@ class HumanBytes:
 
         n, unit = HumanBytes.format(num)
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
-
-
 
 
 def generate_error_message() -> None:

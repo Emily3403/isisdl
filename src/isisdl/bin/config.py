@@ -312,7 +312,7 @@ If you allow it, the program `isisdl` will automatically contact a server when i
 """)
     bool_prompt("telemetry_policy")
 
-# TODO: test this
+
 def update_policy_prompt() -> None:
     clear()
     print("""Do you want me to auto-install updates when available?

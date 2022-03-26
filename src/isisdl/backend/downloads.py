@@ -22,7 +22,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, external_links
@@ -136,13 +136,12 @@ class DownloadThrottler(Thread):
     With every token you may download a chunk of size `download_chunk_size`.
     """
 
-    # TODO: Automatically estimate the max download size and stay under that
-
     def __init__(self) -> None:
         super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
+        self._prio = False
 
         self.download_rate = args.download_rate or config.throttle_rate or -1
 
@@ -186,7 +185,10 @@ class DownloadThrottler(Thread):
         """
         return len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate
 
-    def get(self) -> Token:
+    def get(self, priority: bool) -> Token:
+        while self._prio and priority is False:
+            time.sleep(throttler_low_prio_sleep_time)
+
         try:
             if self.download_rate == -1:
                 return self.token
@@ -199,6 +201,12 @@ class DownloadThrottler(Thread):
         finally:
             # Only append it at exit
             self.timestamps_tokens.append(time.perf_counter())
+
+    def start_prio(self) -> None:
+        self._prio = True
+
+    def end_prio(self) -> None:
+        self._prio = False
 
     def max_tokens(self) -> int:
         if self.download_rate == -1:
@@ -236,7 +244,7 @@ class MediaContainer:
     s: SessionWithKey
     container: PreMediaContainer
     size: int = -1
-    curr_size: int = 0
+    curr_size: Optional[int] = None
     _exit: bool = False
     done: bool = False
     tot_time = 0
@@ -249,10 +257,15 @@ class MediaContainer:
 
         return MediaContainer(container._name, container.download_url, container.path, container.media_type, s, container, container.size)
 
-    def download(self, throttler: DownloadThrottler) -> None:
+    def download(self, throttler: DownloadThrottler, priority: bool = False) -> None:
         if self._exit:
             self.done = True
             return
+
+        self.curr_size = 0
+
+        if priority:
+            throttler.start_prio()
 
         running_download = self.s.get_(self.url, params={"token": self.s.token}, stream=True)
 
@@ -273,7 +286,7 @@ class MediaContainer:
             # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
             # Also remember to set the `decode_content=True` kwarg in `.read()`.
             while True:
-                token = throttler.get()
+                token = throttler.get(priority)
 
                 i = 0
                 while i < num_tries_download:
@@ -293,6 +306,9 @@ class MediaContainer:
 
             f.flush()
 
+        if priority:
+            throttler.end_prio()
+
         running_download.close()
 
         # Only register the file after successfully downloading it.
@@ -309,6 +325,8 @@ class MediaContainer:
     def percent_done(self) -> str:
         if self.size in {0, -1}:
             percent: float = 0
+        elif self.curr_size is None:
+            percent = 0
         else:
             percent = self.curr_size / self.size
 
@@ -330,6 +348,7 @@ class MediaContainer:
         return self.name
 
 
+# TODO: Add streaming support
 class DownloadStatus(Thread):
     def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
@@ -353,6 +372,7 @@ class DownloadStatus(Thread):
         if item is None:
             return
 
+        assert item.curr_size is not None
         self.total_downloaded += item.curr_size
         self.finished_files += 1
 
@@ -368,7 +388,8 @@ class DownloadStatus(Thread):
             log_strings: List[str] = []
 
             curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
-            downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None)
+
+            downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None and item.curr_size is not None)
             total_size = HumanBytes.format_str(self.total_size)
 
             # General meta-info
@@ -404,6 +425,7 @@ class PreStatusInfo(enum.Enum):
     done = 4
 
 
+# TODO: When sync-ing after lot of deleting the progress bar becomes large.
 class InfoStatus(Thread):
     def __init__(self) -> None:
         self._running = True
