@@ -12,7 +12,7 @@ from isisdl.settings import database_file_location
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, Course
 
-
+# TODO: Configure database for pycharm
 class DatabaseHelper:
     lock = Lock()
 

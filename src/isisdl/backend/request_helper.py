@@ -15,12 +15,11 @@ from typing import Optional, Dict, List, Any, cast, Tuple, Set
 from urllib.parse import urlparse, urljoin
 
 import pyinotify
-import watchdog as watchdog
 from pyinotify import ProcessEvent
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation
-from isisdl.settings import enable_multithread, checksum_algorithm, extern_discover_num_threads, video_discover_download_size
+from isisdl.settings import enable_multithread, checksum_algorithm, extern_discover_num_threads, video_discover_download_size, is_windows
 
 ignored_urls = {
     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
@@ -183,6 +182,19 @@ class PreMediaContainer:
 
         if container is not None:
             container.dump()
+
+            # An attempt at making streaming more transparent. The metadata of mp4 files is located at the beginning / end.
+            # If we download both at the startup, then vlc *should* just assume they are normal files.
+            # This, unfortunately does not work this way.
+
+            # if container.media_type == MediaType.video:
+            #     with open(container.path, "wb") as f:
+            #         start_of_file = con.raw.read(video_discover_download_size, decode_content=True)
+            #         end_of_file = session.get(download_url, headers={"Range": f"bytes={container.size - video_discover_download_size}-{container.size}"}).content
+            #         f.write(start_of_file)
+            #         f.seek(container.size - len(end_of_file), 0)
+            #         f.write(end_of_file)
+            #         f.flush()
 
         con.close()
         return container
@@ -635,11 +647,13 @@ class CourseDownloader:
         global status
         throttler = DownloadThrottler()
         status = DownloadStatus(media_containers, args.num_threads, throttler)
-        downloader = Thread(target=self.download_files, args=(media_containers, throttler))
-        streamer = Thread(target=self.stream_files, args=(media_containers, throttler))
-
         pre_status.stop()
-        downloader.start()
+
+        streamer = Thread(target=self.stream_files, args=(media_containers, throttler), daemon=True)
+        if not args.stream:
+            downloader = Thread(target=self.download_files, args=(media_containers, throttler))
+            downloader.start()
+
         streamer.start()
         status.start()
 
@@ -658,6 +672,10 @@ class CourseDownloader:
             "config": conf,
         })
 
+        if args.stream:
+            while True:
+                time.sleep(10)
+
         downloader.join()
         status.join(0)
 
@@ -670,6 +688,9 @@ class CourseDownloader:
         return filtered_files
 
     def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
+        if is_windows:
+            return
+
         class EventHandler(pyinotify.ProcessEvent):  # type: ignore
             def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
                 self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
@@ -690,11 +711,14 @@ class CourseDownloader:
                 if file.curr_size is not None:
                     return
 
+                assert status is not None
+                status.add_streaming_file(file)
                 file.download(self.throttler, True)
+                status.done_streaming_file()
 
         wm = pyinotify.WatchManager()
         notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
-        wm.add_watch(path(), pyinotify.IN_OPEN, rec=True)
+        wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True)
 
         notifier.loop()
 
@@ -728,6 +752,9 @@ class CourseDownloader:
     @on_kill(2)
     def shutdown_running_downloads(*_: Any) -> None:
         if downloading_files is None:
+            return
+
+        if args.stream:
             return
 
         for item in downloading_files:

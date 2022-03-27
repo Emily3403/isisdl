@@ -4,3 +4,4 @@ pyyaml
 packaging
 colorama
 distro
+pyinotify

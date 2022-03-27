@@ -64,6 +64,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")  # TODO
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
+    operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
 
     if is_testing:
         return parser.parse_known_args()[0]
@@ -176,6 +177,7 @@ def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
     return str(st)
 
 
+# TODO: Maybe include more settings?
 def generate_config_str(working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]],
                         blacklist: Optional[List[int]], throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float,
                         video_size_discover_num_threads: int, status_progress_bar_resolution: int, download_progress_bar_resolution: int) -> str:
@@ -260,16 +262,18 @@ download_progress_bar_resolution: {download_progress_bar_resolution}
 
 
 def generate_default_config_str() -> str:
-    return generate_config_str(working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
-                               Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"),
-                               Config.default("telemetry_policy"), status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution)
+    return generate_config_str(
+        working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
+        Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"), Config.default("telemetry_policy"), status_time,
+        extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution
+    )
 
 
 def generate_current_config_str() -> str:
-    return generate_config_str(working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist,
-                               config.throttle_rate,
-                               config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution,
-                               download_progress_bar_resolution)
+    return generate_config_str(
+        working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist, config.throttle_rate,
+        config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution
+    )
 
 
 def export_config() -> None:
@@ -374,6 +378,7 @@ def run_cmd_with_error(args: List[str]) -> None:
 
 
 def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
+    # TODO: This doesn't work
     stream = helper.session.get_(file.download_url, stream=True)
     if stream is None:
         return None
@@ -462,10 +467,8 @@ def install_latest_version() -> None:
     if config.update_policy is None:
         return
 
-    # s = time.perf_counter()
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
-    # print(f"{time.perf_counter() - s:.3f}")
 
     new_version = version_github if config.update_policy.endswith("github") else version_pypi
 
@@ -506,11 +509,10 @@ def install_latest_version() -> None:
                 st = os.stat(new_isisdl)
                 os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
                 os.replace(isisdl_executable, new_isisdl)
+                ret = 0
 
         else:
             ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
-
-
 
     else:
         assert False
@@ -742,7 +744,6 @@ def acquire_file_lock() -> bool:
     return False
 
 
-created_lock_file = False
 
 
 def acquire_file_lock_or_exit() -> None:
@@ -777,7 +778,6 @@ def remove_lock_file() -> None:
     os.remove(path(lock_file_location))
 
 
-# Shared between modules.
 class User:
     def __init__(self, username: str, password: str):
         self.username = username
@@ -788,7 +788,6 @@ class User:
         if name is None:
             return None
 
-        # UwU
         if name == "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51]):
             return "".join(chr(item) for item in [101, 109, 105, 108, 121, 51, 52, 48, 51])
 
@@ -823,15 +822,6 @@ def calculate_local_checksum(filename: Path) -> str:
             i += 1
 
     return sha.hexdigest()
-
-
-def calculate_online_checksum_file(file: Path, size: int) -> str:
-    chunk = b""
-    with file.open("rb") as f:
-        while len(chunk) < size:
-            chunk += f.read(size - len(chunk))
-
-    return checksum_algorithm(chunk + str(size).encode()).hexdigest()
 
 
 def subscribe_to_all_courses() -> None:
@@ -869,6 +859,7 @@ class DataLogger(Thread):
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
+            "is_static": is_static,
             "time": int(time.time()),
             "is_first_time": is_first_time,
         }
@@ -970,6 +961,7 @@ OnKill()
 args = get_args()
 database_helper = DatabaseHelper()
 config = Config()
+created_lock_file = False
 
 logger = DataLogger()
 logger.start()

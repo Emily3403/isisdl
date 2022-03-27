@@ -7,8 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from isisdl.backend.utils import User, config, error_text, path, logger
-from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location, \
-    checksum_algorithm
+from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, database_file_location
 
 last_password: Optional[str] = None
 last_username: Optional[str] = None
@@ -40,6 +39,7 @@ def decryptor(password: str, content: str) -> Optional[str]:
 
     try:
         decrypted = Fernet(key).decrypt(content.encode()).decode()
+
         # Only cache the entry if it got successfully decrypted
         global last_password
         last_password = password
@@ -58,8 +58,6 @@ def store_user(user: User, password: Optional[str] = None) -> None:
     config.password_encrypted = bool(password)
 
 
-
-
 def get_credentials() -> User:
     """
     Prioritizes:
@@ -72,25 +70,28 @@ def get_credentials() -> User:
     if env_username is not None and env_password is not None:
         return User(env_username, env_password)
 
-    # Now query the database
-    user_store_encrypted = config.password_encrypted
-
+    # Now try the database
     if config.username is not None and config.password is not None:
-        if not user_store_encrypted:
+        if not config.password_encrypted:
             decrypted = decryptor(master_password, config.password)
             if decrypted is None:
-                print(f"{error_text}\nI could not decrypt the password even though it is set to be encrypted with the master password.\n"
-                      f"You can delete the file `{path(database_file_location)}` and store your password again!")
+                print(f"""
+{error_text} I could not decrypt the password even though it is set to be encrypted with the master password.
+This probably means that the master password changed since you saved your password.
+Rerun me with `isisdl --init` to re-store your password.
+""")
                 exit(1)
 
             return User(config.username, decrypted)
 
         while True:
+            # Maybe use the cache
             if last_password is not None:
                 possible_actual_password = decryptor(last_password, config.password)
                 if possible_actual_password is not None:
                     return User(config.username, possible_actual_password)
 
+            # Prompt for a password
             user_password = getpass.getpass("Please enter the passphrase: ")
             actual_password = decryptor(user_password, config.password)
             if actual_password is None:
@@ -108,4 +109,3 @@ def get_credentials() -> User:
     logger.set_username(username)
 
     return User(username, password)
-

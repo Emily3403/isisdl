@@ -359,6 +359,8 @@ New releases will only be installed if there is a new, major update available.
     allowed = set(choice_mapping.keys())
     stored_prompt(config.user("update_policy"), allowed)
     choice = get_input(allowed)
+    if choice == "s":
+        return
 
     config.update_policy = choice_mapping[choice]
 

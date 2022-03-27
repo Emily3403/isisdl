@@ -97,7 +97,7 @@ extern_discover_num_threads = 32
 # Sets the chunk size for a download.
 download_chunk_size = 2 ** 16
 
-video_discover_download_size = 0
+video_discover_download_size = 2 ** 8
 
 # When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
 sleep_time_for_isis = 3

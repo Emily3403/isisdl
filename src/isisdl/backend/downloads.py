@@ -129,6 +129,7 @@ class Token:
     num_bytes: int = download_chunk_size
 
 
+# TODO: Refactor into 2 queues, 1 streaming, 1 downloading.
 class DownloadThrottler(Thread):
     """
     This class acts in a way that the download speed is capped at a certain maximum.
@@ -141,9 +142,16 @@ class DownloadThrottler(Thread):
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
-        self._prio = False
+        self._streaming_loc: Optional[str] = None
 
         self.download_rate = args.download_rate or config.throttle_rate or -1
+
+        # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
+        # Check if that will be the case and adapt it accordingly.
+        global token_queue_refresh_rate
+        if self.download_rate != -1:
+            while self.max_tokens() < args.num_threads:
+                token_queue_refresh_rate *= 2
 
         for _ in range(self.max_tokens()):
             self.active_tokens.put(Token())
@@ -181,12 +189,12 @@ class DownloadThrottler(Thread):
     @property
     def bandwidth_used(self) -> float:
         """
-        Return the bandwidth used in bytes / second
+        Returns the bandwidth used in bytes / second
         """
         return len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate
 
-    def get(self, priority: bool) -> Token:
-        while self._prio and priority is False:
+    def get(self, location: str) -> Token:
+        while self._streaming_loc is not None and location != self._streaming_loc:
             time.sleep(throttler_low_prio_sleep_time)
 
         try:
@@ -202,17 +210,17 @@ class DownloadThrottler(Thread):
             # Only append it at exit
             self.timestamps_tokens.append(time.perf_counter())
 
-    def start_prio(self) -> None:
-        self._prio = True
+    def start_stream(self, location: str) -> None:
+        self._streaming_loc = location
 
-    def end_prio(self) -> None:
-        self._prio = False
+    def end_stream(self) -> None:
+        self._streaming_loc = None
 
     def max_tokens(self) -> int:
         if self.download_rate == -1:
             return 1
 
-        return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
+        return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate) or 1
 
 
 # This is kinda bloated. Maybe I'll remove it in the future.
@@ -257,15 +265,15 @@ class MediaContainer:
 
         return MediaContainer(container._name, container.download_url, container.path, container.media_type, s, container, container.size)
 
-    def download(self, throttler: DownloadThrottler, priority: bool = False) -> None:
-        if self._exit:
+    def download(self, throttler: DownloadThrottler, is_stream: bool = False) -> None:
+        if self._exit or self.done:
             self.done = True
             return
 
         self.curr_size = 0
 
-        if priority:
-            throttler.start_prio()
+        if is_stream:
+            throttler.start_stream(self.location)
 
         running_download = self.s.get_(self.url, params={"token": self.s.token}, stream=True)
 
@@ -286,7 +294,10 @@ class MediaContainer:
             # We copy in chunks to add the rate limiter and status indicator. This could also be done with `shutil.copyfileobj`.
             # Also remember to set the `decode_content=True` kwarg in `.read()`.
             while True:
-                token = throttler.get(priority)
+                # if self._exit:
+                #     return
+
+                token = throttler.get(self.location)
 
                 i = 0
                 while i < num_tries_download:
@@ -306,8 +317,8 @@ class MediaContainer:
 
             f.flush()
 
-        if priority:
-            throttler.end_prio()
+        if is_stream:
+            throttler.end_stream()
 
         running_download.close()
 
@@ -360,10 +371,17 @@ class DownloadStatus(Thread):
         self.throttler = throttler
 
         self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
+        self.stream_file: Optional[MediaContainer] = None
         super().__init__(daemon=True)
 
     def add(self, thread_id: int, container: MediaContainer) -> None:
         self.thread_files[thread_id] = container
+
+    def add_streaming_file(self, container: MediaContainer) -> None:
+        self.stream_file = container
+
+    def done_streaming_file(self) -> None:
+        self.stream_file = None
 
     def finish(self, thread_id: int) -> None:
         item = self.thread_files[thread_id]
@@ -372,9 +390,9 @@ class DownloadStatus(Thread):
         if item is None:
             return
 
-        assert item.curr_size is not None
-        self.total_downloaded += item.curr_size
         self.finished_files += 1
+        if item.curr_size is not None:
+            self.total_downloaded += item.curr_size
 
     def shutdown(self) -> None:
         self._shutdown = True
@@ -382,8 +400,8 @@ class DownloadStatus(Thread):
     def run(self) -> None:
         while True:
             time.sleep(status_time)
-            if all(item is None for item in self.thread_files.values()):
-                continue
+            # if all(item is None for item in self.thread_files.values()):
+            #     continue
 
             log_strings: List[str] = []
 
@@ -392,24 +410,40 @@ class DownloadStatus(Thread):
             downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None and item.curr_size is not None)
             total_size = HumanBytes.format_str(self.total_size)
 
-            # General meta-info
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {'(throttled)' if self.throttler.download_rate != -1 else ''}")
-            log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
-            log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
-            log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
-            log_strings.append("")
 
-            # Now determine the already downloaded amount and display it
-            thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
-            for thread_id, container in self.thread_files.items():
-                thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
-                if container is None:
-                    log_strings.append(thread_string)
-                    continue
+            if args.stream:
+                log_strings.append("")
+                if self.stream_file is not None:
+                    log_strings.append(f"Streaming thread: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                else:
+                    log_strings.append(f"Streaming thread: Waiting")
+            else:
+                # General meta-info
+                log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
+                log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
+                log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
+                log_strings.append("")
 
-                log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.name}")
-                pass
+                # Now determine the already downloaded amount and display it
+                thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
+                for thread_id, container in self.thread_files.items():
+                    thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
+                    if container is None:
+                        log_strings.append(thread_string)
+                        continue
+
+                    log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.name}")
+                    pass
+
+                # Optional streaming info
+                if self.stream_file is not None:
+                    log_strings.append("")
+                    log_strings.append(
+                        f"Thread S {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                else:
+                    log_strings.extend(["", ""])
 
             if self._shutdown:
                 log_strings.extend(["", "Please wait for the downloads to finish ..."])
@@ -466,6 +500,7 @@ class InfoStatus(Thread):
             elif self.status == PreStatusInfo.getting_content:
                 message = "Getting the content of the Courses"
 
+            # TODO: Split into external links and videos
             elif self.status == PreStatusInfo.getting_extern:
                 message = "Getting external links"
 
