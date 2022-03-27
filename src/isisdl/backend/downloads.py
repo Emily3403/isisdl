@@ -416,9 +416,9 @@ class DownloadStatus(Thread):
             if args.stream:
                 log_strings.append("")
                 if self.stream_file is not None:
-                    log_strings.append(f"Streaming thread: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                    log_strings.append(f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
                 else:
-                    log_strings.append(f"Streaming thread: Waiting")
+                    log_strings.append(f"Stream: Waiting")
             else:
                 # General meta-info
                 log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
@@ -441,7 +441,7 @@ class DownloadStatus(Thread):
                 if self.stream_file is not None:
                     log_strings.append("")
                     log_strings.append(
-                        f"Thread S {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
                 else:
                     log_strings.extend(["", ""])
 

@@ -260,11 +260,13 @@ class Course:
             name = config.renamed_courses.get(id, "") or _name
 
         obj = cls(_name, name, id)
-
-        for item in MediaType.list_dirs():
-            os.makedirs(obj.path(item), exist_ok=True)
+        obj.make_directories()
 
         return obj
+
+    def make_directories(self) -> None:
+        for item in MediaType.list_dirs():
+            os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> None:
         if config.download_videos is False:
@@ -474,6 +476,12 @@ class RequestHelper:
             return None
 
         return response.json()
+
+    def make_course_paths(self) -> None:
+        for course in self.courses:
+            if not os.path.exists(course.path()):
+                os.makedirs(course.path(), exist_ok=True)
+            course.make_directories()
 
     def download_content(self) -> List[PreMediaContainer]:
         global num_uncached_external_links

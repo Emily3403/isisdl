@@ -39,10 +39,10 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # Lock settings
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 # Static settings
-is_static = True
+is_static = False
 
 if is_static:
     isisdl_executable = os.path.realpath(sys.argv[0])
