@@ -825,11 +825,23 @@ def calculate_local_checksum(filename: Path) -> str:
 
 
 def subscribe_to_all_courses() -> None:
+    from isisdl.backend.request_helper import RequestHelper
+    from isisdl.backend.crypt import get_credentials
+    # enrol_self_enrol_user
+    #
+    helper = RequestHelper(get_credentials())
+
+
     print("subscribe_to_all_courses is not implemented yet.")
     exit(1)
 
 
 def unsubscribe_from_courses() -> None:
+    # Might be useful: core_course_get_enrolled_courses_by_timeline_classification, core_course_get_recent_courses
+    #
+    # Datamining:
+    #   core_enrol_get_enrolled_users
+    #
     print("unsubscribe_from_courses is not implemented yet.")
     exit(1)
 
