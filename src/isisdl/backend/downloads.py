@@ -361,6 +361,8 @@ class MediaContainer:
 
 
 # TODO: Add streaming support
+# TODO: ETA down when stopping the download
+# TODO: When already done file add them in the beginning instead of subtracting: 0 / 300 → 200 / 500
 class DownloadStatus(Thread):
     def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
         self._shutdown = False
@@ -418,7 +420,7 @@ class DownloadStatus(Thread):
                 log_strings.append("")
                 if self.stream_file is not None:
                     log_strings.append(
-                        f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                        f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.location}")
                 else:
                     log_strings.append("Stream: Waiting")
             else:
@@ -436,14 +438,14 @@ class DownloadStatus(Thread):
                         log_strings.append(thread_string)
                         continue
 
-                    log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.name}")
+                    log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.location}")
                     pass
 
                 # Optional streaming info
                 if self.stream_file is not None:
                     log_strings.append("")
                     log_strings.append(
-                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.location}")
                 else:
                     log_strings.extend(["", ""])
 
@@ -516,8 +518,12 @@ class InfoStatus(Thread):
             log_strings.append(f"{message} {'.' * self.i}")
 
             if self.status == PreStatusInfo.getting_extern and len(external_links) > external_links_num_slow:
-                log_strings.extend((f"({len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0])])} videos,"
-                                    f" {len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0])])} external links,"
+                # TODO: external links get removed :(
+                log_strings.extend((f"({len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0]) is not None])} / "
+                                    f"{len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0]) is None])}) videos,"
+                                    ""
+                                    f"({len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0]) is not None])} / "
+                                    f"{len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0]) is None])}) external links,"
                                     f"will be cached)", ""))
 
             if self.max_content is not None:

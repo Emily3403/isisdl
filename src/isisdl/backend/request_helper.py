@@ -252,7 +252,7 @@ class Course:
 
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:
-        _name = cast(str, info["displayname"])
+        _name = cast(str, info["shortname"] or info["displayname"])
         id = cast(int, info["id"])
 
         if config.renamed_courses is None:

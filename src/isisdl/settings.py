@@ -134,7 +134,7 @@ throttler_low_prio_sleep_time = 0.1
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3
 
-ffmpeg_args = ["-crf", "33", "-c:v", "libx265", "-c:a", "copy", "-preset", "superfast"]
+ffmpeg_args = ["-crf", "28", "-c:v", "libx265", "-c:a", "copy", "-preset", "superfast"]
 
 # If the efficiency is too low for ↓ seconds the file will be blacklisted from compression
 compress_duration_for_to_low_efficiency = 0.5
