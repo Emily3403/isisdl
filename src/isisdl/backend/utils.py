@@ -60,7 +60,7 @@ def get_args() -> argparse.Namespace:
 
     operations.add_argument("-V", "--version", help="Print the version number and exit", action="store_true")
     operations.add_argument("--init", help="Guides you through the initial configuration and setup process.", action="store_true")
-    operations.add_argument("--config", help="Guides you through addtitional configuration which focuses on what to download from ISIS.", action="store_true")
+    operations.add_argument("--config", help="Guides you through additional configuration which focuses on what to download from ISIS.", action="store_true")
     operations.add_argument("--sync", help="Synchronizes the local database with ISIS. Will delete not existent or corrupted entries.", action="store_true")
     operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
     operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")  # TODO

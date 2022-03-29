@@ -17,7 +17,7 @@ from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolut
 
 corrupted_files: Set[Path] = set()
 
-
+# TODO: Refactor into utils
 def remove_corrupted_prompt(files: Set[Path]) -> None:
     if not files:
         return
