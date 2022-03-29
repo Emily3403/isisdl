@@ -385,7 +385,10 @@ class CompressStatus(Thread):
             generate_error_message()
 
     def generate_final_message(self) -> None:
-        course_name_mapping = {course.course_id: course.name for course in self.helper.courses}
+        print("TODO: Generate the final message is currently out of order.")
+        exit(1)
+
+        course_name_mapping = {course.course_id: course.name for course in self.helper.courses}  # type: ignore
 
         infos = {course.course_id: {
             "total_size": 0,
@@ -395,13 +398,14 @@ class CompressStatus(Thread):
             "num_skipped": 0,
         } for course in self.helper.courses if any((file.course_id == course.course_id for file in self.files))}
 
-        inefficient = database_helper.get_inefficient_videos()
+        # TODO: Fix this
+        # inefficient = database_helper.get_inefficient_videos()
 
         for file in self.files:
             curr_size = os.stat(file.path).st_size
 
-            if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
-                continue
+            # if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
+            #     continue
 
             infos[file.course_id]["total_size"] += file.size
 
@@ -523,6 +527,7 @@ def main() -> None:
 
     ffprobes = filter(lambda x: x is not None, _ffprobes)
     content_and_score: List[Tuple[PreMediaContainer, int]] = []
+    # TODO: Get rid of this.
     to_inefficient = database_helper.get_inefficient_videos()
     already_h265 = []
     inefficient_videos = []

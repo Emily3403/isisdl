@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-import os
 import subprocess
-import sys
 from getpass import getpass
 from typing import List, Optional, Union, Set, Dict, Any
 
-import math
-import yaml
 from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.downloads import SessionWithKey
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import get_input, User, clear, config, error_text, generate_current_config_str, on_kill, run_cmd_with_error, acquire_file_lock_or_exit, remove_systemd_timer, logger, \
+from isisdl.backend.utils import get_input, User, clear, config, error_text, on_kill, remove_systemd_timer, logger, \
     install_systemd_timer
-from isisdl.settings import is_windows, is_autorun, timer_file_location, service_file_location, export_config_file_location, working_dir_location, is_static
-
 from isisdl.settings import is_online
+from isisdl.settings import is_windows, timer_file_location, working_dir_location, is_static
 
 was_in_configuration = False
 
@@ -220,7 +215,7 @@ def timer_prompt() -> None:
     clear()
 
     print(f"""[Linux exclusive]
-    
+
 Do you want me to install a systemd timer to run `isisdl` every hour?
 
 If you enable this option all new files will automagically appear in
@@ -245,7 +240,7 @@ Please press enter to continue
     except Exception:
         print(f"""
 
-{error_text} I cannot find the `systemctl` executable. 
+{error_text} I cannot find the `systemctl` executable.
 
 My best guess is that you do not run a distro, which is based on systemd.
 In that case this feature is not supported on your system.
@@ -328,14 +323,14 @@ It is usually pushed a few days after the github release.
     if is_static:
         print("""
 --- Note ---
-This is a static build of isisdl meaning the updates are infrequent, but stable. 
+This is a static build of isisdl meaning the updates are infrequent, but stable.
 New releases will only be installed if there is a new, major update available.
 ------------
 
     [0] No
 
     [1] Install the newest version from github  [default]
-    
+
     [2] Notify me when there is an update available
 """)
         choice_mapping = {"": "install_github", "0": None, "1": "install_github", "2": "notify_github"}
@@ -477,11 +472,11 @@ def blacklist_prompt() -> None:
 # TODO: Pytest this... maybe
 def rename_courses_prompt() -> None:
     clear()
-    print(f"""Do you want to rename any of your courses?
+    print("""Do you want to rename any of your courses?
 
 
     [0] No  [default]
-    
+
     [1] Yes
     """)
 
@@ -613,8 +608,8 @@ For example:
 def make_subdirs_prompt() -> None:
     clear()
 
-    print(f"""Do you want to create subdirectories in the course directory?
-    
+    print("""Do you want to create subdirectories in the course directory?
+
 If enabled, things like assignments get their own directory containing all files.
 Otherwise the files are stored along with all others in the root directory of the course.
 """)
@@ -674,4 +669,4 @@ def config_wizard() -> None:
 @on_kill()
 def unexpected_exit_in_wizard() -> None:
     if was_in_configuration:
-        print("\nThe configuration wizard was killed unexpectedly.\n\nAll previous configuration is saved.\nFor choices which you haven't configured yet, I'll stick with the default.")
+        print("\nThe configuration wizard was killed unexpectedly.\n\nAll previous configuration are saved.\nFor choices which you haven't configured yet, I'll stick with the default.")

@@ -4,13 +4,13 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict, Tuple
-
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
 
 from isisdl.settings import database_file_location
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer, Course
+    from isisdl.backend.request_helper import PreMediaContainer
+
 
 # TODO: Configure database for pycharm
 class DatabaseHelper:
@@ -78,7 +78,6 @@ class DatabaseHelper:
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (file._name, file.url, file.download_url, file.location, file.time, file.course_id, file.media_type.value, file.size, file.checksum))
             self.con.commit()
-
 
     def add_pre_containers(self, files: List[PreMediaContainer]) -> None:
         """

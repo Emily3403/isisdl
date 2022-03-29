@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import enum
+import math
 import os
 import shutil
 import time
@@ -14,18 +15,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Full, Queue, Empty
 from threading import Thread
-from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast, Union
+from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
-import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
 from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
-from isisdl.settings import download_progress_bar_resolution, download_chunk_size, token_queue_refresh_rate, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time
+from isisdl.settings import download_progress_bar_resolution, download_chunk_size, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time, token_queue_refresh_rate
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer, external_links
+    from isisdl.backend.request_helper import PreMediaContainer
 
 
 class Dummy:
@@ -148,6 +148,7 @@ class DownloadThrottler(Thread):
 
         # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
         # Check if that will be the case and adapt it accordingly.
+
         global token_queue_refresh_rate
         if self.download_rate != -1:
             while self.max_tokens() < args.num_threads:
@@ -216,11 +217,11 @@ class DownloadThrottler(Thread):
     def end_stream(self) -> None:
         self._streaming_loc = None
 
-    def max_tokens(self) -> int:
+    def max_tokens(self, refresh_rate: Optional[float] = None) -> int:
         if self.download_rate == -1:
             return 1
 
-        return int(self.download_rate * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate) or 1
+        return int(self.download_rate * 1024 ** 2 // download_chunk_size * (refresh_rate or token_queue_refresh_rate)) or 1
 
 
 # This is kinda bloated. Maybe I'll remove it in the future.
@@ -416,9 +417,10 @@ class DownloadStatus(Thread):
             if args.stream:
                 log_strings.append("")
                 if self.stream_file is not None:
-                    log_strings.append(f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
+                    log_strings.append(
+                        f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.name}")
                 else:
-                    log_strings.append(f"Stream: Waiting")
+                    log_strings.append("Stream: Waiting")
             else:
                 # General meta-info
                 log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
@@ -485,9 +487,12 @@ class InfoStatus(Thread):
         self.done += 1
 
     def run(self) -> None:
+        from isisdl.backend.request_helper import external_links, PreMediaContainer
+        # bad_urls = database_helper.get_bad_urls()
+        # num_uncached_external_links = len([item for item in external_links if item[0] not in bad_urls and PreMediaContainer.from_dump(item[0])])
 
         while self._running:
-            from isisdl.backend.request_helper import num_uncached_external_links
+
             time.sleep(status_time)
             log_strings = []
 
@@ -510,10 +515,10 @@ class InfoStatus(Thread):
             log_strings.append("")
             log_strings.append(f"{message} {'.' * self.i}")
 
-            if self.status == PreStatusInfo.getting_extern and num_uncached_external_links > external_links_num_slow:
-                log_strings.append(f"({num_uncached_external_links} links, will be cached)")
-
-            log_strings.append("")
+            if self.status == PreStatusInfo.getting_extern and len(external_links) > external_links_num_slow:
+                log_strings.extend((f"({len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0])])} videos,"
+                                    f" {len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0])])} external links,"
+                                    f"will be cached)", ""))
 
             if self.max_content is not None:
                 perc_done = int(self.done / self.max_content * status_progress_bar_resolution)

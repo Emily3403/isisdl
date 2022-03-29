@@ -6,13 +6,12 @@ import atexit
 import json
 import os
 import platform
-import random
 import re
 import shutil
 import signal
+import stat
 import string
 import subprocess
-import stat
 import sys
 import time
 import traceback
@@ -23,7 +22,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, NoReturn
+from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -36,7 +35,7 @@ from requests import Session
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
+    example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
     error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static, \
     enable_multithread, subscribe_num_threads, subscribed_courses_file_location
@@ -44,7 +43,6 @@ from isisdl.version import __version__
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
-    from isisdl.backend.downloads import MediaType
 
 error_text = "\033[1;91mError!\033[0m"
 
@@ -863,16 +861,15 @@ def subscribe_to_all_courses() -> None:
     else:
         config.auto_subscribed_courses.extend(new_ids)
 
-
     print(f"Subscribed to {len(new_ids)} courses.")
 
-    with open(path(subscribed_courses_file_location), "w") as f:
-        print(f"")
+    with open(path(subscribed_courses_file_location), "w"):
+        print("")
 
 
 def unsubscribe_from_courses() -> None:
     if config.auto_subscribed_courses is None:
-        print(f"There are no courses I have subscribed to.")
+        print("There are no courses I have subscribed to.")
         return
 
     from isisdl.backend.request_helper import RequestHelper
@@ -1027,6 +1024,7 @@ OnKill()
 
 args = get_args()
 database_helper = DatabaseHelper()
+bad_urls = database_helper.get_bad_urls()
 config = Config()
 created_lock_file = False
 

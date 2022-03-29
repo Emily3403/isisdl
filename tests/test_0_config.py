@@ -144,6 +144,7 @@ def test_filename_prompt(monkeypatch: Any) -> None:
     assert config.filename_replacing is True
     config.restore_backup()
 
+
 def test_throttler_prompt(monkeypatch: Any) -> None:
     config.start_backup()
     choices = iter(["1", "42069"])
@@ -165,7 +166,6 @@ def test_whitelist_prompt_no(monkeypatch: Any) -> None:
 
     assert config.whitelist is None
     config.restore_backup()  # type: ignore
-
 
 
 def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:

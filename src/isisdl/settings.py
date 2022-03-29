@@ -187,7 +187,6 @@ def parse_config_file() -> DefaultDict[str, Any]:
     return defaultdict(lambda: None)
 
 
-
 if not is_windows:
     data = parse_config_file()
     if data is not None:
@@ -195,7 +194,6 @@ if not is_windows:
         for k, v in data.items():
             if k in glob:
                 glob[k] = v
-
 
 # Check if the user is executing the library for the first time → .state.db should be missing
 is_first_time = not os.path.exists(os.path.join(working_dir_location, database_file_location))
@@ -211,6 +209,7 @@ def check_online() -> bool:
         return False
     finally:
         conn.close()
+
 
 is_online = check_online()
 
