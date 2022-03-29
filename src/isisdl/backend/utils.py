@@ -16,6 +16,7 @@ import stat
 import sys
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -37,7 +38,8 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     testing_download_video_size, testing_download_documents_size, example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
     status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
-    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static
+    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static, \
+    enable_multithread, subscribe_num_threads, subscribed_courses_file_location
 from isisdl.version import __version__
 
 if TYPE_CHECKING:
@@ -91,6 +93,8 @@ class Config:
     update_policy: Optional[str]
     telemetry_policy: bool
 
+    auto_subscribed_courses: Optional[List[int]]
+
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
         "username": None,
@@ -109,6 +113,8 @@ class Config:
         "throttle_rate_autorun": None,
         "update_policy": "install_pip",
         "telemetry_policy": True,
+
+        "auto_subscribed_courses": None
     }
 
     __slots__ = tuple(default_config)
@@ -744,8 +750,6 @@ def acquire_file_lock() -> bool:
     return False
 
 
-
-
 def acquire_file_lock_or_exit() -> None:
     if acquire_file_lock():
         print(f"I could not acquire the lock file: `{path(lock_file_location)}`\nIf you are certain that no other instance of `isisdl` is running, you may delete it.")
@@ -827,23 +831,74 @@ def calculate_local_checksum(filename: Path) -> str:
 def subscribe_to_all_courses() -> None:
     from isisdl.backend.request_helper import RequestHelper
     from isisdl.backend.crypt import get_credentials
-    # enrol_self_enrol_user
-    #
+
     helper = RequestHelper(get_credentials())
 
+    def enrol_course(id: int) -> Optional[int]:
+        first = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
+        second = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
+        if first is None or second is None:
+            return None
 
-    print("subscribe_to_all_courses is not implemented yet.")
-    exit(1)
+        if "exception" in second:
+            if second["errorcode"] in {"canntenrol", "coursehidden", "invalidrecord"}:
+                return None
+            else:
+                assert False
+
+        if first["status"]:
+            return int(second["warnings"][0]["itemid"])
+
+        return int(second["warnings"][0]["itemid"])
+
+    if enable_multithread:
+        with ThreadPoolExecutor(subscribe_num_threads) as ex:
+            ids = list(ex.map(enrol_course, range(23995, 24100)))
+    else:
+        ids = [enrol_course(i) for i in range(10)]
+
+    new_ids = [item for item in ids if item is not None]
+    if config.auto_subscribed_courses is None:
+        config.auto_subscribed_courses = new_ids
+    else:
+        config.auto_subscribed_courses.extend(new_ids)
+
+
+    print(f"Subscribed to {len(new_ids)} courses.")
+
+    with open(path(subscribed_courses_file_location), "w") as f:
+        print(f"")
 
 
 def unsubscribe_from_courses() -> None:
-    # Might be useful: core_course_get_enrolled_courses_by_timeline_classification, core_course_get_recent_courses
-    #
-    # Datamining:
-    #   core_enrol_get_enrolled_users
-    #
-    print("unsubscribe_from_courses is not implemented yet.")
-    exit(1)
+    if config.auto_subscribed_courses is None:
+        print(f"There are no courses I have subscribed to.")
+        return
+
+    from isisdl.backend.request_helper import RequestHelper
+    from isisdl.backend.crypt import get_credentials
+
+    s = time.perf_counter()
+    helper = RequestHelper(get_credentials())
+
+    # I would like to do the subscription with the API method `enrol_self_enrol_user`, but it doesn't give enough information
+    def unsubscribe_course(id: int) -> bool:
+        res = helper.session.post_("https://isis.tu-berlin.de/enrol/self/unenrolself.php", data={"enrolid": id, "confirm": 1, "sesskey": helper.session.key}, allow_redirects=False)
+        if res is None:
+            return False
+        return bool(res.ok)
+
+    if enable_multithread:
+        with ThreadPoolExecutor(subscribe_num_threads) as ex:
+            list(ex.map(unsubscribe_course, config.auto_subscribed_courses))
+
+    else:
+        for item in config.auto_subscribed_courses:
+            unsubscribe_course(item)
+
+    print(f"Successfully unsubscribed from {len(config.auto_subscribed_courses)} courses.")
+    config.auto_subscribed_courses = None
+    print(f"Took {time.perf_counter() - s:.3f}s")
 
 
 class DataLogger(Thread):

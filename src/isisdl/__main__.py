@@ -60,6 +60,17 @@ Please press enter to continue.
         compress.main()
 
     elif args.subscribe:
+        print("""Attention: 
+This option will lead to you subscribing to *every* publicly available ISIS course.
+
+Subscribing will be quite fast < 1min, but unsubscribing takes a long time.
+This behaviour is due to the fact that the API to unsubscribe from courses
+is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255) 
+
+Please press enter to continue.
+""")
+
+        input()
         subscribe_to_all_courses()
 
     elif args.unsubscribe:

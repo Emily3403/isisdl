@@ -24,6 +24,8 @@ working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 # The name of the SQlite Database
 database_file_location = ".state.db"
 
+subscribed_courses_file_location = "subscribed_courses.json"
+
 # The path to the user-configuration file. Linux only feature
 config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "isisdl")
 
@@ -93,6 +95,8 @@ enable_multithread = True
 # Number of threads to discover video sizes
 # TODO: Experiment with sizes
 extern_discover_num_threads = 32
+
+subscribe_num_threads = 32
 
 # Sets the chunk size for a download.
 download_chunk_size = 2 ** 16
