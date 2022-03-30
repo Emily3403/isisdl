@@ -69,6 +69,7 @@ def get_args() -> argparse.Namespace:
     if is_testing:
         return parser.parse_known_args()[0]
 
+    # TODO: Fail the program when parsing fails
     return parser.parse_args()
 
 

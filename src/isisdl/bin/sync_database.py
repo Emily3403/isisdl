@@ -77,6 +77,7 @@ def restore_database_state(helper: RequestHelper) -> None:
     for course in helper.courses:
         filename_mapping = {sanitize_name(item._name): item for item in all_files if item.course_id == course.course_id}
         files_for_course = defaultdict(list)
+        # TODO: multithread this
         for container in all_files:
             if container.course_id == course.course_id:
                 files_for_course[container.size].append(container)

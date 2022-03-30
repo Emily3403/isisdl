@@ -28,7 +28,7 @@ Please press enter to continue.
         input()
         init_wizard()
         config_wizard()
-        # sync_database._main()
+        sync_database._main()
 
     elif args.version:
         print(f"isisdl Version {__version__}")

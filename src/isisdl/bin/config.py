@@ -15,6 +15,7 @@ from isisdl.settings import is_windows, timer_file_location, working_dir_locatio
 
 was_in_configuration = False
 
+
 # TODO: Add a prompt for absolute location of downloads or only names
 
 def stored_prompt(prev: Any, allowed: Set[str]) -> None:

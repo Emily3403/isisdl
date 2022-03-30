@@ -413,14 +413,16 @@ class DownloadStatus(Thread):
             downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None and item.curr_size is not None)
             total_size = HumanBytes.format_str(self.total_size)
 
+            # TODO: Reorder status for location / name display
             log_strings.append("")
             log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {'(throttled)' if self.throttler.download_rate != -1 else ''}")
 
             if args.stream:
                 log_strings.append("")
                 if self.stream_file is not None:
-                    log_strings.append(
-                        f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.location}")
+                    log_strings.append(f"Stream: {self.stream_file.percent_done} "
+                                       f"[ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
+                                       f" - {self.stream_file.location}")
                 else:
                     log_strings.append("Stream: Waiting")
             else:
@@ -445,7 +447,8 @@ class DownloadStatus(Thread):
                 if self.stream_file is not None:
                     log_strings.append("")
                     log_strings.append(
-                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.location}")
+                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
+                        f" - {self.stream_file.location}")
                 else:
                     log_strings.extend(["", ""])
 
