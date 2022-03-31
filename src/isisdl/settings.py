@@ -41,7 +41,7 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # Lock settings
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 # Static settings
 is_static = False
@@ -118,7 +118,7 @@ download_timeout_multiplier = 2
 is_windows = platform.system() == "Windows"
 
 # The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
-status_time = 0.25 if not is_windows else 0.75
+status_time = 0.1 if not is_windows else 0.75
 
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None

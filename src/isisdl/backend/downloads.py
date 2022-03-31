@@ -20,7 +20,7 @@ from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text, bad_urls
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time, token_queue_refresh_rate
 
@@ -493,11 +493,8 @@ class InfoStatus(Thread):
 
     def run(self) -> None:
         from isisdl.backend.request_helper import external_links, PreMediaContainer
-        # bad_urls = database_helper.get_bad_urls()
-        # num_uncached_external_links = len([item for item in external_links if item[0] not in bad_urls and PreMediaContainer.from_dump(item[0])])
 
         while self._running:
-
             time.sleep(status_time)
             log_strings = []
 
@@ -510,9 +507,8 @@ class InfoStatus(Thread):
             elif self.status == PreStatusInfo.getting_content:
                 message = "Getting the content of the Courses"
 
-            # TODO: Split into external links and videos
             elif self.status == PreStatusInfo.getting_extern:
-                message = "Getting external links"
+                message = "Sending webrequests to websites for content"
 
             else:
                 message = ""
@@ -521,14 +517,24 @@ class InfoStatus(Thread):
             log_strings.append(f"{message} {'.' * self.i}")
 
             if self.status == PreStatusInfo.getting_extern and len(external_links) > external_links_num_slow:
-                # TODO: external links get removed :(
-                log_strings.extend((f"({len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0]) is not None])} / "
-                                    f"{len([item for item in external_links if item[2] == MediaType.video and PreMediaContainer.from_dump(item[0]) is None])}) videos,"
-                                    ""
-                                    f"({len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0]) is not None])} / "
-                                    f"{len([item for item in external_links if item[2] == MediaType.extern and PreMediaContainer.from_dump(item[0]) is None])}) external links,"
-                                    f"will be cached)", ""))
+                video_done, video_total = 0, 0
+                extern_done, extern_total = 0, 0
 
+                for link in external_links:
+                    if link.media_type == MediaType.video:
+                        video_total += 1
+                        if PreMediaContainer.from_dump(link.url) is not None:
+                            video_done += 1
+
+                    elif link.media_type == MediaType.extern:
+                        extern_total += 1
+                        if PreMediaContainer.from_dump(link.url) is not None:
+                            extern_done += 1
+
+                log_strings.append(f"({video_done:>{int(math.log10(video_total or 1)) + 1}} / {video_total} videos, "
+                                   f"{extern_done:>{int(math.log10(extern_total or 1))}} / {extern_total} external links, will be cached)")
+
+            log_strings.append("")
             if self.max_content is not None:
                 perc_done = int(self.done / self.max_content * status_progress_bar_resolution)
                 log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")

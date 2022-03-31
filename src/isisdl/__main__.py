@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import isisdl.bin.compress as compress
-import isisdl.bin.sync_database as sync_database
+import isisdl.backend.sync_database as sync_database
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, \

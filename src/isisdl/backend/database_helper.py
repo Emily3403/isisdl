@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
 
 
-# TODO: Configure database for pycharm
 class DatabaseHelper:
     lock = Lock()
 
@@ -60,6 +59,9 @@ class DatabaseHelper:
 
     def get_name_by_checksum(self, checksum: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
+
+    def does_checksum_exist(self, checksum: str) -> bool:
+        return bool(self._get_attr_by_equal("checksum", checksum, "checksum"))
 
     def get_checksum_from_url(self, url: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("checksum", url, "url"))

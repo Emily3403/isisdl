@@ -61,7 +61,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--config", help="Guides you through additional configuration which focuses on what to download from ISIS.", action="store_true")
     operations.add_argument("--sync", help="Synchronizes the local database with ISIS. Will delete not existent or corrupted entries.", action="store_true")
     operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
-    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")  # TODO
+    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
@@ -69,8 +69,11 @@ def get_args() -> argparse.Namespace:
     if is_testing:
         return parser.parse_known_args()[0]
 
-    # TODO: Fail the program when parsing fails
-    return parser.parse_args()
+    try:
+        return parser.parse_args()
+    except SystemExit:
+        print(f"\n{error_text} parsing the args failed. Bailing out!")
+        os._exit(1)
 
 
 class Config:
@@ -183,9 +186,11 @@ def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
 
 
 # TODO: Maybe include more settings?
-def generate_config_str(working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]],
-                        blacklist: Optional[List[int]], throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float,
-                        video_size_discover_num_threads: int, status_progress_bar_resolution: int, download_progress_bar_resolution: int) -> str:
+def generate_config_str(
+        working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
+        throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
+        status_progress_bar_resolution: int, download_progress_bar_resolution: int
+) -> str:
     return f"""---
 
 # Any values you overwrite here will take precedence over *any* otherwise provided value.
@@ -288,7 +293,7 @@ def export_config() -> None:
 
 def startup() -> None:
     os.makedirs(path(), exist_ok=True)
-    if os.path.exists(path(error_directory_location)) and not os.listdir(path(error_directory_location)):
+    if os.path.exists(path(error_directory_location)) and os.listdir(path(error_directory_location)) == []:
         os.rmdir(path(error_directory_location))
 
     if not is_windows:

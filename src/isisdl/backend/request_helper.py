@@ -78,12 +78,14 @@ class PreMediaContainer:
 
     @classmethod
     def from_dump(cls, url: str) -> Optional[PreMediaContainer]:
-        if url in bad_urls:
+        if url in database_helper.get_bad_urls():
             return None
 
         info = database_helper.get_pre_container_by_url(url)
         if info is None:
             return None
+
+
 
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
@@ -93,8 +95,7 @@ class PreMediaContainer:
     @classmethod
     def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
         # Use the cache
-        if url in database_helper.get_bad_urls():
-            return None
+
 
         container = cls.from_dump(url)
         if container is not None:
@@ -174,6 +175,9 @@ class PreMediaContainer:
             else:
                 time = int(datetime.now().timestamp())
 
+            if download_url.endswith("?forcedownload=1"):
+                download_url = download_url[:-len("?forcedownload=1")]
+
             container = PreMediaContainer(name, url, download_url, location, time, course.course_id, media_type, size)
 
         else:
@@ -187,6 +191,7 @@ class PreMediaContainer:
             # An attempt at making streaming more transparent. The metadata of mp4 files is located at the beginning / end.
             # If we download both at the startup, then vlc *should* just assume they are normal files.
             # This, unfortunately does not work this way.
+            # TODO: Figure out why
 
             # if container.media_type == MediaType.video:
             #     with open(container.path, "wb") as f:

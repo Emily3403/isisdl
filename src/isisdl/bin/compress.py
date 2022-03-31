@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import random
 import re
 import signal
 import subprocess
@@ -471,6 +472,7 @@ def compress(files: List[PreMediaContainer]) -> None:
                 "ffmpeg",
                 "-i", file.path,
                 "-y", "-loglevel", "warning", "-stats",
+                "-movflags", "use_metadata_tags", "-metadata", f"previous_size=\"{file.size}\"",
                 *ffmpeg_args,
                 "-x265-params", "log-level=0",
                 new_file_name
@@ -484,6 +486,7 @@ def compress(files: List[PreMediaContainer]) -> None:
 
             if ret_code == 0:
                 os.replace(new_file_name, file.path)
+
             else:
                 try:
                     os.remove(new_file_name)
@@ -551,7 +554,8 @@ def main() -> None:
 
         content_and_score.append((con, int(vid_probe["bit_rate"])))
 
-    content = [item for item, _ in sorted(content_and_score, key=lambda pair: int(pair[1]), reverse=True)]
+    content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=True)]
+    random.shuffle(content)
 
     compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
