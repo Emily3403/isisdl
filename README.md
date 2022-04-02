@@ -34,7 +34,7 @@ If you execute `isisdl --compress`, `ffmpeg` will be
 executed and compresses all of your downloaded videos into the H265 codec. Read [here](https://www.boxcast.com/blog/hevc-h.265-vs.-h.264-avc-whats-the-difference) why it is superior to the H264
 codec.
 
-The compressed files will be transparently recognized by `isisdl`. This means that you could even loose the central
+The compressed files will be transparently recognized by `isisdl`. This means that you could lose the central
 database and be able to recover the files.
 
 Read in the [wiki]() for further details on how it is implemented.
