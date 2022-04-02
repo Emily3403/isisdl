@@ -28,7 +28,9 @@ There are also a variety of tests that ensure everything is working properly acr
 
 ### Compression of videos
 
-`isisdl` also includes a very convenient frontend for `ffmpeg`. If you execute `isisdl --compress`, `ffmpeg` will be
+`isisdl` also includes a very convenient frontend for `ffmpeg`. 
+
+If you execute `isisdl --compress`, `ffmpeg` will be
 executed and compresses all of your downloaded videos into the H265 codec.
 
 Read [here](https://www.boxcast.com/blog/hevc-h.265-vs.-h.264-avc-whats-the-difference) why it is superior to the H264
