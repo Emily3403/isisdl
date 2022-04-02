@@ -37,7 +37,7 @@ codec.
 The compressed files will be transparently recognized by `isisdl`. This means that you could lose the central
 database and be able to recover the files.
 
-Read in the [wiki]() for further details on how it is implemented.
+Read in the [wiki](https://github.com/Emily3403/isisdl/wiki/Compression) for further details on how it is implemented.
 
 ### Support for prioritizing downloads
 
