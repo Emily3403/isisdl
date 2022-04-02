@@ -15,7 +15,7 @@ Once all files are downloaded it takes about 5s to synchronize your files with I
 All the files from all of your ISIS courses are found and downloaded. Also, if a link to a file is posted on the ISIS
 page, it will get downloaded. This only works, if the file is an actual file - not a download link to a file.
 
-Links to Google Drive and TUBCloud are also followed.
+Links to Google Drive and TUBCloud are also supported.
 
 ### Compatibility
 

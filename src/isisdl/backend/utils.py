@@ -136,7 +136,6 @@ class Config:
 
         # Json only allows for keys to be strings (https://stackoverflow.com/a/8758771)
         # Set the keys manually back to ints, so we can work with them.
-
         for item in [config_file_data, stored_config]:
             if item["renamed_courses"] is not None:
                 assert isinstance(item["renamed_courses"], dict)

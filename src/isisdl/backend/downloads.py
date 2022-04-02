@@ -530,7 +530,7 @@ class InfoStatus(Thread):
 
                     elif link.media_type == MediaType.extern:
                         extern_total += 1
-                        if PreMediaContainer.from_dump(link.url) is not None:
+                        if PreMediaContainer.from_dump(link.url) is True:
                             extern_done += 1
 
                 log_strings.append(f"({video_done:>{int(math.log10(video_total or 1)) + 1}} / {video_total} videos, "
