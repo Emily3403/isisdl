@@ -57,6 +57,14 @@ class DatabaseHelper:
             return res[0]
         return res
 
+    def get_database_version(self) -> int:
+        config = self.get_config()
+        if "database_version" in config:
+            assert isinstance(config["database_version"], int)
+            return config["database_version"]
+
+        return 1
+
     def get_name_by_checksum(self, checksum: str) -> Optional[str]:
         return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
 

@@ -138,7 +138,6 @@ class DownloadThrottler(Thread):
     """
 
     def __init__(self) -> None:
-        super().__init__(daemon=True)
         self.active_tokens: Queue[Token] = Queue()
         self.used_tokens: Queue[Token] = Queue()
         self.timestamps_tokens: List[float] = []
@@ -160,6 +159,7 @@ class DownloadThrottler(Thread):
         # Dummy token used to maybe return it all the time.
         self.token = Token()
 
+        super().__init__(daemon=True)
         self.start()
 
     def run(self) -> None:
@@ -198,18 +198,15 @@ class DownloadThrottler(Thread):
         while self._streaming_loc is not None and location != self._streaming_loc:
             time.sleep(throttler_low_prio_sleep_time)
 
-        try:
-            if self.download_rate == -1:
-                return self.token
+        if self.download_rate == -1:
+            return self.token
 
-            token = self.active_tokens.get()
-            self.used_tokens.put(token)
+        token = self.active_tokens.get()
+        self.used_tokens.put(token)
 
-            return token
+        self.timestamps_tokens.append(time.perf_counter())
+        return token
 
-        finally:
-            # Only append it at exit
-            self.timestamps_tokens.append(time.perf_counter())
 
     def start_stream(self, location: str) -> None:
         self._streaming_loc = location
@@ -244,6 +241,7 @@ class MediaType(enum.Enum):
         return "Videos", "Extern"
 
 
+# TODO: Is this class even necessary?
 @dataclass
 class MediaContainer:
     name: str
@@ -360,8 +358,7 @@ class MediaContainer:
         return self.name
 
 
-# TODO: Add streaming support
-# TODO: ETA down when stopping the download
+# TODO: ETA down when stopping the download (should be done)
 # TODO: When already done file add them in the beginning instead of subtracting: 0 / 300 → 200 / 500
 class DownloadStatus(Thread):
     def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
@@ -396,6 +393,8 @@ class DownloadStatus(Thread):
         self.finished_files += 1
         if item.curr_size is not None:
             self.total_downloaded += item.curr_size
+        elif item._exit:
+            self.total_downloaded += item.size
 
     def shutdown(self) -> None:
         self._shutdown = True
@@ -508,7 +507,8 @@ class InfoStatus(Thread):
                 message = "Getting the content of the Courses"
 
             elif self.status == PreStatusInfo.getting_extern:
-                message = "Sending webrequests to websites for content"
+                # TODO: This is not accurate
+                message = "Sending webrequests to external websites for additional content"
 
             else:
                 message = ""

@@ -6,7 +6,7 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.backend.utils import User, config, error_text, logger
+from isisdl.backend.utils import User, config, error_text, logger, get_input
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password
 
 last_password: Optional[str] = None
@@ -64,6 +64,13 @@ def get_credentials() -> User:
         Cached Password > Environment variable > Database > Input
     """
     global last_username
+    def prompt_user() -> User:
+        print("Please provide authentication for ISIS.")
+        username = input("Username: ")
+        password = getpass.getpass("Password: ")
+        logger.set_username(username)
+
+        return User(username, password)
 
     # First check the environment variables for username *and* password
     env_username, env_password = os.getenv(env_var_name_username), os.getenv(env_var_name_password)
@@ -76,11 +83,14 @@ def get_credentials() -> User:
             decrypted = decryptor(master_password, config.password)
             if decrypted is None:
                 print(f"""
-{error_text} I could not decrypt the password even though it is set to be encrypted with the master password.
-This probably means that the master password changed since you saved your password.
-Rerun me with `isisdl --init` to re-store your password.
+{error_text} I could not decrypt the password even though it is set to be encrypted 
+with the master password. This probably means that the master password 
+changed since you saved your password.
+
+You can either enter your password manually or rerun me with `isisdl --init` to re-store your password.
 """)
-                exit(1)
+
+                return prompt_user()
 
             return User(config.username, decrypted)
 
@@ -103,9 +113,4 @@ Rerun me with `isisdl --init` to re-store your password.
         exit(1)
 
     # If nothing is found prompt the user
-    print("Please provide authentication for ISIS.")
-    username = input("Username: ")
-    password = getpass.getpass("Password: ")
-    logger.set_username(username)
-
-    return User(username, password)
+    return prompt_user()

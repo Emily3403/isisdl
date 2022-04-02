@@ -637,6 +637,20 @@ def follow_external_links_prompt() -> None:
 
     bool_prompt("follow_links")
 
+def full_filename_prompt() -> None:
+    clear()
+    print("""Do you want to display file names in absolute paths?
+
+For example:
+
+`/home/emily/isisdl/.pdf`
+or
+`.pdf`
+""")
+    # TODO: Example
+
+    bool_prompt("absolute_path_filename")
+
 
 def init_wizard() -> None:
     global was_in_configuration

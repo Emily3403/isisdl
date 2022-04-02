@@ -118,7 +118,7 @@ download_timeout_multiplier = 2
 is_windows = platform.system() == "Windows"
 
 # The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
-status_time = 0.1 if not is_windows else 0.75
+status_time = 0.25 if not is_windows else 0.75
 
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
@@ -149,6 +149,8 @@ compress_insta_kill_score = 1.9
 
 compress_duration_for_insta_kill = 0
 
+
+# TODO: Add a setting for forcing characters to be ext4 / ntfs
 
 # Now load any options the user may overwrite (Linux exclusive)
 def parse_config_file() -> DefaultDict[str, Any]:

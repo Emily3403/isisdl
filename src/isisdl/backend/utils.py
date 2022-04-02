@@ -94,6 +94,8 @@ class Config:
     throttle_rate_autorun: int
     update_policy: Optional[str]
     telemetry_policy: bool
+    database_version: int
+    absolute_path_filename: bool  # TODO
 
     auto_subscribed_courses: Optional[List[int]]
 
@@ -115,6 +117,8 @@ class Config:
         "throttle_rate_autorun": None,
         "update_policy": "install_pip",
         "telemetry_policy": True,
+        "absolute_path_filename": False,
+        "database_version": 2,
 
         "auto_subscribed_courses": None
     }
@@ -315,6 +319,57 @@ def clear() -> None:
         os.system('cls')
     else:
         os.system('clear')
+
+
+def migrate_database() -> bool:
+    print(f"""
+I have detected a breaking change in the database.
+In order to account for these changes, I will have to delete the database,
+maybe make a few changes to local files and rediscover all the files.
+
+If something goes wrong simply delete the directory
+`{path()}` 
+and everything will get downloaded as usual.
+
+Please confirm that this is okay. [y/n]""")
+    choice = get_input({"y", "n"})
+    if choice == "n":
+        print("Alright, I am not doing any changes.")
+        return False
+
+    from isisdl.backend.crypt import get_credentials
+    from isisdl.backend.request_helper import RequestHelper
+    global config
+    helper = RequestHelper(get_credentials())
+
+    def migrate_1_to_2() -> None:
+        downloaded_courses = os.listdir(path())
+        for course in helper._courses:
+            if course.old_name in downloaded_courses:
+                if os.path.exists(path(course.name)):
+                    shutil.rmtree(path(course.name))
+
+                os.rename(path(course.old_name), path(course.name))
+
+        config.database_version = 2
+
+    while database_helper.get_database_version() < config.default("database_version"):
+        eval(f"migrate_{database_helper.get_database_version()}_to_{database_helper.get_database_version() + 1}()")
+
+    os.unlink(path(database_file_location))
+    database_helper.__init__()
+    # TODO: This doesn't work. Why?
+    config = Config()
+    print(f"\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
+    input()
+
+    from isisdl.bin.config import config_wizard, init_wizard
+    from isisdl.backend import sync_database
+
+    init_wizard()
+    config_wizard()
+
+    sync_database._main()
 
 
 def parse_google_drive_url(url: str) -> Optional[str]:
@@ -590,7 +645,7 @@ WantedBy=timers.target
     run_cmd_with_error(["systemctl", "--user", "enable", "isisdl.timer"])
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
-
+# TODO: Detect file system in `path()` and adapt unhandled chars
 def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
@@ -814,19 +869,17 @@ class User:
 
 def calculate_local_checksum(filename: Path) -> str:
     sha = checksum_algorithm()
+
     sha.update(str(os.path.getsize(filename)).encode())
-    curr_char = 0
     with open(filename, "rb") as f:
         i = 1
         while True:
-            f.seek(curr_char)
+            f.seek(checksum_base_skip ** i, 1)
             data = f.read(checksum_num_bytes)
-            curr_char += checksum_num_bytes
             if not data:
                 break
-            sha.update(data)
 
-            curr_char += checksum_base_skip ** i
+            sha.update(data)
             i += 1
 
     return sha.hexdigest()

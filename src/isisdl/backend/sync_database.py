@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import enum
 import mimetypes
 import os
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from threading import Thread
-from typing import List, Tuple, Set, Optional, Dict, Union
+from typing import List, Tuple, Set, Optional, Dict, Union, DefaultDict
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
@@ -43,135 +45,128 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
     print(f"Dropped {count} entries from the database to be re-downloaded.")
 
 
-def get_it(file: Path, filename_mapping: Dict[str, str], files_for_course) -> Union[Path, bool, None]:
-    if not os.path.exists(file):
-        return None
-
-    if os.path.isdir(file):
-        return None
-
-    if database_helper.does_checksum_exist(calculate_local_checksum(file)):
-        return True
-
-    if file.stat().st_size == 0:
-        return True
-
-    # First heuristic: File name
-    possible = filename_mapping.get(str(file), None)
-    file_size = file.stat().st_size
-    if (probe := do_ffprobe(str(file))) is not None:
-        try:
-            file_size = probe['format']['tags']["previous_size"]
-
-        except KeyError:
-            pass
+class FileStatus(enum.Enum):
+    recovered = 0
+    unchanged = 1
+    corrupted = 2
 
 
-    possible_lst = files_for_course[file.stat().st_size]
-    if len(possible_lst) == 1:
-        possible = possible_lst[0]
-    else:
-        possible = next((item for item in files_for_course[file.stat().st_size] if sanitize_name(item._name) == file.name), None)
+def get_it(file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]], status: SyncStatus) -> Tuple[Optional[FileStatus], Path]:
+    try:
+        if not os.path.exists(file):
+            return None, file
 
-    if possible is None:
-        corrupted_files.add(file)
+        if os.path.isdir(file):
+            return None, file
 
-    return None
+        if database_helper.does_checksum_exist(calculate_local_checksum(file)):
+            return FileStatus.unchanged, file
 
-    file_is_h265: Optional[bool] = False
-    if has_ffmpeg:
+        def dump_file(possible: Optional[PreMediaContainer]) -> bool:
+            if possible is not None and possible.size == file_size:
+                possible.location = str(file)
+                possible.checksum = calculate_local_checksum(file)
+                possible.dump()
+                return True
+
+            return False
+
+        # Adapt the size if the attribute is existent
+        file_size = file.stat().st_size
+        if (probe := do_ffprobe(str(file))) is not None:
+            try:
+                file_size = probe['format']['tags']["previous_size"]
+            except KeyError:
+                pass
+
+        # Video files should not be corrupted
         file_type = mimetypes.guess_type(file.name)[0]
-        if file_type is not None and file_type.startswith("video"):
-            file_is_h265 = is_h265(str(file))
+        if file_type is not None and file_type.startswith("video") and probe is None:
+            return FileStatus.corrupted, file
 
-    if file_is_h265 is None:
-        corrupted_files.add(file)
+        # First heuristic: File name
+        possible = filename_mapping.get(str(file), None)
+        if dump_file(possible):
+            return FileStatus.recovered, file
 
-    # The file size must only be the same when the coding is not h265
-    if file_is_h265 is False:
-        possible_lst = files_for_course[file.stat().st_size]
-        if len(possible_lst) == 1:
-            possible = possible_lst[0]
+        # Second heuristic: File size
+        for course, files in files_for_course.items():
+            if course in str(file):
+                break
         else:
-            possible = next((item for item in files_for_course[file.stat().st_size] if sanitize_name(item._name) == file.name), None)
+            return FileStatus.corrupted, file
 
-        if possible is None:
-            corrupted_files.add(file)
+        possible_files = files[file_size]
+        if len(possible_files) == 1:
+            possible = possible_files[0]
+        else:
+            # If there are multiple use the file name as a last resort to differentiate them
+            possible = next((item for item in possible_files if sanitize_name(item._name) == file.name), None)
 
-    # Second heuristic: File size
-    if possible is None:
-        size_possible = files_for_course[file.stat().st_size]
-        if len(size_possible) != 1:
-            corrupted_files.add(file)
+        if dump_file(possible):
+            return FileStatus.recovered, file
 
-        possible = size_possible[0]
+        return FileStatus.corrupted, file
 
-    recovered_containers.append((possible, file))
-    num_recovered_files += 1
-    return file
-
-
+    finally:
+        status.done_thing()
 
 
-
-
-def restore_database_state(helper: RequestHelper) -> None:
-    all_files = helper.download_content()
-    sync_status = SyncStatus(len(all_files))
-    sync_status.start()
-
+def restore_database_state(content: List[PreMediaContainer], helper: RequestHelper, status: SyncStatus) -> None:
     corrupted_files: Set[Path] = set()
     recovered_containers: List[Tuple[PreMediaContainer, Path]] = []
 
     num_recovered_files = 0
 
-    filename_mapping = {file.path: file for file in all_files}
+    filename_mapping = {file.path: file for file in content}
+    files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
-    files_for_course = defaultdict(list)
-    # TODO: multithread this
-    for container in all_files:
-        if container.course_id == course.course_id:
-            files_for_course[container.size].append(container)
+    course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
 
-    with Pool(cpu_count()) as ex:
-        files = ex.starmap(get_it, zip(Path(path()).rglob("*"), repeat(filename_mapping)))
+    for file in content:
+        files_for_course[course_id_path_mapping[file.course_id]][file.size].append(file)
+
+    with ThreadPoolExecutor(cpu_count()) as ex:
+        files = list(ex.map(get_it, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
+
+    num_recovered, num_unchanged, num_corrupted = 0, 0, 0
+    for item in files:
+        if item[0] is None:
+            pass
+        elif item[0] == FileStatus.corrupted:
+            num_corrupted += 1
+        elif item[0] == FileStatus.recovered:
+            num_recovered += 1
+        elif item[0] == FileStatus.unchanged:
+            num_unchanged += 1
+        else:
+            assert False
+
+    print(f"Recovered: {num_recovered}\nUnchanged: {num_unchanged}\nCorrupted: {num_corrupted}")
 
     # for course in helper.courses:
 
 
+    # if num_recovered_files == total_num:
+    #     print(f"No unrecognized files (checked {total_num})")
+    #
+    # else:
+    #     print(f"I have recovered {num_recovered_files} / {total_num} possible files.")
+    #
+    # print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
+    # print("\nDo you want me to delete them? [y/n]")
+    # choice = input()
+    # if choice == "n":
+    #     return
+    # if choice != "y":
+    #     print("I am going to interpret this as a no!")
+    #     return
+    #
+    # for file in corrupted_files:
+    #     file.unlink()
 
 
-    sync_status.stop()
-    final_containers = []
-    for container, file in recovered_containers:
-        container.location, container._name = str(file.parent), file.name
-        container.checksum = calculate_local_checksum(file)
-        final_containers.append(container)
-
-    database_helper.add_pre_containers(final_containers)
-
-    total_num = len([item for course in helper.courses for item in Path(course.path()).rglob("*") if item.is_file()])
-    print("\n\n")
-    if num_recovered_files == total_num:
-        print(f"No unrecognized files (checked {total_num})")
-
-    else:
-        print(f"I have recovered {num_recovered_files} / {total_num} possible files.")
-
-    print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
-    print("\nDo you want me to delete them? [y/n]")
-    choice = input()
-    if choice == "n":
-        return
-    if choice != "y":
-        print("I am going to interpret this as a no!")
-        return
-
-    for file in corrupted_files:
-        file.unlink()
-
-
-
+# TODO: Syntactic sugar: define __exit__ and __enter__ for `with SyncStatus():`
 class SyncStatus(Thread):
     progress_bar = ["-", "\\", "|", "/"]
 
@@ -209,13 +204,21 @@ class SyncStatus(Thread):
 
 def _main() -> None:
     user = get_credentials()
+
     pre_status.start()
-    request_helper = RequestHelper(user)
+    helper = RequestHelper(user)
+    content = helper.download_content()
     pre_status.stop()
+    print()
 
-    restore_database_state(request_helper)
-    delete_missing_files_from_database(request_helper)
 
+    sync_status = SyncStatus(len(list(Path(path()).rglob("*"))))
+    sync_status.start()
+    restore_database_state(content, helper, sync_status)
+    sync_status.stop()
+    return
+
+    # delete_missing_files_from_database(helper)
 
 
 
