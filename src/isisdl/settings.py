@@ -42,7 +42,6 @@ service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 # Version settings
 current_database_version = 2
 
-
 # Lock settings
 lock_file_location = ".lock"
 enable_lock = True
@@ -152,7 +151,6 @@ compress_minimum_score = 1.6
 compress_insta_kill_score = 1.9
 
 compress_duration_for_insta_kill = 0
-
 
 
 # TODO: Add a setting for forcing characters to be ext4 / ntfs

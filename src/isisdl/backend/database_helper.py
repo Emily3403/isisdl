@@ -6,6 +6,7 @@ from collections import defaultdict
 from threading import Lock
 from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
 
+
 from isisdl.settings import database_file_location
 
 if TYPE_CHECKING:
@@ -58,10 +59,19 @@ class DatabaseHelper:
         return res
 
     def get_database_version(self) -> int:
+        from isisdl.backend.utils import Config
+
         config = self.get_config()
         if "database_version" in config:
-            assert isinstance(config["database_version"], int)
-            return config["database_version"]
+            if config["database_version"] is None:
+                return int(Config.default("database_version"))
+            elif isinstance(config["database_version"], int):
+                return config["database_version"]
+            else:
+                assert False
+
+        if config == {}:
+            return int(Config.default("database_version"))
 
         return 1
 
