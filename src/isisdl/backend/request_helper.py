@@ -13,8 +13,6 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union
 from urllib.parse import urlparse
 
-
-
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
 from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows
@@ -315,9 +313,7 @@ class Course:
             return []
 
         content = cast(List[Dict[str, Any]], content)
-
         all_content: List[PreMediaContainer] = []
-        bad_urls = database_helper.get_bad_urls()
 
         for week in content:
             module: Dict[str, Any]

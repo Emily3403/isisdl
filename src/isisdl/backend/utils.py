@@ -328,7 +328,7 @@ In order to account for these changes, I will have to delete the database,
 maybe make a few changes to local files and rediscover all the files.
 
 If something goes wrong simply delete the directory
-`{path()}` 
+`{path()}`
 and everything will get downloaded as usual.
 
 Please confirm that this is okay. [y/n]""")
@@ -357,10 +357,10 @@ Please confirm that this is okay. [y/n]""")
         eval(f"migrate_{database_helper.get_database_version()}_to_{database_helper.get_database_version() + 1}()")
 
     os.unlink(path(database_file_location))
-    database_helper.__init__()
+    database_helper.__init__()  # type: ignore
     # TODO: This doesn't work. Why?
     config = Config()
-    print(f"\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
+    print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
     input()
 
     from isisdl.bin.config import config_wizard, init_wizard
@@ -370,6 +370,8 @@ Please confirm that this is okay. [y/n]""")
     config_wizard()
 
     sync_database._main()
+
+    return True
 
 
 def parse_google_drive_url(url: str) -> Optional[str]:
@@ -644,6 +646,7 @@ WantedBy=timers.target
 
     run_cmd_with_error(["systemctl", "--user", "enable", "isisdl.timer"])
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
+
 
 # TODO: Detect file system in `path()` and adapt unhandled chars
 def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:

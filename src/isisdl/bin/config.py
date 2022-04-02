@@ -8,8 +8,7 @@ from colorama import Style
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.downloads import SessionWithKey
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import get_input, User, clear, config, error_text, on_kill, remove_systemd_timer, logger, \
-    install_systemd_timer
+from isisdl.backend.utils import get_input, User, clear, config, error_text, on_kill, remove_systemd_timer, logger, install_systemd_timer
 from isisdl.settings import is_online
 from isisdl.settings import is_windows, timer_file_location, working_dir_location, is_static
 
@@ -636,6 +635,7 @@ def follow_external_links_prompt() -> None:
     print("Do you want me to follow external links?")
 
     bool_prompt("follow_links")
+
 
 def full_filename_prompt() -> None:
     clear()

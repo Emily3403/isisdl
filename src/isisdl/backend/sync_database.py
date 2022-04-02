@@ -8,16 +8,16 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 from pathlib import Path
 from threading import Thread
-from typing import List, Tuple, Set, Optional, Dict, Union, DefaultDict
+from typing import List, Tuple, Optional, Dict, DefaultDict
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import print_log_messages
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, pre_status
-from isisdl.backend.utils import path, calculate_local_checksum, database_helper, is_h265, sanitize_name, acquire_file_lock_or_exit, do_ffprobe
-from isisdl.settings import has_ffmpeg, status_time, status_progress_bar_resolution, is_first_time
+from isisdl.backend.utils import path, calculate_local_checksum, database_helper, sanitize_name, acquire_file_lock_or_exit, do_ffprobe
+from isisdl.settings import status_time, status_progress_bar_resolution, is_first_time
 
 
 def delete_missing_files_from_database(helper: RequestHelper) -> None:
@@ -113,11 +113,6 @@ def get_it(file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for
 
 
 def restore_database_state(content: List[PreMediaContainer], helper: RequestHelper, status: SyncStatus) -> None:
-    corrupted_files: Set[Path] = set()
-    recovered_containers: List[Tuple[PreMediaContainer, Path]] = []
-
-    num_recovered_files = 0
-
     filename_mapping = {file.path: file for file in content}
     files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
@@ -145,7 +140,6 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
     print(f"Recovered: {num_recovered}\nUnchanged: {num_unchanged}\nCorrupted: {num_corrupted}")
 
     # for course in helper.courses:
-
 
     # if num_recovered_files == total_num:
     #     print(f"No unrecognized files (checked {total_num})")
@@ -211,7 +205,6 @@ def _main() -> None:
     pre_status.stop()
     print()
 
-
     sync_status = SyncStatus(len(list(Path(path()).rglob("*"))))
     sync_status.start()
     restore_database_state(content, helper, sync_status)
@@ -219,7 +212,6 @@ def _main() -> None:
     return
 
     # delete_missing_files_from_database(helper)
-
 
 
 def main() -> None:

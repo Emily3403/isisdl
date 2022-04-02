@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import isisdl.bin.compress as compress
 import isisdl.backend.sync_database as sync_database
+import isisdl.bin.compress as compress
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, \
-    export_config, database_helper, config, path, get_input, migrate_database
+from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
+    config, migrate_database
 from isisdl.bin.config import init_wizard, config_wizard
 from isisdl.settings import is_first_time
 from isisdl.settings import is_online
@@ -33,7 +33,6 @@ Please press enter to continue.
     elif database_helper.get_database_version() < config.default("database_version"):
         if migrate_database() is False:
             exit(1)
-
 
         exit(0)
 

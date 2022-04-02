@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import datetime
 import enum
-import math
 import os
 import shutil
 import time
@@ -17,15 +16,19 @@ from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
+import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text, bad_urls
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
     download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time, token_queue_refresh_rate
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
+
+# Use the variable to do nothing such that the type checker doesn't complain.
+token_queue_refresh_rate
 
 
 class Dummy:
@@ -206,7 +209,6 @@ class DownloadThrottler(Thread):
 
         self.timestamps_tokens.append(time.perf_counter())
         return token
-
 
     def start_stream(self, location: str) -> None:
         self._streaming_loc = location
