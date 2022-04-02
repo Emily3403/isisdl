@@ -4,4 +4,4 @@ pyyaml
 packaging
 colorama
 distro
-pyinotify
+pyinotify; platform_system == "Linux"

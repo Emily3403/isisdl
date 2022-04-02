@@ -741,7 +741,7 @@ class CourseDownloader:
 
         wm = pyinotify.WatchManager()
         notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
-        wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True)
+        wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
         notifier.loop()
 
