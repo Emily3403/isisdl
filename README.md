@@ -21,8 +21,8 @@ Links to Google Drive and TUBCloud are also supported.
 
 `isisdl` will run on any python interpreter that is >= 3.8.
 
-If you do not have access to python, there is also a standalone executable, which will run on any Linux distribution and
-Windows version.
+If you do not have access to Python, there is also a standalone executable, which will run on any Linux distribution and
+Windows version (with their respective binaries).
 
 There are also a variety of tests that ensure everything is working properly across all platforms.
 
