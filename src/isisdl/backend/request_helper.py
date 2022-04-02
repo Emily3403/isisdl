@@ -13,7 +13,7 @@ from threading import Thread
 from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union
 from urllib.parse import urlparse
 
-import pyinotify
+
 
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadStatus, DownloadThrottler, InfoStatus, PreStatusInfo
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
@@ -712,6 +712,8 @@ class CourseDownloader:
     def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler) -> None:
         if is_windows:
             return
+
+        import pyinotify
 
         class EventHandler(pyinotify.ProcessEvent):  # type: ignore
             def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):

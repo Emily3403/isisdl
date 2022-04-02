@@ -228,6 +228,6 @@ if is_testing:
 testing_download_video_size = 1_000_000_000
 
 # Number of bytes downloaded for documents.
-testing_download_documents_size = 1_000_000_000
+testing_download_documents_size = 1_00_000_000
 
 # </ Test Options >
