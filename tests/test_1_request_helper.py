@@ -1,140 +1,328 @@
 import os
 import random
 import shutil
-from typing import Any, List
+import string
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, List, Dict, Set
 
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.backend.downloads import MediaType
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
-from isisdl.backend.utils import path
-from isisdl.settings import database_file_location, lock_file_location, testing_download_video_size, testing_download_documents_size
+from isisdl.backend.downloads import MediaType, MediaContainer, DownloadThrottler
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, CourseDownloader
+from isisdl.backend.sync_database import restore_database_state, delete_missing_files_from_database
+from isisdl.backend.utils import path, args, User, config, calculate_local_checksum, startup, database_helper
+from isisdl.settings import database_file_location, lock_file_location, testing_download_sizes, env_var_name_username, env_var_name_password
 
 
-def test_database_helper(database_helper: DatabaseHelper) -> None:
-    assert database_helper is not None
-    # assert database_helper.get_state() == [[], [], []]
-
-
-def test_request_helper(request_helper: RequestHelper) -> None:
-    assert request_helper is not None
-
-
-def remove_old_files(database_helper: DatabaseHelper) -> None:
-    database_helper.delete_file_table()
+def remove_old_files() -> None:
     for item in os.listdir(path()):
         if item != database_file_location and item != lock_file_location:
             shutil.rmtree(path(item))
 
+    startup()
+    config.__init__()  # type: ignore
+    database_helper.__init__()  # type: ignore
     return
 
 
-def _course_downloader_transformation(pre_containers: List[PreMediaContainer]) -> List[PreMediaContainer]:
-    possible_videos: List[PreMediaContainer] = []
-    possible_documents: List[PreMediaContainer] = []
+def test_remove_old_files() -> None:
+    remove_old_files()
 
-    # Get a random sample of lower half
-    video_containers = sorted([item for item in pre_containers if item.media_type == MediaType.video], key=lambda x: x.size)
-    video_containers = video_containers[:int(len(video_containers) / 2)]
 
-    document_containers = [item for item in pre_containers if not item.media_type == MediaType.document]
+def test_database_helper(database_helper: DatabaseHelper) -> None:
+    assert database_helper is not None
+    database_helper.delete_file_table()
+    database_helper.delete_config()
 
-    random.shuffle(video_containers)
-    random.shuffle(document_containers)
+    assert all(bool(item) is False for item in database_helper.get_state().values())
 
-    def maybe_add(lst: List[Any], file: PreMediaContainer, max_size: int) -> bool:
-        maybe_new_size = sum(item.size for item in lst) + file.size
-        if maybe_new_size > max_size:
-            return True
 
-        lst.append(file)
-        return False
+def test_request_helper(request_helper: RequestHelper) -> None:
+    assert request_helper is not None
+    assert request_helper._instance is not None
+    assert request_helper._instance_init is True
+    assert request_helper.session is not None
 
-    # Select videos such that the total number of seconds does not overflow.
-    for item in video_containers:
-        if maybe_add(possible_videos, item, testing_download_video_size):
-            break
+    assert len(request_helper._courses) > 5
+    assert len(request_helper.courses) > 5
 
-    for item in document_containers:
-        if maybe_add(possible_documents, item, testing_download_documents_size):
-            break
 
-    ret = possible_videos + possible_documents
-    random.shuffle(ret)
-    return ret
+def chop_down_size(pre_containers: List[PreMediaContainer]) -> Dict[MediaType, List[PreMediaContainer]]:
+    possible: Dict[MediaType, List[PreMediaContainer]] = {MediaType.document: [], MediaType.extern: [], MediaType.video: []}
+
+    for typ, lst in possible.items():
+        containers = sorted([item for item in pre_containers if item.media_type == typ], key=lambda x: x.size)
+        weights = [i for i, _ in enumerate(containers)]
+
+        if not containers:
+            continue
+
+        while True:
+            choice = random.choices(containers, weights, k=1)[0]
+
+            if sum(item.size for item in lst) + choice.size > testing_download_sizes[typ.value]:
+                break
+
+            lst.append(choice)
+
+    return possible
 
 
 def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaContainer]:
-    content_to_download = _course_downloader_transformation(request_helper.download_content())
+    content_to_download = chop_down_size(request_helper.download_content())
 
     known_bad_urls = {
         "https://isis.tu-berlin.de/webservice/pluginfile.php/1484020/mod_resource/content/1/armv7-a-r-manual-VBAR-EXTRACT.pdf"
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1664610/mod_resource/content/1/DS_HA_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche13%20Beamer%20Version_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche13%20Beamer%20Version_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche13%20Beamer%20Version_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2013/tut4_woche13.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2013/Warshall.py.zip',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2013/DS_Tut13.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt11_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt12_%20mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1661886/mod_resource/content/0/Woche%2013.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1661873/mod_resource/content/1/Woche13.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Teil3_Graphentheorie.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche13.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_KOMPLETT.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Teil1_Kombinatorik.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Teil2_Zahlentheorie.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche12%20Beamer%20Version_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche12%20Beamer%20Version_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche12%20Beamer%20Version_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2012/tut4_woche12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2012/DS_Tut_12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/11.%20FM.%20L%C3%B6sung.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/10.FM.Aufgaben.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/11.%20FM.%20Aufgabe.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1657524/mod_resource/content/0/U%CC%88bersicht%20Woche%2012.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1657418/mod_resource/content/1/Woche12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1657410/mod_resource/content/1/Blatt12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche11_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2011/DS_Tut_11.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2011/tut4_woche11.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche11_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche11_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/9.FM.Aufgabe.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1653253/mod_resource/content/0/Woche%2011.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche11.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt10_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1653184/mod_resource/content/1/Woche11.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1653183/mod_resource/content/1/Blatt11.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche10_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche10_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche10_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2010/Woche10_Tut.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%2010/tut4_woche10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1648289/mod_resource/content/0/U%CC%88bersicht%20Woche%2010.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt09_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1648274/mod_resource/content/1/Woche10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1648266/mod_resource/content/1/Blatt10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/8.%20FM.%20Aufgabe.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/8.%20FM.%20L%C3%B6sung.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt0708_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche09_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche09_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche09_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_1.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_2.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_3.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_4.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_5.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_6.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut9_7.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_1.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_2.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_3.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_4.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_5.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_6.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_7.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1647162/mod_folder/content/1/Tut09_8.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%209/tut4_woche9.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%209/Woche9_Tut.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche07%20Beamer%20Version_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche08%20Beamer%20Version_Do16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche06_ErsatzTut8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche08%20Beamer%20Version_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1643576/mod_resource/content/2/Blatt09.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1643577/mod_resource/content/1/Woche09.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1643543/mod_resource/content/0/New%20Recording%209.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche09.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut%208%20A2.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1642289/mod_folder/content/2/Tut%208%20A3.png',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1641450/mod_resource/content/2/LatexVorlage.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1618455/mod_resource/content/8/Latex%20Vorlage.tex',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%207/tut4_woche7.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%208/tut4_woche8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%208/tutNeu10-12_woche8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%208/Woche8_Tut10-12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%208/Woche8_Tut12-14%20.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche08%20Beamer%20Version_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/7.%20FM.Aufgabe.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/7.%20FM.L%C3%B6sung.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1639446/mod_resource/content/1/Pr%C3%BCfungsleistung_HA.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1638457/mod_resource/content/1/Woche08.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1638358/mod_resource/content/0/W8.m4a',
+        'https://befragung.tu-berlin.de/evasys/online.php?p=PCHVN',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche08.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1636943/mod_resource/content/0/Blatt07.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%207/Woche7_Tut4.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche07%20Beamer%20Version_Do10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche07%20Beamer%20Version_Mi14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634612/mod_resource/content/2/Woche07.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%206/tut4_woche6.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%206/tut7_woche6.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634656/mod_resource/content/0/Woche%207.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche07.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt06_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634527/mod_folder/content/3/Woche06_Tut8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche06_Tut3.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/4-5.FM.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%206/DS_6_TUT7.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%206/DS_6_TUT4.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1628288/mod_resource/content/2/Woche06%20update.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche06_Tut1.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt05_mit_L%C3%B6sungen%20%28updated%21%29.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1628286/mod_resource/content/1/Blatt06.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1628234/mod_resource/content/0/Woche%206.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche06.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%205/DSTUT5.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%205/sondertut_woche5.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%205/sondertut_woche5.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche05_Ersatztut.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche05_Ersatztut.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%205/DSTUT5.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche05%20Beamer%20Version_Tut1.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634527/mod_folder/content/3/Woche04%20Beamer%20Version_Tut8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634527/mod_folder/content/3/Woche05%20Beamer%20Version_Tut8.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche05.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1622782/mod_resource/content/1/Woche05.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1622781/mod_resource/content/1/Blatt05.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt04_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1622663/mod_resource/content/0/Woche%205.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/3.%20FM.%20Tafel.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche02.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche04%20Beamer%20Version_Tut6.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%204/tut7_woche4.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%204/tut4_woche4.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%204/05_14_DS_Tut07.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%202/DS%20Woche%202%20Briefbeispiel.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%202/tut4_nachtrag_schubfach.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%202/tut4_woche2.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%204/05_14_DS_Tut04.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche04%20Beamer%20Version_Tut3.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche04%20Beamer%20Version_Tut3.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche01.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1615760/mod_resource/content/2/Woche04.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt03_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1615757/mod_resource/content/1/Blatt04.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1615712/mod_resource/content/0/Woche%204.m4a',
+        'https://www.mathsisfun.com/games/towerofhanoi.html',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche04.pdf',
+        'https://www.bnv-bamberg.de/home/ba2636/catalanz.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%203/tut7_woche3.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%203/DS03Tut07annotiert.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%203/DS03Tut04annotiert.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634524/mod_folder/content/29/Woche%203/tut4_woche3.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche03%20Beamer%20Version_Do_16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634525/mod_folder/content/11/Woche02_Do_16.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche03%20Beamer%20Version_Do_10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568350/mod_folder/content/24/Slides_Woche03.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634522/mod_folder/content/15/Woche02_Do_10.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche03%20Beamer%20Version_Mi_14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1635559/mod_folder/content/14/Woche02_Mi_14.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634527/mod_folder/content/3/Woche02_Mi_12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634527/mod_folder/content/3/Woche03%20Beamer%20Version_Mi_12.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1609322/mod_resource/content/0/Woche%2003.m4a',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt02_mit_L%C3%B6sungen.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1609262/mod_resource/content/2/Blatt03.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1609264/mod_resource/content/1/Woche03.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%202/DS%20Woche%202%20Briefbeispiel.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1634526/mod_folder/content/9/Woche%202/tut7_woche2.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1603847/mod_folder/content/9/2.%20FM.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1601203/mod_resource/content/1/Blatt02.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1600738/mod_resource/content/1/Uebersicht_Woche_02.m4a',
+        'https://cse.buffalo.edu/~rapaport/191/S09/whatisdiscmath.html',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt01.pdf',
+        'https://isis.tu-berlin.de/webservice/pluginfile.php/1587755/mod_resource/content/0/Blatt01.pdf',
+        'https://tu-berlin.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=TN_springer_series978-3-540-46664-2&context=PC&vid=TUB&lang=de_DE&search_scope=TUB_ALL&adaptor=primo_central_multiple_fe&tab=tub_all&query=any,contains,Diskrete%20Strukturen&sortby=rank&offset=0'
+        'https://flinga.fi/s/FLNWD7V',
     }
 
-    return [item for item in content_to_download if item.url not in known_bad_urls]
+    content = []
+    for item_lst in content_to_download.values():
+        content.extend([item for item in item_lst if item.url not in known_bad_urls])
+
+    return content
 
 
-# def test_normal_course_downloader(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
-#     args.num_threads = 16
-#
-#     # First test without filename replacing
-#     remove_old_files(database_helper)
-#     config.filename_replacing = False
-#     request_helper.make_course_paths()
-#
-#     content_to_download = get_content_to_download(request_helper)
-#     monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None: content_to_download)
-#
-#     course_downloader = CourseDownloader(user)
-#     course_downloader.start()
-#
-#     for item in content_to_download:
-#         assert os.path.exists(item.path)
-#         assert os.stat(item.path).st_size == item.size
-#
-#     # Now test with filename replacing
-#     remove_old_files(database_helper)
-#     monkeypatch.undo()
-#     config.filename_replacing = True
-#     request_helper.make_course_paths()
-#
-#     content_to_download = get_content_to_download(request_helper)
-#     monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None: content_to_download)
-#
-#     course_downloader.start()
-#
-#     allowed_chars = set(string.ascii_letters + string.digits + ".")
-#     for item in content_to_download:
-#         assert os.path.exists(item.path)
-#         assert os.stat(item.path).st_size == item.size
-#         # The full path only consists of allowed chars
-#         assert all(c for item in Path(item.path).parts[1:] for c in item if c not in allowed_chars)
-#
-#     # Now check if deleting the filetable and rediscovering works
-#     prev_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
-#
-#     dupl = defaultdict(list)
-#     for item in content_to_download:
-#         dupl[item.size].append(item)
-#
-#     # not_downloaded = [item for row in dupl.values() for item in row if len(row) > 1]
-#
-#     # TODO
-#     # for item in not_downloaded:
-#     #     try:
-#     #         prev_ids.remove(item.file_id)
-#     #     except KeyError:
-#     #         pass
-#
-#     monkeypatch.setattr("builtins.input", lambda _=None: "n")
-#     database_helper.delete_file_table()
-#     restore_database_state(request_helper)
-#
-#     # Now check if everything is restored (except `possible_duplicates`)
-#     recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
-#
-#     assert prev_ids.difference(recovered_ids) == set()
-#
-#
+def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
+    args.num_threads = 16
+
+    # Test without filename replacing
+    config.filename_replacing = True
+    request_helper.make_course_paths()
+
+    content = get_content_to_download(request_helper)
+    monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None, __=None: content)
+
+    os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
+    os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
+    CourseDownloader().start()
+
+    # Now check if everything was downloaded successfully
+    allowed_chars = set(string.ascii_letters + string.digits + ".")
+    for item in content:
+        assert os.path.exists(item.path)
+        # assert os.stat(item.path).st_size == item.size
+        # The full path only consists of allowed chars
+        assert all(c for item in Path(item.path).parts[1:] for c in item if c not in allowed_chars)
+
+    prev_urls: Set[str] = set()
+    container_mapping = {item.url: item for item in content}
+    for item in database_helper.get_state()["fileinfo"]:
+        url = item[1]
+
+        if url in container_mapping:
+            container = container_mapping[url]
+            restored = PreMediaContainer.from_dump(item[1])
+            assert item[8] is not None
+            assert restored.checksum is not None
+            assert container == restored
+            prev_urls.update(url)
+
+        else:
+            # Not downloaded (yet), checksum should be None.
+            assert item[8] is None
+    #
+    # dupl = defaultdict(list)
+    # for item in content:
+    #     dupl[item.size].append(item)
+
+    # not_downloaded = [item for row in dupl.values() for item in row if len(row) > 1]
+
+    # TODO
+    # for item in not_downloaded:
+    #     try:
+    #         prev_ids.remove(item.file_id)
+    #     except KeyError:
+    #         pass
+    #
+    # monkeypatch.setattr("builtins.input", lambda _=None: "n")
+    # database_helper.delete_file_table()
+    # restore_database_state(request_helper.download_content(), request_helper)
+    #
+    # # Now check if everything is restored (except `possible_duplicates`)
+    # recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
+    #
+    # assert prev_ids.difference(recovered_ids) == set()
+
+
 # def sample_files(files: List[PreMediaContainer], num: int) -> List[Path]:
 #     sizes = {item.size for item in files}
 #     new_files = [item for item in Path(path()).rglob("*") if item.is_file() and item.stat().st_size in sizes]
@@ -171,7 +359,7 @@ def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaConta
 #     the_files.insert(0, Path("/home/emily/testisisdl/SoSe2021Algorithmentheorie/onlineTutorium2.pdf"))
 #     monkeypatch.setattr("builtins.input", lambda _=None: "n")
 #     database_helper.delete_file_table()
-#     restore_database_state(request_helper)
+#     restore_database_state(request_helper.download_content(), request_helper)
 #
 #     for csum, new_name in zip(checksums, new_names):
 #         assert database_helper.get_name_by_checksum(csum)
@@ -180,7 +368,7 @@ def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaConta
 #         os.unlink(file)
 #
 #     database_helper.delete_file_table()
-#     restore_database_state(request_helper)
+#     restore_database_state(request_helper.download_content(), request_helper)
 #     delete_missing_files_from_database(request_helper)
 #     for csum in checksums:
 #         assert database_helper.get_name_by_checksum(csum) is None

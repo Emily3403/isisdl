@@ -4,24 +4,22 @@ from __future__ import annotations
 import enum
 import mimetypes
 import os
-import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from multiprocessing import cpu_count
 from pathlib import Path
-from threading import Thread
 from typing import List, Tuple, Optional, Dict, DefaultDict
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import print_log_messages
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, pre_status
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.status import SyncStatus, RequestHelperStatus
 from isisdl.backend.utils import path, calculate_local_checksum, database_helper, sanitize_name, acquire_file_lock_or_exit, do_ffprobe
-from isisdl.settings import status_time, status_progress_bar_resolution, is_first_time
+from isisdl.settings import is_first_time
 
 
+# TODO: Check how long this takes
 def delete_missing_files_from_database(helper: RequestHelper) -> None:
-    pre_status.stop()
     checksums = database_helper.get_checksums_per_course()
 
     for course in helper.courses:
@@ -51,7 +49,9 @@ class FileStatus(enum.Enum):
     corrupted = 2
 
 
-def get_it(file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]], status: SyncStatus) -> Tuple[Optional[FileStatus], Path]:
+def get_it(
+        file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]], status: Optional[SyncStatus] = None
+) -> Tuple[Optional[FileStatus], Path]:
     try:
         if not os.path.exists(file):
             return None, file
@@ -109,10 +109,11 @@ def get_it(file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for
         return FileStatus.corrupted, file
 
     finally:
-        status.done_thing()
+        if status is not None:
+            status.done()
 
 
-def restore_database_state(content: List[PreMediaContainer], helper: RequestHelper, status: SyncStatus) -> None:
+def restore_database_state(content: List[PreMediaContainer], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
     filename_mapping = {file.path: file for file in content}
     files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
@@ -160,56 +161,15 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
     #     file.unlink()
 
 
-# TODO: Syntactic sugar: define __exit__ and __enter__ for `with SyncStatus():`
-class SyncStatus(Thread):
-    progress_bar = ["-", "\\", "|", "/"]
-
-    def __init__(self, total_files: int) -> None:
-        self.total_files = total_files
-        self.i = 0
-        self.num_done = 0
-        self._running = True
-        self.last_text_len = 0
-        super().__init__(daemon=True)
-
-    def add_total_files(self, total_files: int) -> None:
-        self.total_files = total_files
-        self.i = 0
-
-    def done_thing(self) -> None:
-        self.num_done += 1
-
-    def stop(self) -> None:
-        self._running = False
-
-    def run(self) -> None:
-        time.sleep(status_time)
-        while self._running:
-            log_strings = ["Discovering files " + "." * self.i, ""]
-
-            perc_done = int(self.num_done / self.total_files * status_progress_bar_resolution)
-            log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
-            if self._running:
-                self.last_text_len = print_log_messages(log_strings, self.last_text_len)
-
-            self.i = (self.i + 1) % len(self.progress_bar)
-            time.sleep(status_time)
-
-
 def _main() -> None:
     user = get_credentials()
 
-    pre_status.start()
-    helper = RequestHelper(user)
-    content = helper.download_content()
-    pre_status.stop()
-    print()
+    with RequestHelperStatus() as status:
+        helper = RequestHelper(user, status)
+        content = helper.download_content(status)
 
-    sync_status = SyncStatus(len(list(Path(path()).rglob("*"))))
-    sync_status.start()
-    restore_database_state(content, helper, sync_status)
-    sync_status.stop()
-    return
+    with SyncStatus(len(list(Path(path()).rglob("*")))) as status:
+        restore_database_state(content, helper, status)
 
     # delete_missing_files_from_database(helper)
 

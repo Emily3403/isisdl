@@ -20,9 +20,9 @@ import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear, error_text
+from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, external_links_num_slow, throttler_low_prio_sleep_time, token_queue_refresh_rate
+    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, throttler_low_prio_sleep_time, token_queue_refresh_rate, error_text
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -198,17 +198,22 @@ class DownloadThrottler(Thread):
         return len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate
 
     def get(self, location: str) -> Token:
+        # TODO: Get rid of polling in favor of Queues
         while self._streaming_loc is not None and location != self._streaming_loc:
             time.sleep(throttler_low_prio_sleep_time)
 
         if self.download_rate == -1:
             return self.token
 
-        token = self.active_tokens.get()
-        self.used_tokens.put(token)
+        try:
+            token = self.active_tokens.get()
+            self.used_tokens.put(token)
 
-        self.timestamps_tokens.append(time.perf_counter())
-        return token
+            return token
+
+        finally:
+            # Only append it at exit
+            self.timestamps_tokens.append(time.perf_counter())
 
     def start_stream(self, location: str) -> None:
         self._streaming_loc = location
@@ -360,218 +365,6 @@ class MediaContainer:
         return self.name
 
 
-# TODO: ETA down when stopping the download (should be done)
-# TODO: When already done file add them in the beginning instead of subtracting: 0 / 300 → 200 / 500
-class DownloadStatus(Thread):
-    def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler) -> None:
-        self._shutdown = False
-        self.finished_files = 0
-        self.total_files = len(files)
-        self.total_size = sum(item.size for item in files if item.size != -1)
-        self.total_downloaded = 0
-        self.last_text_len = 0
-        self.throttler = throttler
-
-        self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
-        self.stream_file: Optional[MediaContainer] = None
-        super().__init__(daemon=True)
-
-    def add(self, thread_id: int, container: MediaContainer) -> None:
-        self.thread_files[thread_id] = container
-
-    def add_streaming_file(self, container: MediaContainer) -> None:
-        self.stream_file = container
-
-    def done_streaming_file(self) -> None:
-        self.stream_file = None
-
-    def finish(self, thread_id: int) -> None:
-        item = self.thread_files[thread_id]
-        self.thread_files[thread_id] = None
-
-        if item is None:
-            return
-
-        self.finished_files += 1
-        if item.curr_size is not None:
-            self.total_downloaded += item.curr_size
-        elif item._exit:
-            self.total_downloaded += item.size
-
-    def shutdown(self) -> None:
-        self._shutdown = True
-
-    def run(self) -> None:
-        while True:
-            time.sleep(status_time)
-            # if all(item is None for item in self.thread_files.values()):
-            #     continue
-
-            log_strings: List[str] = []
-
-            curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
-
-            downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None and item.curr_size is not None)
-            total_size = HumanBytes.format_str(self.total_size)
-
-            # TODO: Reorder status for location / name display
-            log_strings.append("")
-            log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {'(throttled)' if self.throttler.download_rate != -1 else ''}")
-
-            if args.stream:
-                log_strings.append("")
-                if self.stream_file is not None:
-                    log_strings.append(f"Stream: {self.stream_file.percent_done} "
-                                       f"[ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                                       f" - {self.stream_file.location}")
-                else:
-                    log_strings.append("Stream: Waiting")
-            else:
-                # General meta-info
-                log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
-                log_strings.append(f"Finished:  {self.finished_files} / {self.total_files} files")
-                log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
-                log_strings.append("")
-
-                # Now determine the already downloaded amount and display it
-                thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
-                for thread_id, container in self.thread_files.items():
-                    thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
-                    if container is None:
-                        log_strings.append(thread_string)
-                        continue
-
-                    log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.location}")
-                    pass
-
-                # Optional streaming info
-                if self.stream_file is not None:
-                    log_strings.append("")
-                    log_strings.append(
-                        f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                        f" - {self.stream_file.location}")
-                else:
-                    log_strings.extend(["", ""])
-
-            if self._shutdown:
-                log_strings.extend(["", "Please wait for the downloads to finish ..."])
-
-            self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
 
-class PreStatusInfo(enum.Enum):
-    startup = 0
-    authenticating = 1
-    getting_content = 2
-    getting_extern = 3
-    done = 4
 
-
-# TODO: When sync-ing after lot of deleting the progress bar becomes large.
-class InfoStatus(Thread):
-    def __init__(self) -> None:
-        self._running = True
-        self.status = PreStatusInfo.startup
-
-        self.last_text_len = 0
-        self.i = 0
-        self.max_content: Optional[int] = None
-        self.done = 0
-
-        super().__init__(daemon=True)
-
-    def set_status(self, status: PreStatusInfo) -> None:
-        self.status = status
-        self.max_content = None
-        self.done = 0
-        self.i = 0
-
-    def set_max_content(self, num: int) -> None:
-        self.max_content = num
-
-    def done_thing(self) -> None:
-        self.done += 1
-
-    def run(self) -> None:
-        from isisdl.backend.request_helper import external_links, PreMediaContainer
-
-        while self._running:
-            time.sleep(status_time)
-            log_strings = []
-
-            if self.status == PreStatusInfo.startup:
-                message = "Starting up"
-
-            elif self.status == PreStatusInfo.authenticating:
-                message = "Authenticating with ISIS"
-
-            elif self.status == PreStatusInfo.getting_content:
-                message = "Getting the content of the Courses"
-
-            elif self.status == PreStatusInfo.getting_extern:
-                # TODO: This is not accurate
-                message = "Sending webrequests to external websites for additional content"
-
-            else:
-                message = ""
-
-            log_strings.append("")
-            log_strings.append(f"{message} {'.' * self.i}")
-
-            if self.status == PreStatusInfo.getting_extern and len(external_links) > external_links_num_slow:
-                video_done, video_total = 0, 0
-                extern_done, extern_total = 0, 0
-
-                for link in external_links:
-                    if link.media_type == MediaType.video:
-                        video_total += 1
-                        if PreMediaContainer.from_dump(link.url) is not None:
-                            video_done += 1
-
-                    elif link.media_type == MediaType.extern:
-                        extern_total += 1
-                        if PreMediaContainer.from_dump(link.url) is True:
-                            extern_done += 1
-
-                log_strings.append(f"({video_done:>{int(math.log10(video_total or 1)) + 1}} / {video_total} videos, "
-                                   f"{extern_done:>{int(math.log10(extern_total or 1))}} / {extern_total} external links, will be cached)")
-
-            log_strings.append("")
-            if self.max_content is not None:
-                perc_done = int(self.done / self.max_content * status_progress_bar_resolution)
-                log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
-
-            if self._running:
-                self.last_text_len = print_log_messages(log_strings, self.last_text_len)
-
-            self.i = (self.i + 1) % 4
-
-    def stop(self) -> None:
-        self._running = False
-
-
-def maybe_chop_off_str(st: str, width: int) -> str:
-    if len(st) > width - status_chop_off + 1:
-        return st[:width - status_chop_off] + "." * status_chop_off
-    return st.ljust(width)
-
-
-def print_log_messages(strings: List[str], last_num: int) -> int:
-    if last_num:
-        if is_windows:
-            # Windows does not support ANSI escape sequences…
-            clear()
-        else:
-            print(f"\033[{last_num}F", end="")
-
-    # First sanitize the output
-    width = shutil.get_terminal_size().columns
-
-    for i, item in enumerate(strings):
-        strings[i] = maybe_chop_off_str(item, width)
-
-    final_str = "\n".join(strings)
-    print(final_str)
-
-    # Erase all previous chars
-    return final_str.count("\n") + 1

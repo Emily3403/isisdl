@@ -33,18 +33,17 @@ from packaging import version
 from packaging.version import Version, LegacyVersion
 from requests import Session
 
+from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
     example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
-    status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, error_file_location, \
+    status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
     error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static, \
-    enable_multithread, subscribe_num_threads, subscribed_courses_file_location
+    enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text
 from isisdl.version import __version__
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
-
-error_text = "\033[1;91mError!\033[0m"
 
 
 def get_args() -> argparse.Namespace:
@@ -125,14 +124,26 @@ class Config:
 
     __slots__ = tuple(default_config)
 
-    _user: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
-    _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
-    _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}
+    state: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # The state to consider after defaults, config files etc.
+    _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Values the user has actively stored in the config wizard (no config file)
+    _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Extra backup to maintain for tests
     _in_backup: bool = False
 
     def __init__(self) -> None:
         config_file_data = parse_config_file()
         stored_config = database_helper.get_config()
+
+        # Filter out keys for settings
+        for k, v in list(config_file_data.items()):
+            if k in settings.__dict__:
+                del config_file_data[k]
+
+        # Verify config keys
+        global_vars, default_keys = settings.global_vars, Config.default_config.keys()
+        for k in list(config_file_data.keys()) + list(stored_config.keys()):
+            if k not in global_vars and k not in default_keys:
+                print(f"{error_text} config file has unrecognized key: {repr(k)}.\n\nBailing out!")
+                os._exit(1)
 
         # Json only allows for keys to be strings (https://stackoverflow.com/a/8758771)
         # Set the keys manually back to ints, so we can work with them.
@@ -141,17 +152,19 @@ class Config:
                 assert isinstance(item["renamed_courses"], dict)
                 item["renamed_courses"] = {int(k): v for k, v in item["renamed_courses"].items()}
 
-        Config._user.update(stored_config)
-        Config._user.update(config_file_data)
-        Config._stored.update(stored_config)
+        Config.state.update(Config.default_config)
+        Config.state.update(stored_config)
+        Config.state.update(config_file_data)
+
+        # TODO: Verify types
 
         for name in self.__slots__:
-            super().__setattr__(name, next(iter(item for item in [config_file_data[name], stored_config[name]] if item is not None), self.default_config[name]))
+            super().__setattr__(name, Config.state[name])
 
     def __setattr__(self, key: str, value: Union[bool, str, int, None, Dict[int, str]]) -> None:
         super().__setattr__(key, value)
         if not self._in_backup:
-            Config._user[key] = value
+            Config.state[key] = value
             Config._stored[key] = value
             database_helper.set_config(self._stored)
 
@@ -161,7 +174,7 @@ class Config:
 
     @staticmethod
     def user(attr: str) -> Any:
-        return Config._user[attr]
+        return Config.state[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
         ret = {name: getattr(self, name) for name in self.__slots__}
@@ -425,8 +438,8 @@ def get_url_from_gdrive_confirmation(contents: str) -> Optional[str]:
             break
         m = re.search('<p class="uc-error-subcaption">(.*)</p>', line)
         if m:
-            error = m.groups()[0]
-            raise RuntimeError(error)
+            return None
+
     if not url:
         return None
 
@@ -1063,11 +1076,10 @@ def generate_error_message() -> None:
     print("\nI have encountered the following Exception. I'm sorry this happened 😔\n")
     print(traceback.format_exc())
 
-    file_location = path(error_directory_location, datetime.now().strftime(error_file_location))
+    file_location = path(error_directory_location, f"{int(datetime.now().timestamp())}.txt")
     print(f"I have logged this error to the file\n{file_location}")
 
     os.makedirs(path(error_directory_location), exist_ok=True)
-
     with open(file_location, "w") as f:
         f.write(traceback.format_exc())
 
@@ -1077,7 +1089,7 @@ def generate_error_message() -> None:
 # Don't create startup files
 if is_first_time:
     if is_autorun:
-        exit(1)
+        os._exit(1)
 
 colorama.init()
 startup()

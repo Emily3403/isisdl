@@ -3,35 +3,29 @@ from hashlib import sha256
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
 
+from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, _working_dir_location, database_file_location, checksum_algorithm, checksum_num_bytes, checksum_base_skip, password_hash_iterations, \
     password_hash_algorithm, password_hash_length, download_progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, \
     enable_multithread, download_chunk_size, sleep_time_for_isis, num_tries_download, download_timeout, download_timeout_multiplier, _status_time, config_dir_location, example_config_file_location, \
-    config_file_location, timer_file_location, service_file_location, lock_file_location, enable_lock, error_directory_location, error_file_location, master_password, status_progress_bar_resolution, \
-    token_queue_refresh_rate, token_queue_download_refresh_rate, cache_user_and_websites, extern_discover_num_threads, systemd_dir_location
+    config_file_location, timer_file_location, service_file_location, lock_file_location, enable_lock, error_directory_location, master_password, status_progress_bar_resolution, \
+    token_queue_refresh_rate, token_queue_download_refresh_rate, extern_discover_num_threads, systemd_dir_location, current_database_version, error_text, throttler_low_prio_sleep_time, \
+    subscribed_courses_file_location, subscribe_num_threads, _config_dir_location, _config_file_location, _example_config_file_location
 
 
 def test_settings() -> None:
     assert working_dir_location == os.path.join(os.path.expanduser("~"), "testisisdl")
-    assert _working_dir_location == os.path.join(os.path.expanduser("~"), "isisdl")
     assert database_file_location == os.path.join(".state.db")
-    assert config_dir_location == os.path.join(os.path.expanduser("~"), ".config", "isisdl")
-    assert config_file_location == os.path.join(config_dir_location, "config.yaml")
-    assert example_config_file_location == os.path.join(config_dir_location, "example.yaml")
-
-    assert systemd_dir_location == os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
-    assert timer_file_location == os.path.join(systemd_dir_location, "isisdl.timer")
-    assert service_file_location == os.path.join(systemd_dir_location, "isisdl.service")
+    assert current_database_version == 2
 
     assert lock_file_location == ".lock"
     assert enable_lock is True
 
     assert error_directory_location == ".errors"
-    assert error_file_location == "error in isisdl %Y-%m-%d %H-%M-%S"
+    assert error_text == "\033[1;91mError!\033[0m"
 
     assert checksum_algorithm == sha256
     assert 1024 * 3 <= checksum_num_bytes <= 1024 * 5
     assert 1.5 <= checksum_base_skip <= 2.5
-    assert 16 <= extern_discover_num_threads <= 48
 
     assert password_hash_algorithm == SHA3_512
     assert 390_000 <= password_hash_iterations <= 1_000_000
@@ -40,16 +34,7 @@ def test_settings() -> None:
 
     assert 30 <= status_progress_bar_resolution <= 60
     assert 8 <= download_progress_bar_resolution <= 12
-
     assert 2 <= status_chop_off <= 3
-    assert status_time == 2
-    assert 0.1 <= _status_time <= 1
-
-    assert env_var_name_username == "ISISDL_USERNAME"
-    assert env_var_name_password == "ISISDL_PASSWORD"
-
-    assert cache_user_and_websites is True
-    assert enable_multithread is True
 
     assert 16 <= extern_discover_num_threads <= 48
     assert 2 ** 15 <= download_chunk_size <= 2 ** 17
@@ -58,5 +43,33 @@ def test_settings() -> None:
     assert 1 <= download_timeout <= 10
     assert 1.5 <= download_timeout_multiplier <= 2.5
 
-    assert 0.01 <= token_queue_refresh_rate <= 0.2
+    assert 0.001 <= token_queue_refresh_rate <= 0.2
     assert 1 <= token_queue_download_refresh_rate <= 5
+    assert 0.01 <= throttler_low_prio_sleep_time <= 1
+
+    assert subscribed_courses_file_location == "subscribed_courses.json"
+    assert 16 <= subscribe_num_threads <= 64
+
+    assert config_dir_location == os.path.join(os.path.expanduser("~"), ".config", "testisisdl")
+    assert config_file_location == os.path.join(config_dir_location, "config.yaml")
+    assert example_config_file_location == os.path.join(config_dir_location, "example.yaml")
+
+    assert systemd_dir_location == os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
+    assert timer_file_location == os.path.join(systemd_dir_location, "isisdl.timer")
+    assert service_file_location == os.path.join(systemd_dir_location, "isisdl.service")
+
+    assert env_var_name_username == "ISISDL_USERNAME"
+    assert env_var_name_password == "ISISDL_PASSWORD"
+
+    assert enable_multithread is True
+
+    assert _working_dir_location == os.path.join(os.path.expanduser("~"), "isisdl")
+    assert _config_dir_location == os.path.join(os.path.expanduser("~"), ".config", "isisdl")
+    assert _config_file_location == os.path.join(_config_dir_location, "config.yaml")
+    assert _example_config_file_location == os.path.join(_config_dir_location, "example.yaml")
+    assert 0.1 <= _status_time <= 1
+    assert status_time == 1000000
+
+
+def test_database_version(database_helper: DatabaseHelper) -> None:
+    assert database_helper.get_database_version() == current_database_version

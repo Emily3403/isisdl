@@ -16,11 +16,12 @@ from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import print_log_messages, MediaType
-from isisdl.backend.request_helper import RequestHelper, pre_status, PreMediaContainer
-from isisdl.backend.utils import error_text, on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
+from isisdl.backend.downloads import MediaType
+from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.status import print_log_messages, RequestHelperStatus
+from isisdl.backend.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
-    compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time
+    compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time, error_text
 
 
 def check_ffmpeg_exists() -> None:
@@ -133,6 +134,7 @@ def covariance(x: List[int], y: List[float]) -> float:
     return cov
 
 
+# TODO: Migrate this to Status
 class CompressStatus(Thread):
     files: List[PreMediaContainer]
     helper: RequestHelper
@@ -513,11 +515,10 @@ def main() -> None:
 
     total_time_for_compression = database_helper.get_total_time_compressing()
     user = get_credentials()
-    pre_status.start()
-    helper = RequestHelper(user)
+    with RequestHelperStatus() as status:
+        helper = RequestHelper(user, status)
+        _content = helper.download_content(status)
 
-    _content = helper.download_content()
-    pre_status.stop()
     print("\n\nProcessing ...\n")
 
     _content = list(filter(lambda x: x.media_type == MediaType.video and os.path.exists(x.path), _content))

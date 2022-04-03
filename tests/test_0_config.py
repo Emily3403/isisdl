@@ -181,3 +181,5 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     assert config.whitelist == indexes
 
     config.restore_backup()
+    request_helper.get_courses()
+

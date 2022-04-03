@@ -85,8 +85,7 @@ Please press enter to continue.
     else:
         # Main routine
         acquire_file_lock_or_exit()
-        dl = CourseDownloader(get_credentials())
-        dl.start()
+        CourseDownloader().start()
 
         print("\n\nDone! Have a nice day ^.^")
 
