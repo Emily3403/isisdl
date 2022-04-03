@@ -710,38 +710,39 @@ class CourseDownloader:
             # TODO: Figure out how to support python3.10
             return
 
-        import pyinotify
+        else:
+            import pyinotify
 
-        class EventHandler(pyinotify.ProcessEvent):  # type: ignore
-            def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
-                self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
-                self.throttler = throttler
-                super().__init__(**kwargs)
+            class EventHandler(pyinotify.ProcessEvent):  # type: ignore
+                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
+                    self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
+                    self.throttler = throttler
+                    super().__init__(**kwargs)
 
-            # TODO: Also watch for close events and end the stream
-            def process_IN_OPEN(self, event: pyinotify.Event) -> None:
-                if event.dir:
-                    return
+                # TODO: Also watch for close events and end the stream
+                def process_IN_OPEN(self, event: pyinotify.Event) -> None:
+                    if event.dir:
+                        return
 
-                file = self.files.get(event.pathname, None)
-                if file is not None and file.curr_size is not None:
-                    return
+                    file = self.files.get(event.pathname, None)
+                    if file is not None and file.curr_size is not None:
+                        return
 
-                if file is None:
-                    return
+                    if file is None:
+                        return
 
-                if file.curr_size is not None:
-                    return
+                    if file.curr_size is not None:
+                        return
 
-                status.add_streaming(file)
-                file.download(self.throttler, True)
-                status.done_streaming()
+                    status.add_streaming(file)
+                    file.download(self.throttler, True)
+                    status.done_streaming()
 
-        wm = pyinotify.WatchManager()
-        notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
-        wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
+            wm = pyinotify.WatchManager()
+            notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
+            wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
-        notifier.loop()
+            notifier.loop()
 
     def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
         exception_lock = Lock()
