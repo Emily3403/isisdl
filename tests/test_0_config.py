@@ -53,7 +53,7 @@ def assert_config_expected(
         assert config.telemetry_policy == telemetry_policy
 
 
-def test_config_export(monkeypatch: Any) -> None:
+def test_config_export() -> None:
     if is_windows:
         return
 

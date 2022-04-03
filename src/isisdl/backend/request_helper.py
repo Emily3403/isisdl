@@ -503,6 +503,10 @@ class RequestHelper:
             course.make_directories()
 
     def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[PreMediaContainer]:
+        """
+        Attention: This method does *not* take into account file conflicts.
+        You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
+        """
         global num_uncached_external_links
         exception_lock = Lock()
 
@@ -578,8 +582,6 @@ class RequestHelper:
             return sorted(lst, key=lambda x: x.time, reverse=True)
 
         all_files = sort(documents + mod_assign) + sort(videos)
-        check_for_conflicts_in_files(all_files)
-
         return all_files
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
@@ -631,25 +633,31 @@ class RequestHelper:
         return self._meta_info["userid"]
 
 
-def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> None:
+# TODO: Resolve conflicts by hard links
+def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMediaContainer]:
+    content: List[PreMediaContainer] = []
     conflicts = defaultdict(list)
-    for item in files:
-        conflicts[item._name].append(item)
 
-    items: List[List[PreMediaContainer]] = [sorted(item, key=lambda x: x.time if x.time is not None else -1) for item in conflicts.values() if len(item) != 1]
-    for row in items:
-        locations: Dict[str, List[PreMediaContainer]] = defaultdict(list)
-        for item in row:
-            locations[item.location].append(item)
+    for item in set(files):
+        conflicts[item.path].append(item)
 
-        locations = {k: v for k, v in locations.items() if len(v) > 1}
+    for conflict in conflicts.values():
+        conflict.sort(key=lambda x: x.time)
 
-        # Later: Server?
+        if len(conflict) == 1 or all(item.size == conflict[0].size for item in conflict):
+            content.append(conflict[0])
 
-        for new_row in locations.values():
-            for i, item in enumerate(new_row):
+        elif len(set(item.size for item in conflict)) == len(conflict):
+            for i, item in enumerate(conflict):
                 basename, ext = os.path.splitext(item._name)
                 item._name = basename + f".{i}" + ext
+                content.append(item)
+
+        else:
+            logger.message(f"Assertion failed: conflict: {[item.__dict__ for item in conflict]}")
+            continue
+
+    return content
 
 
 class CourseDownloader:
@@ -657,6 +665,7 @@ class CourseDownloader:
         with RequestHelperStatus() as status:
             helper = RequestHelper(get_credentials(), status)
             pre_containers = helper.download_content(status)
+            check_for_conflicts_in_files(pre_containers)
             media_containers = self.make_files(pre_containers, helper)
 
             # Make all files so that they can be streamed

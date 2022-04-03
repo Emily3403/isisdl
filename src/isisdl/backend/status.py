@@ -72,7 +72,7 @@ class Status(Thread):
 
     def run(self) -> None:
         while self._running:
-            log_strings = [self.message + "." * self._i, ""]
+            log_strings = [self.message + " " + "." * self._i, ""]
             log_strings.extend(self.generate_log_message())
 
             if self._progress_bar and self.count is not None and self.total is not None:
