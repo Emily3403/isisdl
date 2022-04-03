@@ -574,7 +574,7 @@ class RequestHelper:
 
         # Download the newest files first
         def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
-            return  sorted(lst, key=lambda x: x.time, reverse=True)
+            return sorted(lst, key=lambda x: x.time, reverse=True)
 
         all_files = sort(documents + mod_assign) + sort(videos)
         check_for_conflicts_in_files(all_files)

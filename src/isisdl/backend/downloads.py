@@ -4,10 +4,8 @@ This file is concerned with how to download an actual file given an url.
 
 from __future__ import annotations
 
-import datetime
 import enum
 import os
-import shutil
 import time
 from base64 import standard_b64decode
 from dataclasses import dataclass
@@ -16,13 +14,12 @@ from queue import Full, Queue, Empty
 from threading import Thread
 from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 
-import math
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import HumanBytes, args, User, calculate_local_checksum, database_helper, config, clear
-from isisdl.settings import download_progress_bar_resolution, download_chunk_size, status_time, num_tries_download, sleep_time_for_isis, download_timeout, status_chop_off, \
-    download_timeout_multiplier, token_queue_download_refresh_rate, status_progress_bar_resolution, is_windows, throttler_low_prio_sleep_time, token_queue_refresh_rate, error_text
+from isisdl.backend.utils import args, User, calculate_local_checksum, database_helper, config
+from isisdl.settings import download_progress_bar_resolution, download_chunk_size, num_tries_download, sleep_time_for_isis, download_timeout, download_timeout_multiplier, \
+    token_queue_download_refresh_rate, throttler_low_prio_sleep_time, error_text, token_queue_refresh_rate
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import PreMediaContainer
@@ -363,8 +360,3 @@ class MediaContainer:
 
     def __repr__(self) -> str:
         return self.name
-
-
-
-
-

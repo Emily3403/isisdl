@@ -2,15 +2,13 @@ import os
 import random
 import shutil
 import string
-from collections import defaultdict
 from pathlib import Path
 from typing import Any, List, Dict, Set
 
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.backend.downloads import MediaType, MediaContainer, DownloadThrottler
+from isisdl.backend.downloads import MediaType
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, CourseDownloader
-from isisdl.backend.sync_database import restore_database_state, delete_missing_files_from_database
-from isisdl.backend.utils import path, args, User, config, calculate_local_checksum, startup, database_helper
+from isisdl.backend.utils import path, args, User, config, startup, database_helper
 from isisdl.settings import database_file_location, lock_file_location, testing_download_sizes, env_var_name_username, env_var_name_password
 
 
@@ -250,7 +248,8 @@ def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaConta
         'https://cse.buffalo.edu/~rapaport/191/S09/whatisdiscmath.html',
         'https://isis.tu-berlin.de/webservice/pluginfile.php/1568351/mod_folder/content/20/Blatt01.pdf',
         'https://isis.tu-berlin.de/webservice/pluginfile.php/1587755/mod_resource/content/0/Blatt01.pdf',
-        'https://tu-berlin.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=TN_springer_series978-3-540-46664-2&context=PC&vid=TUB&lang=de_DE&search_scope=TUB_ALL&adaptor=primo_central_multiple_fe&tab=tub_all&query=any,contains,Diskrete%20Strukturen&sortby=rank&offset=0'
+        'https://tu-berlin.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=TN_springer_series978-3-540-46664-2&context=PC&vid=TUB'
+        '&lang=de_DE&search_scope=TUB_ALL&adaptor=primo_central_multiple_fe&tab=tub_all&query=any,contains,Diskrete%20Strukturen&sortby=rank&offset=0'
         'https://flinga.fi/s/FLNWD7V',
     }
 
@@ -277,11 +276,11 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
 
     # Now check if everything was downloaded successfully
     allowed_chars = set(string.ascii_letters + string.digits + ".")
-    for item in content:
-        assert os.path.exists(item.path)
+    for container in content:
+        assert os.path.exists(container.path)
         # assert os.stat(item.path).st_size == item.size
         # The full path only consists of allowed chars
-        assert all(c for item in Path(item.path).parts[1:] for c in item if c not in allowed_chars)
+        assert all(c for item in Path(container.path).parts[1:] for c in item if c not in allowed_chars)
 
     prev_urls: Set[str] = set()
     container_mapping = {item.url: item for item in content}
@@ -292,6 +291,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
             container = container_mapping[url]
             restored = PreMediaContainer.from_dump(item[1])
             assert item[8] is not None
+            assert isinstance(restored, PreMediaContainer)
             assert restored.checksum is not None
             assert container == restored
             prev_urls.update(url)
@@ -321,7 +321,6 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     # recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
     #
     # assert prev_ids.difference(recovered_ids) == set()
-
 
 # def sample_files(files: List[PreMediaContainer], num: int) -> List[Path]:
 #     sizes = {item.size for item in files}

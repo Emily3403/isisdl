@@ -2,7 +2,6 @@
 
 import isisdl.backend.sync_database as sync_database
 import isisdl.bin.compress as compress
-from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
     config, migrate_database

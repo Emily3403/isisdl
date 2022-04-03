@@ -4,12 +4,11 @@ from __future__ import annotations
 import datetime
 import enum
 import shutil
-from abc import abstractmethod
-
-import math
 import time
 from threading import Thread, Lock
 from typing import List, Optional, Dict, Any
+
+import math
 
 from isisdl.backend.downloads import MediaContainer, DownloadThrottler, MediaType
 from isisdl.backend.utils import clear, HumanBytes, args
@@ -126,7 +125,7 @@ class DownloadStatus(Status):
     def done_streaming(self) -> None:
         self.stream_file = None
 
-    def done(self, thread_num: int, container: MediaContainer, *args: Any, **kwargs: Any) -> None:
+    def done(self, thread_num: int, container: MediaContainer, *args: Any, **kwargs: Any) -> None:  # type: ignore
         with self._lock:
             item = self.thread_files[thread_num]
             self.thread_files[thread_num] = None
