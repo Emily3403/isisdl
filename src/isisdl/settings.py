@@ -254,12 +254,15 @@ if is_testing:
     _config_dir_location = config_dir_location
     _config_file_location = config_file_location
     _example_config_file_location = example_config_file_location
+    _export_config_file_location = export_config_file_location
     _status_time = status_time
 
     working_dir_location = os.path.join(os.path.expanduser("~"), "testisisdl")
     config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "testisisdl")
     example_config_file_location = os.path.join(config_dir_location, "example.yaml")
+    export_config_file_location = os.path.join(config_dir_location, "export.yaml")
     config_file_location = os.path.join(config_dir_location, "config.yaml")
+
     status_time = 1000000
 
 # Environment variables are checked when authenticating

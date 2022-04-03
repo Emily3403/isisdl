@@ -6,7 +6,7 @@ from yaml import safe_load
 
 from isisdl.backend.crypt import decryptor
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import config, User, export_config
+from isisdl.backend.utils import config, User, export_config, startup
 from isisdl.bin.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
 from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
 
@@ -57,6 +57,7 @@ def test_config_export(monkeypatch: Any) -> None:
     if is_windows:
         return
 
+    startup()
     export_config()
 
     with open(export_config_file_location) as f:
