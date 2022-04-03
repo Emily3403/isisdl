@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
@@ -703,6 +704,10 @@ class CourseDownloader:
 
     def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
         if is_windows:
+            return
+
+        if sys.version_info >= (3, 10):
+            # TODO: Figure out how to support python3.10
             return
 
         import pyinotify
