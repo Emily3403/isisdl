@@ -17,7 +17,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadThrottler
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing
 
 ignored_urls = {
     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
@@ -648,6 +648,9 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMedi
             content.append(conflict[0])
 
         elif len(set(item.size for item in conflict)) == len(conflict):
+            if is_testing:
+                assert False
+
             for i, item in enumerate(conflict):
                 basename, ext = os.path.splitext(item._name)
                 item._name = basename + f".{i}" + ext
