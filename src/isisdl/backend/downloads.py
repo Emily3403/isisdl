@@ -199,10 +199,10 @@ class DownloadThrottler(Thread):
         while self._streaming_loc is not None and location != self._streaming_loc:
             time.sleep(throttler_low_prio_sleep_time)
 
-        if self.download_rate == -1:
-            return self.token
-
         try:
+            if self.download_rate == -1:
+                return self.token
+
             token = self.active_tokens.get()
             self.used_tokens.put(token)
 
