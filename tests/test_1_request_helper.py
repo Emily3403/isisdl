@@ -303,6 +303,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
 
     # Test without filename replacing
     config.filename_replacing = True
+
     request_helper.make_course_paths()
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
     os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
@@ -317,6 +318,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     allowed_chars = set(string.ascii_letters + string.digits + ".")
 
     for container in content:
+        # TODO
         if container.checksum is None and container.size == 0:
             continue
 

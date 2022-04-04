@@ -372,18 +372,18 @@ Please confirm that this is okay. [y/n]""")
     database_helper.__init__()  # type: ignore
     # TODO: This doesn't work. Why?
     config = Config()
-    print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
-    input()
-
-    from isisdl.backend.config import config_wizard, init_wizard
-    from isisdl.backend import sync_database
-
-    init_wizard()
-    config_wizard()
-
-    sync_database._main()
-
+    print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease restart me")
     return True
+
+    # from isisdl.backend.config import config_wizard, init_wizard
+    # from isisdl.backend import sync_database
+    #
+    # init_wizard()
+    # config_wizard()
+    #
+    # sync_database.main()
+    #
+    # return True
 
 
 def parse_google_drive_url(url: str) -> Optional[str]:

@@ -9,12 +9,13 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, DefaultDict
+from typing import List, Tuple, Optional, Dict, DefaultDict, Set
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
 from isisdl.backend.status import SyncStatus, RequestHelperStatus
-from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe
+from isisdl.settings import database_file_location, lock_file_location
+from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input
 
 
 # TODO: Check how long this takes
@@ -52,6 +53,11 @@ def get_it(
         file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]], status: Optional[SyncStatus] = None
 ) -> Tuple[Optional[FileStatus], Path]:
     try:
+        if str(file) in {
+            path(database_file_location),
+            path(lock_file_location),
+        }:
+            return None, file
         if not os.path.exists(file):
             return None, file
 
@@ -118,18 +124,23 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
 
     course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
 
-    for file in content:
-        files_for_course[course_id_path_mapping[file.course_id]][file.size].append(file)
+    for container in content:
+        files_for_course[course_id_path_mapping[container.course_id]][container.size].append(container)
 
     with ThreadPoolExecutor(cpu_count() * 2) as ex:
         files = list(ex.map(get_it, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
 
+    if status is not None:
+        status.stop()
+
     num_recovered, num_unchanged, num_corrupted = 0, 0, 0
+    corrupted_files: Set[Path] = set()
     for item in files:
         if item[0] is None:
             pass
         elif item[0] == FileStatus.corrupted:
             num_corrupted += 1
+            corrupted_files.add(item[1])
         elif item[0] == FileStatus.recovered:
             num_recovered += 1
         elif item[0] == FileStatus.unchanged:
@@ -139,25 +150,21 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
 
     print(f"Recovered: {num_recovered}\nUnchanged: {num_unchanged}\nCorrupted: {num_corrupted}")
 
-    # for course in helper.courses:
+    if num_corrupted == 0:
+        return
 
-    # if num_recovered_files == total_num:
-    #     print(f"No unrecognized files (checked {total_num})")
-    #
-    # else:
-    #     print(f"I have recovered {num_recovered_files} / {total_num} possible files.")
-    #
-    # print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
-    # print("\nDo you want me to delete them? [y/n]")
-    # choice = input()
-    # if choice == "n":
-    #     return
-    # if choice != "y":
-    #     print("I am going to interpret this as a no!")
-    #     return
-    #
-    # for file in corrupted_files:
-    #     file.unlink()
+    if num_corrupted < 50:
+        print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
+    else:
+        print(f"There are {num_corrupted} files! ")
+
+    print(f"\nDo you want me to{' bulk' if num_corrupted > 50 else ''} delete them? [y/n]")
+    choice = get_input({"y", "n"})
+    if choice == "n":
+        return
+
+    for file in corrupted_files:
+        file.unlink()
 
 
 def main() -> None:
