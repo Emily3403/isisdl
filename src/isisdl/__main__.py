@@ -96,8 +96,8 @@ Please press enter to continue.
 def main() -> None:
     try:
         _main()
-    except Exception:
-        generate_error_message()
+    except Exception as ex:
+        generate_error_message(ex)
 
 
 # TODO:

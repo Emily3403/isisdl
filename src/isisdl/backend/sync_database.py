@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict, DefaultDict, Set
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import SyncStatus, RequestHelperStatus
 from isisdl.settings import database_file_location, lock_file_location
 from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input
@@ -26,7 +26,7 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
         if course.course_id not in checksums:
             continue
 
-        for file in Path(path(course.path())).rglob("*"):
+        for file in course.path().rglob("*"):
             if file.is_file():
                 checksum = calculate_local_checksum(file)
                 try:
@@ -50,10 +50,10 @@ class FileStatus(enum.Enum):
 
 
 def get_it(
-        file: Path, filename_mapping: Dict[str, PreMediaContainer], files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]], status: Optional[SyncStatus] = None
+        file: Path, filename_mapping: Dict[str, MediaContainer], files_for_course: Dict[str, DefaultDict[int, List[MediaContainer]]], status: Optional[SyncStatus] = None
 ) -> Tuple[Optional[FileStatus], Path]:
     try:
-        if str(file) in {
+        if file in {
             path(database_file_location),
             path(lock_file_location),
         }:
@@ -67,9 +67,9 @@ def get_it(
         if database_helper.does_checksum_exist(calculate_local_checksum(file)):
             return FileStatus.unchanged, file
 
-        def dump_file(possible: Optional[PreMediaContainer]) -> bool:
+        def dump_file(possible: Optional[MediaContainer]) -> bool:
             if possible is not None and possible.size == file_size:
-                possible.location = str(file)
+                possible.path = file
                 possible.checksum = calculate_local_checksum(file)
                 possible.dump()
                 return True
@@ -78,7 +78,7 @@ def get_it(
 
         # Adapt the size if the attribute is existent
         file_size = file.stat().st_size
-        if (probe := do_ffprobe(str(file))) is not None:
+        if (probe := do_ffprobe(file)) is not None:
             try:
                 file_size = probe['format']['tags']["previous_size"]
             except KeyError:
@@ -89,7 +89,7 @@ def get_it(
         if file_type is not None and file_type.startswith("video") and probe is None:
             return FileStatus.corrupted, file
 
-        # First heuristic: File name
+        # First heuristic: File path
         possible = filename_mapping.get(str(file), None)
         if dump_file(possible):
             return FileStatus.recovered, file
@@ -118,14 +118,14 @@ def get_it(
             status.done()
 
 
-def restore_database_state(content: List[PreMediaContainer], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
+def restore_database_state(content: List[MediaContainer], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
     filename_mapping = {file.path: file for file in content}
-    files_for_course: Dict[str, DefaultDict[int, List[PreMediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
+    files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
     course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
 
     for container in content:
-        files_for_course[course_id_path_mapping[container.course_id]][container.size].append(container)
+        files_for_course[course_id_path_mapping[container.course.course_id]][container.size].append(container)
 
     with ThreadPoolExecutor(cpu_count() * 2) as ex:
         files = list(ex.map(get_it, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))

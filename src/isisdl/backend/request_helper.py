@@ -4,20 +4,60 @@ import os
 import re
 import sys
 import time
+from base64 import standard_b64decode
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union
+from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union, Iterable
 from urllib.parse import urlparse
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadThrottler
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls, \
+    DownloadThrottler, MediaType
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, _testing_bad_urls
+
+from requests import Session, Response
+from requests.exceptions import InvalidSchema
+
+from src.isisdl.settings import error_text, download_timeout, download_timeout_multiplier, sleep_time_for_isis, num_tries_download
+from src.isisdl.utils import calculate_local_checksum
+
+# TODO: is_cached as attribute of ExternalLink
+ExternalLink = namedtuple("ExternalLink", "url course media_type name")
+external_links: Set[ExternalLink] = set()
+num_uncached_external_links = 0
+
+# Regex copied from https://gist.github.com/gruber/8891611
+url_finder = re.compile(r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.]
+(?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br
+|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk
+|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne
+|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr
+|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)
+(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.]
+(?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs
+|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm
+|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf
+|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt
+|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")
+
+# TODO: Get rid of these / factor them into one big blob
+isis_ignored = re.compile(
+    ".*(?:"
+    # Ignore mod/{whatever}
+    "mod/(?:"
+    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
+    "page|data|ratingallocate|book"
+    ")"
+    # Ignore other websites
+    "|tu-berlin.zoom.us"
+    "|arm.com/products"
+    ")/.*")
 
 ignored_urls = {
     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
@@ -44,41 +84,115 @@ known_bad_extern_urls = {
     "https://developer.arm.com/documentation/ddi0406/latest",
 }
 
-ExternalLink = namedtuple("ExternalLink", "url course media_type name")
-external_links: Set[ExternalLink] = set()
-num_uncached_external_links = 0
 
-# Regex copied from https://gist.github.com/gruber/8891611
-url_finder = re.compile(
-    r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")  # noqa C201
+class SessionWithKey(Session):
+    def __init__(self, key: str, token: str):
+        super().__init__()
+        self.key = key
+        self.token = token
 
-isis_ignored = re.compile(
-    ".*(?:"
-    # Ignore mod/{whatever}
-    "mod/(?:"
-    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-    "page|data|ratingallocate|book"
-    ")"
-    # Ignore other websites
-    "|tu-berlin.zoom.us"
-    "|arm.com/products"
-    ")/.*")
+    @classmethod
+    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
+        try:
+            s = cls("", "")
+            s.headers.update({"User-Agent": "isisdl (Python Requests)"})
+
+            s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+            s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+                   data={
+                       "shib_idp_ls_exception.shib_idp_session_ss": "",
+                       "shib_idp_ls_success.shib_idp_session_ss": "false",
+                       "shib_idp_ls_value.shib_idp_session_ss": "",
+                       "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                       "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                       "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                       "shib_idp_ls_supported": "", "_eventId_proceed": "",
+                   })
+
+            response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                              params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
+
+            if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+                # The redirection did not work → credentials are wrong
+                return None
+
+            # Extract the session key
+            # TODO: regex match this
+            key = response.text.split("https://isis.tu-berlin.de/login/logout.php?sesskey=")[-1].split("\"")[0]
+
+            try:
+                # This is a somewhat dirty hack.
+                # The Moodle API always wants to have a token. This is obtained through the `/login/token.php` site.
+                # Since ISIS handles authentication via SSO, the entered password is invalid every time.
+
+                # In [1] this way of obtaining the token is described.
+                # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+                #
+                # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
+
+                s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
+                raise InvalidSchema
+            except InvalidSchema as ex:
+                token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
+
+            s.key = key
+            s.token = token
+
+            return s
+
+        except Exception as ex:
+            print(f"{error_text} I was unable to establish a connection.\n\nReason: {ex}\n\nBailing out!")
+            os._exit(1)
+
+    @staticmethod
+    def _timeouter(func: Any, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+        if "tubcloud.tu-berlin.de" in args[0]:
+            # The tubcloud is *really* slow
+            _download_timeout = 20
+        else:
+            _download_timeout = download_timeout
+
+        i = 0
+        while i < num_tries_download:
+            try:
+                return func(*args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
+
+            except Exception:
+                time.sleep(sleep_time_for_isis)
+                i += 1
+
+    def get_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().get, *args, **kwargs))
+
+    def post_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().post, *args, **kwargs))
+
+    def head_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().head, *args, **kwargs))
+
+    def __str__(self) -> str:
+        return "~Session~"
+
+    def __repr__(self) -> str:
+        return "~Session~"
 
 
 @dataclass
-class PreMediaContainer:
+class MediaContainer:
     _name: str
     url: str
     download_url: str
-    location: str
+    path: Path
     time: int
-    course_id: int
+    course: Course
     media_type: MediaType
-    size: int = -1
+    size: int
     checksum: Optional[str] = None
+    current_size: Optional[int] = None
+    _stop: bool = False
 
     @classmethod
-    def from_dump(cls, url: str) -> Union[bool, PreMediaContainer]:
+    def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
         """
         A return value of True indicates that the container does not exist, but should be downloaded.
         A return value of False indicates that the container does not exist and should not be downloaded.
@@ -92,25 +206,28 @@ class PreMediaContainer:
 
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
+        container.path = Path(container.path)
+
+        course_id: int = container.course  # type: ignore
+        container.course = RequestHelper.course_id_mapping[course_id]
 
         return container
 
+    # TODO: Add the verification also for Documents + if status code != 200: corrupted
     @classmethod
-    def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
-        # Use the cache
-
+    def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[MediaContainer]:
         container = cls.from_dump(url)
         if container is False:
             return None
 
-        if isinstance(container, PreMediaContainer):
+        if isinstance(container, MediaContainer):
             return container
 
-        # Now check if some things like authentication / form post have to be done
         if isis_ignored.match(url):
             database_helper.add_bad_url(url)
             return None
 
+        # Now check if some things like authentication / form post have to be done
         download_url = ""
         if "tu-berlin.hosted.exlibrisgroup.com" in url:
             pass
@@ -173,7 +290,7 @@ class PreMediaContainer:
             size = int(con.headers["Content-Length"])
             relative_location = media_type.dir_name
 
-            location = course.path(sanitize_name(relative_location))
+            location = course.path(sanitize_name(relative_location), sanitize_name(name))
 
             if "" in con.headers:
                 time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
@@ -183,7 +300,7 @@ class PreMediaContainer:
             if download_url.endswith("?forcedownload=1"):
                 download_url = download_url[:-len("?forcedownload=1")]
 
-            container = PreMediaContainer(name, url, download_url, location, time, course.course_id, media_type, size)
+            container = MediaContainer(name, url, download_url, location, time, course, media_type, size)
 
         else:
             database_helper.add_bad_url(url)
@@ -191,7 +308,7 @@ class PreMediaContainer:
                 logger.message(f"Assertion failed: url not ignored: {url}")
 
         con.close()
-        if isinstance(container, PreMediaContainer):
+        if isinstance(container, MediaContainer):
             container.dump()
             return container
 
@@ -207,12 +324,11 @@ class PreMediaContainer:
             #         f.write(start_of_file)
             #         f.seek(container.size - len(end_of_file), 0)
             #         f.write(end_of_file)
-            #         f.flush()
 
         return None
 
     @classmethod
-    def document_from_api(cls, name: str, url: str, download_url: str, course: Course, last_modified: int, relative_location: Optional[str] = "", size: int = -1) -> PreMediaContainer:
+    def document_from_api(cls, name: str, url: str, download_url: str, course: Course, last_modified: int, relative_location: Optional[str] = "", size: int = -1) -> MediaContainer:
         # Sanitize bad names
         relative_location = relative_location or ""
         relative_location = relative_location.strip("/")
@@ -230,17 +346,39 @@ class PreMediaContainer:
         if url.endswith("?forcedownload=1"):
             url = url[:-len("?forcedownload=1")]
 
-        location = course.path(sanitize_name(relative_location))
+        location = course.path(sanitize_name(relative_location), sanitize_name(name))
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
             logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
             pass
 
-        return cls(name, url, download_url, location, last_modified, course.course_id, MediaType.document, size)
+        return cls(name, url, download_url, location, last_modified, course, MediaType.document, size)
 
     @property
-    def path(self) -> str:
-        return os.path.join(self.location, sanitize_name(self._name))
+    def should_download(self) -> bool:
+        if self.media_type == MediaType.corrupted:
+            return False
+
+        assert self.size != 0
+        assert self.size != -1
+
+        if os.stat(self.path).st_size != self.size:
+            return True
+
+        maybe_container = MediaContainer.from_dump(self.url)
+        if isinstance(maybe_container, bool):
+            return maybe_container
+
+        if maybe_container.checksum is None:
+            return True
+
+        if maybe_container.checksum != calculate_local_checksum(Path(self.path)):
+            return True
+
+        return False
+
+    def check_is_corrupted(self) -> bool:
+        pass
 
     def dump(self) -> None:
         database_helper.add_pre_container(self)
@@ -255,7 +393,59 @@ class PreMediaContainer:
         return self.url.__hash__()
 
     def __eq__(self, other: Any) -> bool:
-        return self.__class__ == other.__class__ and all(getattr(self, item) == getattr(other, item) for item in self.__dict__)
+        return self.__class__ == other.__class__ and all(getattr(self, item) == getattr(other, item) for item in self.__dict__ if item != "current_size")
+
+    def stop(self) -> None:
+        self._stop = True
+
+    def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
+        if self.current_size is not None:
+            # assert self.current_size == self.size  # TODO
+            return
+
+        self.current_size = 0
+
+        if is_stream:
+            throttler.start_stream(self.path)
+
+        download = session.get_(self.download_url, params={"token": session.token}, stream=True)
+
+        if download is None or not download.ok:
+            self.current_size = self.size
+            return
+
+        # We copy in chunks to add the rate limiter and status indicator.
+        # This could also be done with `shutil.copyfileobj(…)`, but, with this approach, the download rate can be limited.
+        with open(self.path, "wb") as f:
+            while True:
+                token = throttler.get(self.path)
+
+                i = 0
+                while i < num_tries_download:
+                    try:
+                        new = download.raw.read(token.num_bytes, decode_content=True)
+                        break
+
+                    except Exception:
+                        i += 1
+
+                if not new:
+                    # No file left
+                    break
+
+                f.write(new)
+                self.current_size += len(new)
+
+        if is_stream:
+            throttler.end_stream()
+
+        download.close()
+
+        # Only register the file after successfully downloading it.
+        assert self.path.stat().st_size == self.size == self.current_size
+
+        self.checksum = calculate_local_checksum(Path(self.path))
+        self.dump()
 
 
 @dataclass
@@ -264,6 +454,8 @@ class Course:
     _name: str
     name: str
     course_id: int
+
+
 
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:
@@ -312,13 +504,13 @@ class Course:
 
         external_links.update({ExternalLink(item, self, MediaType.video, name) for item, name in zip(video_urls, video_names)})
 
-    def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
+    def download_documents(self, helper: RequestHelper) -> List[MediaContainer]:
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
         if content is None:
             return []
 
         content = cast(List[Dict[str, Any]], content)
-        all_content: List[PreMediaContainer] = []
+        all_content: List[MediaContainer] = []
 
         for week in content:
             module: Dict[str, Any]
@@ -365,7 +557,7 @@ class Course:
                         elif file["fileurl"] in bad_urls:
                             pass
                         else:
-                            all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
+                            all_content.append(MediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
 
                 if len(all_content) == prev_len:
 
@@ -375,9 +567,9 @@ class Course:
 
         return all_content
 
-    def path(self, *args: str) -> str:
+    def path(self, *args: str) -> Path:
         # Custom path function that prepends the args with the course name.
-        return str(path(self.name, *args))
+        return path(self.name, *args)
 
     @property
     def ok(self) -> bool:
@@ -425,8 +617,8 @@ class RequestHelper:
     session: SessionWithKey
     courses: List[Course]
     _courses: List[Course]
-    course_id_mapping: Dict[int, Course]
     _meta_info: Dict[str, str]
+    course_id_mapping: Dict[int, Course] = {}
     _instance: Optional[RequestHelper] = None
     _instance_init: bool = False
 
@@ -447,7 +639,6 @@ class RequestHelper:
         self.session = session
         self._courses = []
         self.courses = []
-        self.course_id_mapping = {}
 
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
         self.get_courses()
@@ -467,7 +658,7 @@ class RequestHelper:
 
         for item in res:
             course = Course.from_dict(item)
-            self.course_id_mapping.update({course.course_id: course})
+            RequestHelper.course_id_mapping.update({course.course_id: course})
 
             self._courses.append(course)
             if course.ok:
@@ -502,7 +693,7 @@ class RequestHelper:
                 os.makedirs(course.path(), exist_ok=True)
             course.make_directories()
 
-    def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[PreMediaContainer]:
+    def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[MediaContainer]:
         """
         Attention: This method does *not* take into account file conflicts.
         You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
@@ -517,7 +708,7 @@ class RequestHelper:
         if status is not None:
             status.set_total(len(self.courses) + 1)
 
-        def download_documents(course: Course) -> List[PreMediaContainer]:
+        def download_documents(course: Course) -> List[MediaContainer]:
             try:
                 course.download_videos(self.session)
                 ret = course.download_documents(self)
@@ -526,23 +717,23 @@ class RequestHelper:
 
                 return ret
 
-            except Exception:
+            except Exception as ex:
                 with exception_lock:
-                    generate_error_message()
+                    generate_error_message(ex)
                     return []
 
-        def download_mod_assign(ret: List[PreMediaContainer]) -> None:
+        def download_mod_assign(ret: List[MediaContainer]) -> None:
             try:
                 ret.extend(self.download_mod_assign())
                 if status is not None:
                     status.done()
 
-            except Exception:
+            except Exception as ex:
                 with exception_lock:
-                    generate_error_message()
+                    generate_error_message(ex)
 
         if enable_multithread:
-            mod_assign: List[PreMediaContainer] = []
+            mod_assign: List[MediaContainer] = []
             mod_assign_thread = Thread(target=download_mod_assign, args=(mod_assign,))
             mod_assign_thread.start()
 
@@ -577,14 +768,29 @@ class RequestHelper:
             else:
                 documents.append(thing)
 
+        all_files = [item for item in documents + mod_assign + videos if item.url not in _testing_bad_urls]
+        all_files = check_for_conflicts_in_files(all_files)
+
+        documents, extern, videos = [], [], []
+        for container in all_files:
+            if container.media_type == MediaType.document:
+                documents.append(container)
+            elif container.media_type == MediaType.extern:
+                extern.append(container)
+            elif container.media_type == MediaType.video:
+                videos.append(container)
+            elif container.media_type == MediaType.corrupted:
+                pass
+            else:
+                assert False
+
         # Download the newest files first
-        def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
+        def sort(lst: List[MediaContainer]) -> List[MediaContainer]:
             return sorted(lst, key=lambda x: x.time, reverse=True)
 
-        all_files = sort(documents + mod_assign) + sort(videos)
-        return all_files
+        return sort(documents) + sort(extern) + sort(videos)
 
-    def download_mod_assign(self) -> List[PreMediaContainer]:
+    def download_mod_assign(self) -> List[MediaContainer]:
         all_content = []
         _assignments = self.post_REST('mod_assign_get_assignments')
         if _assignments is None:
@@ -603,15 +809,15 @@ class RequestHelper:
                 for assignment in _course["assignments"]:
                     for file in assignment["introattachments"]:
                         file["filepath"] = assignment["name"]
-                        all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
+                        all_content.append(MediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
 
         return all_content
 
-    def download_extern(self, status: Optional[RequestHelperStatus]) -> List[PreMediaContainer]:
+    def download_extern(self, status: Optional[RequestHelperStatus]) -> List[MediaContainer]:
         all_content = []
 
-        def add_extern_link(extern: Tuple[str, Course, MediaType, Optional[str]]) -> None:
-            container = PreMediaContainer.from_extern_link(extern[0], extern[1], self.session, extern[2], extern[3])
+        def add_extern_link(extern: ExternalLink) -> None:
+            container = MediaContainer.from_extern_link(extern.url, extern.course, self.session, extern.media_type, extern.name)
             if container is not None:
                 all_content.append(container)
 
@@ -634,8 +840,10 @@ class RequestHelper:
 
 
 # TODO: Resolve conflicts by hard links
-def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMediaContainer]:
-    content: List[PreMediaContainer] = []
+# TODO: check if testing and maybe exclude links here
+# TODO: Return dict based on MediaTypes?
+def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
+    content: List[MediaContainer] = []
     conflicts = defaultdict(list)
 
     for item in set(files):
@@ -664,38 +872,37 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMedi
 
 
 class CourseDownloader:
+    containers: List[MediaContainer] = []
+
     def start(self) -> None:
         with RequestHelperStatus() as status:
             helper = RequestHelper(get_credentials(), status)
-            pre_containers = helper.download_content(status)
-            check_for_conflicts_in_files(pre_containers)
-            media_containers = self.make_files(pre_containers, helper)
+            containers = helper.download_content(status)
 
-            # Make all files so that they can be streamed
-            for container in media_containers:
-                if not os.path.exists(container.location):
-                    open(container.location, "w").close()
+        # Make all files so that they can be streamed
+        for container in containers:
+            if not os.path.exists(container.path):
+                open(container.path, "w").close()
 
-            global downloading_files
-            downloading_files = media_containers
+        CourseDownloader.containers = containers
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
-        with DownloadStatus(media_containers, args.num_threads, throttler) as status:
-            Thread(target=self.stream_files, args=(media_containers, throttler, status), daemon=True).start()
+        with DownloadStatus(containers, args.num_threads, throttler) as status:
+            Thread(target=self.stream_files, args=(containers, throttler, status), daemon=True).start()
             if not args.stream:
-                downloader = Thread(target=self.download_files, args=(media_containers, throttler, status))
+                downloader = Thread(target=self.download_files, args=(containers, throttler, helper.session, status))
                 downloader.start()
 
             # Log the metadata
             conf = config.to_dict()
             del conf["password"]
             logger.post({
-                "num_g_files": len(pre_containers),
-                "num_c_files": len(media_containers),
+                "num_g_files": len(containers),
+                "num_c_files": len(containers),
 
-                "total_g_bytes": sum((item.size for item in pre_containers)),
-                "total_c_bytes": sum((item.size for item in media_containers)),
+                "total_g_bytes": sum((item.size for item in containers)),
+                "total_c_bytes": sum((item.size for item in containers)),
 
                 "course_ids": sorted([course.course_id for course in helper._courses]),
 
@@ -707,12 +914,6 @@ class CourseDownloader:
                     time.sleep(65536)
 
             downloader.join()
-
-    def make_files(self, files: List[PreMediaContainer], helper: RequestHelper) -> List[MediaContainer]:
-        new_files = [MediaContainer.from_pre_container(file, helper.session) for file in files]
-        filtered_files = [item for item in new_files if item is not None]
-
-        return filtered_files
 
     def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
         if is_windows:
@@ -756,7 +957,7 @@ class CourseDownloader:
 
             notifier.loop()
 
-    def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+    def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
@@ -769,12 +970,12 @@ class CourseDownloader:
 
             status.add_container(thread_id, file)
             try:
-                file.download(throttler)
-            except Exception:
-                with exception_lock:
-                    generate_error_message()
+                file.download(throttler, session)
+                status.done(thread_id, file)
 
-            status.done(thread_id, file)
+            except Exception as ex:
+                with exception_lock:
+                    generate_error_message(ex)
 
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
@@ -786,7 +987,8 @@ class CourseDownloader:
     @staticmethod
     @on_kill(2)
     def shutdown_running_downloads(*_: Any) -> None:
-        if downloading_files is None:
+        downloading_files = CourseDownloader.containers
+        if not downloading_files:
             return
 
         if args.stream:
@@ -796,8 +998,5 @@ class CourseDownloader:
             item.stop()
 
         # Now wait for the downloads to finish
-        while not all(item.done for item in downloading_files):
+        while not all(item.current_size != item.size for item in downloading_files):
             time.sleep(0.25)
-
-
-downloading_files: Optional[List[MediaContainer]] = None

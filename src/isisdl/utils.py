@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import enum
 import json
 import os
 import platform
@@ -16,13 +17,14 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from queue import PriorityQueue, Queue
+from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
+from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, Iterable
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -42,8 +44,10 @@ from isisdl.settings import working_dir_location, is_windows, checksum_algorithm
     enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text
 from isisdl.version import __version__
 
+from src.isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time
+
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
+    from isisdl.backend.request_helper import MediaContainer, RequestHelper
 
 
 def get_args() -> argparse.Namespace:
@@ -456,7 +460,7 @@ def run_cmd_with_error(args: List[str]) -> None:
         input()
 
 
-def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
+def do_online_ffprobe(file: MediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
     # TODO: This doesn't work
     stream = helper.session.get_(file.download_url, stream=True)
     if stream is None:
@@ -472,9 +476,9 @@ def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optiona
     return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
 
 
-def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
+def do_ffprobe(file: Path) -> Optional[Dict[str, Any]]:
     # This function is copied and adapted from ffmpeg-python: https://github.com/kkroening/ffmpeg-python
-    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", filename]
+    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", str(file)]
 
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
@@ -484,8 +488,8 @@ def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
     return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
 
 
-def is_h265(filename: str) -> Optional[bool]:
-    probe = do_ffprobe(filename)
+def is_h265(file: Path) -> Optional[bool]:
+    probe = do_ffprobe(file)
     if probe is None:
         return None
 
@@ -604,8 +608,8 @@ def install_latest_version() -> None:
         exit(ret)
 
 
-def path(*args: str) -> str:
-    return os.path.join(working_dir_location, *args)
+def path(*args: str) -> Path:
+    return Path(working_dir_location, *args)
 
 
 def remove_systemd_timer() -> None:
@@ -1030,6 +1034,132 @@ class DataLogger(Thread):
         self.generic_msg["username"] = User.sanitize_name(name)
 
 
+# Represents a granted token. A download may only download as much as defined in num_bytes.
+@dataclass
+class Token:
+    num_bytes: int = download_chunk_size
+
+
+# TODO: Refactor into 2 queues, 1 streaming, 1 downloading.
+class DownloadThrottler(Thread):
+    """
+    This class acts in a way that the download speed is capped at a certain maximum.
+    It does so by handing out tokens, which are limited.
+    With every token you may download a chunk of size `download_chunk_size`.
+    """
+
+    def __init__(self) -> None:
+        self.active_tokens: Queue[Token] = Queue()
+        self.used_tokens: Queue[Token] = Queue()
+        self.timestamps_tokens: List[float] = []
+        self._streaming_loc: Optional[Path] = None
+
+        self.download_rate = args.download_rate or config.throttle_rate or -1
+
+        # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
+        # Check if that will be the case and adapt it accordingly.
+
+        import isisdl.settings
+        if self.download_rate != -1:
+            while self.max_tokens() < args.num_threads:
+                isisdl.settings.token_queue_refresh_rate *= 2
+
+        for _ in range(self.max_tokens()):
+            self.active_tokens.put(Token())
+
+        # Dummy token used to maybe return it all the time.
+        self.token = Token()
+
+        super().__init__(daemon=True)
+        self.start()
+
+    def run(self) -> None:
+        import isisdl.settings
+
+        # num has to be distributed over `token_queue_refresh_rate` seconds. We're inserting them all at the beginning.
+        num = self.max_tokens()
+
+        while True:
+            # Clear old timestamps
+            start = time.perf_counter()
+            while self.timestamps_tokens:
+                if self.timestamps_tokens[0] < start - token_queue_download_refresh_rate:
+                    self.timestamps_tokens.pop(0)
+                else:
+                    break
+
+            if self.download_rate is not None:
+                # If a download limit is imposed hand out new tokens
+                try:
+                    for _ in range(num):
+                        self.active_tokens.put(self.used_tokens.get(block=False))
+
+                except (Full, Empty):
+                    pass
+
+            # Finally, compute how much time we've spent doing this stuff and sleep the remainder.
+            time.sleep(max(isisdl.settings.token_queue_refresh_rate - (time.perf_counter() - start), 0))
+
+    @property
+    def bandwidth_used(self) -> float:
+        """
+        Returns the bandwidth used in bytes / second
+        """
+        return float(len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate)
+
+    def get(self, location: Path) -> Token:
+        # TODO: Get rid of polling in favor of Queues
+        while self._streaming_loc is not None and location != self._streaming_loc:
+            time.sleep(throttler_low_prio_sleep_time)
+
+        try:
+            if self.download_rate == -1:
+                return self.token
+
+            token = self.active_tokens.get()
+            self.used_tokens.put(token)
+
+            return token
+
+        finally:
+            # Only append it at exit
+            self.timestamps_tokens.append(time.perf_counter())
+
+    def start_stream(self, location: Path) -> None:
+        self._streaming_loc = location
+
+    def end_stream(self) -> None:
+        self._streaming_loc = None
+
+    def max_tokens(self, refresh_rate: Optional[float] = None) -> int:
+        import isisdl.settings
+
+        if self.download_rate == -1:
+            return 1
+
+        return int(self.download_rate * 1024 ** 2 // download_chunk_size * (refresh_rate or isisdl.settings.token_queue_refresh_rate)) or 1
+
+
+class MediaType(enum.Enum):
+    video = 1
+    document = 2
+    extern = 3
+    corrupted = 4
+
+    @property
+    def dir_name(self) -> str:
+        if self == MediaType.video:
+            return "Videos"
+        if self == MediaType.extern:
+            return "Extern"
+
+        return ""
+
+    @staticmethod
+    def list_dirs() -> Iterable[str]:
+        return "Videos", "Extern"
+
+
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
@@ -1072,7 +1202,10 @@ class HumanBytes:
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 
 
-def generate_error_message() -> None:
+def generate_error_message(ex: Exception) -> None:
+    if is_testing:
+        raise ex
+
     print("\nI have encountered the following Exception. I'm sorry this happened 😔\n")
     print(traceback.format_exc())
 

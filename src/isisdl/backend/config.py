@@ -6,8 +6,7 @@ from typing import List, Optional, Union, Set, Dict, Any
 from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
-from isisdl.backend.downloads import SessionWithKey
-from isisdl.backend.request_helper import RequestHelper
+from isisdl.backend.request_helper import RequestHelper, SessionWithKey
 from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer
 from isisdl.settings import is_online, error_text
 from isisdl.settings import is_windows, timer_file_location, working_dir_location, is_static

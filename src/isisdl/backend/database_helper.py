@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, D
 from isisdl.settings import database_file_location
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer
+    from isisdl.backend.request_helper import MediaContainer
 
 
 class DatabaseHelper:
@@ -92,21 +92,21 @@ class DatabaseHelper:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
-    def add_pre_container(self, file: PreMediaContainer) -> None:
+    def add_pre_container(self, file: MediaContainer) -> None:
         with self.lock:
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (file._name, file.url, file.download_url, file.location, file.time, file.course_id, file.media_type.value, file.size, file.checksum))
+            """, (file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum))
             self.con.commit()
 
-    def add_pre_containers(self, files: List[PreMediaContainer]) -> None:
+    def add_pre_containers(self, files: List[MediaContainer]) -> None:
         """
         Returns true iff the element already existed
         """
         with self.lock:
             self.cur.executemany("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [(file._name, file.url, file.download_url, file.location, file.time, file.course_id, file.media_type.value, file.size, file.checksum)
+            """, [(file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
                   for file in files])
             self.con.commit()
 
@@ -188,7 +188,7 @@ class DatabaseHelper:
 
             return True
 
-    def update_inefficient_videos(self, file: PreMediaContainer, estimated_efficiency: float) -> None:
+    def update_inefficient_videos(self, file: MediaContainer, estimated_efficiency: float) -> None:
         with self.lock:
             _data = self.cur.execute("SELECT json FROM json_strings where id=\"inefficient_videos\"").fetchone()
             if _data is None or len(_data) == 0:
@@ -225,8 +225,8 @@ class DatabaseHelper:
             self.con.commit()
 
     @staticmethod
-    def make_inefficient_file_name(file: PreMediaContainer) -> str:
-        return f"{file.course_id} {file._name}"
+    def make_inefficient_file_name(file: MediaContainer) -> str:
+        return f"{file.course.course_id} {file._name}"
 
     def delete_inefficient_videos(self) -> None:
         with self.lock:

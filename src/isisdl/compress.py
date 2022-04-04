@@ -10,17 +10,17 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from statistics import variance, stdev, mean
 from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import MediaType
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import print_log_messages, RequestHelperStatus
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
     compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time, error_text
-from isisdl.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
+from isisdl.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper, MediaType
 
 
 def check_ffmpeg_exists() -> None:
@@ -45,7 +45,7 @@ def vstream_from_probe(probe: Optional[Dict[str, Any]]) -> Optional[Dict[str, st
     return next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
 
 
-def metadata_hash_from_file(file: str) -> Optional[str]:
+def metadata_hash_from_file(file: Path) -> Optional[str]:
     prev_metadata = vstream_from_probe(do_ffprobe(file))
 
     if prev_metadata is None:
@@ -64,7 +64,7 @@ def format_seconds(seconds: float) -> str:
     return "%02i:%02i:%02i" % (hours, minutes, seconds)
 
 
-def make_temp_filename(file: PreMediaContainer) -> str:
+def make_temp_filename(file: MediaContainer) -> str:
     head, tail = os.path.split(file.path)
     return os.path.join(head, ".tmp_" + tail)
 
@@ -135,10 +135,10 @@ def covariance(x: List[int], y: List[float]) -> float:
 
 # TODO: Migrate this to Status
 class CompressStatus(Thread):
-    files: List[PreMediaContainer]
+    files: List[MediaContainer]
     helper: RequestHelper
 
-    cur_file: Optional[PreMediaContainer]
+    cur_file: Optional[MediaContainer]
     cur_file_probe: Optional[Dict[str, Any]]
     ffmpeg: Optional[subprocess.Popen[str]]
     start_time_for_video: Optional[float]
@@ -153,7 +153,7 @@ class CompressStatus(Thread):
     last_text_len: int
     last_file_size_stat: int
 
-    def __init__(self, files: List[PreMediaContainer], helper: RequestHelper) -> None:
+    def __init__(self, files: List[MediaContainer], helper: RequestHelper) -> None:
         self.files = files
         self.helper = helper
         self.lock = Lock()
@@ -230,7 +230,7 @@ class CompressStatus(Thread):
 
             self.total_files_done += 1
 
-    def start_thing(self, file: PreMediaContainer, ffmpeg: subprocess.Popen[str]) -> None:
+    def start_thing(self, file: MediaContainer, ffmpeg: subprocess.Popen[str]) -> None:
         with self.lock:
             self.cur_file = file
             self.cur_file_probe = do_ffprobe(file.path)
@@ -383,8 +383,8 @@ class CompressStatus(Thread):
                     if self._running:
                         self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
-        except Exception:
-            generate_error_message()
+        except Exception as ex:
+            generate_error_message(ex)
 
     def generate_final_message(self) -> None:
         print("TODO: Generate the final message is currently out of order.")
@@ -443,7 +443,7 @@ class CompressStatus(Thread):
         print_log_messages(log_strings, 0)
 
 
-def compress(files: List[PreMediaContainer]) -> None:
+def compress(files: List[MediaContainer]) -> None:
     assert compress_status is not None
 
     try:
@@ -497,8 +497,8 @@ def compress(files: List[PreMediaContainer]) -> None:
         stop_encoding = False
         compress_status.generate_final_message()
 
-    except Exception:
-        generate_error_message()
+    except Exception as ex:
+        generate_error_message(ex)
 
 
 def main() -> None:
@@ -529,7 +529,7 @@ def main() -> None:
         _ffprobes = [do_ffprobe(item.path) for item in _content]
 
     ffprobes = filter(lambda x: x is not None, _ffprobes)
-    content_and_score: List[Tuple[PreMediaContainer, int]] = []
+    content_and_score: List[Tuple[MediaContainer, int]] = []
     # TODO: Get rid of this.
     to_inefficient = database_helper.get_inefficient_videos()
     already_h265 = []

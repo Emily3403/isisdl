@@ -6,13 +6,15 @@ import enum
 import shutil
 import time
 from threading import Thread, Lock
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 import math
 
-from isisdl.backend.downloads import MediaContainer, DownloadThrottler, MediaType
-from isisdl.utils import clear, HumanBytes, args
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution
+from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution
+
+if TYPE_CHECKING:
+    from isisdl.backend.request_helper import MediaContainer
 
 
 def maybe_chop_off_str(st: str, width: int) -> str:
@@ -72,7 +74,7 @@ class Status(Thread):
 
     def run(self) -> None:
         while self._running:
-            log_strings = [self.message + " " + "." * self._i, ""]
+            log_strings = ["", self.message + " " + "." * self._i, ""]
             log_strings.extend(self.generate_log_message())
 
             if self._progress_bar and self.count is not None and self.total is not None:
@@ -135,17 +137,32 @@ class DownloadStatus(Status):
 
             self.finished_files += 1
 
-            if item.curr_size is not None:
-                self.total_downloaded += item.curr_size
-            elif item._exit:
+            if item.current_size is not None:
+                self.total_downloaded += item.current_size
+            elif item._stop:
                 self.total_downloaded += item.size
+
+    def progress_bar_container(self, container: MediaContainer) -> str:
+        if container.size in {0, -1}:
+            percent: float = 0
+        elif container.current_size is None:
+            percent = 0
+        else:
+            percent = container.current_size / container.size
+
+        # Sometimes this bug happens… I don't know why
+        if percent > 1:
+            percent = 1
+
+        progress_chars = int(percent * download_progress_bar_resolution)
+        return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
 
     def generate_log_message(self) -> List[str]:
         log_strings = []
         curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
         total_size = HumanBytes.format_str(self.total_size)
 
-        downloaded_bytes = self.total_downloaded + sum(item.curr_size for item in self.thread_files.values() if item is not None and item.curr_size is not None)
+        downloaded_bytes = self.total_downloaded + sum(item.current_size for item in self.thread_files.values() if item is not None and item.current_size is not None)
 
         log_strings.append("")
         log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {f'(throttled to {self.throttler.download_rate} MiB)' if self.throttler.download_rate != -1 else ''}")
@@ -153,9 +170,8 @@ class DownloadStatus(Status):
         if args.stream:
             log_strings.append("")
             if self.stream_file is not None:
-                log_strings.append(
-                    f"Stream: {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.location}"
-                )
+                log_strings.append(f"Stream: {self.progress_bar_container(self.stream_file)} "
+                                   f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.path}")
             else:
                 log_strings.append("Stream: Waiting")
         else:
@@ -173,15 +189,16 @@ class DownloadStatus(Status):
                     log_strings.append(thread_string)
                     continue
 
-                log_strings.append(f"{thread_string} {container.percent_done} [ {HumanBytes.format_pad(container.curr_size)} | {HumanBytes.format_pad(container.size)} ] - {container.location}")
+                log_strings.append(
+                    f"{thread_string} {self.progress_bar_container(container)} [ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ] - {container.path}")
                 pass
 
             # Optional streaming info
             if self.stream_file is not None:
                 log_strings.append("")
                 log_strings.append(
-                    f"Stream:  {self.stream_file.percent_done} [ {HumanBytes.format_pad(self.stream_file.curr_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                    f" - {self.stream_file.location}")
+                    f"Stream:  {self.progress_bar_container(self.stream_file)} [ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
+                    f" - {self.stream_file.path}")
             else:
                 log_strings.extend(["", ""])
 
@@ -239,11 +256,11 @@ class RequestHelperStatus(Status):
         if self.status != StatusOptions.getting_extern:
             return []
 
-        from isisdl.backend.request_helper import external_links, PreMediaContainer
+        from isisdl.backend.request_helper import external_links, MediaContainer
         video_done, video_total, extern_done, extern_total = 0, 0, 0, 0
 
         for link in external_links:
-            container = PreMediaContainer.from_dump(link.url)
+            container = MediaContainer.from_dump(link.url)
 
             if link.media_type == MediaType.video:
                 video_total += 1

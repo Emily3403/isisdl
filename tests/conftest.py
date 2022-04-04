@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any
 
 from pytest import fixture
@@ -9,7 +10,7 @@ from isisdl.utils import startup, path, User
 
 
 def pytest_configure() -> None:
-    assert path() == os.path.join(os.path.expanduser("~"), "testisisdl")
+    assert path() == Path(os.path.expanduser("~"), "testisisdl")
     startup()
 
 
