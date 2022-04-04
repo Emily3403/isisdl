@@ -317,8 +317,11 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     allowed_chars = set(string.ascii_letters + string.digits + ".")
 
     for container in content:
+        if container.checksum is None and container.size == 0:
+            continue
+
         assert container.checksum is not None
-        assert container.size != -1
+        assert container.size != 0 and container != -1
 
         existing_file = Path(container.path)
         assert existing_file.exists()

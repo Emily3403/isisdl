@@ -329,6 +329,7 @@ class MediaContainer:
         self.container.checksum = calculate_local_checksum(Path(self.location))
         self.container.dump()
         self.done = True
+        self.container.size = self.size
 
         return None
 
