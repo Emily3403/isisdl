@@ -276,8 +276,8 @@ global_vars = globals()
 
 testing_download_sizes = {
     1: 3_000_000_000,  # Video
-    2: 1_000_000_000,  # Documents
-    3: 1_000_000_000  # Extern
+    2: 10_000_000_000,  # Documents
+    3: 10_000_000_000  # Extern
 }
 
 # </ Test Options >
