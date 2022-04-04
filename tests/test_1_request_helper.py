@@ -322,8 +322,11 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
         if container.checksum is None and container.size == 0:
             continue
 
+        if container.size == 0 or container.size == -1:
+            continue
+
         assert container.checksum is not None
-        assert container.size != 0 and container != -1
+        assert container.size != 0 and container.size != -1
 
         existing_file = Path(container.path)
         assert existing_file.exists()
