@@ -381,7 +381,7 @@ Please confirm that this is okay. [y/n]""")
     init_wizard()
     config_wizard()
 
-    sync_database._main()
+    sync_database.main()
 
     return True
 
