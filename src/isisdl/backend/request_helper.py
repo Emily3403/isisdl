@@ -757,6 +757,7 @@ class CourseDownloader:
             notifier.loop()
 
     def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+        # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
         def download(file: MediaContainer) -> None:

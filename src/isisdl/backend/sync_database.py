@@ -122,7 +122,7 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
     for file in content:
         files_for_course[course_id_path_mapping[file.course_id]][file.size].append(file)
 
-    with ThreadPoolExecutor(cpu_count()) as ex:
+    with ThreadPoolExecutor(cpu_count() * 2) as ex:
         files = list(ex.map(get_it, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
 
     num_recovered, num_unchanged, num_corrupted = 0, 0, 0
@@ -161,7 +161,7 @@ def restore_database_state(content: List[PreMediaContainer], helper: RequestHelp
     #     file.unlink()
 
 
-def _main() -> None:
+def main() -> None:
     user = get_credentials()
 
     with RequestHelperStatus() as status:
@@ -172,18 +172,3 @@ def _main() -> None:
         restore_database_state(content, helper, status)
 
     # delete_missing_files_from_database(helper)
-
-
-def main() -> None:
-    acquire_file_lock_or_exit()
-    if is_first_time:
-        import isisdl.bin.config as config_run
-        print("No database found. Running the config wizard ...\n\nPress Enter to continue\n")
-        input()
-        config_run.init_wizard()
-
-    _main()
-
-
-if __name__ == "__main__":
-    main()

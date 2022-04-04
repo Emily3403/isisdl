@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import isisdl.backend.sync_database as sync_database
+from isisdl.backend import sync_database
 import isisdl.bin.compress as compress
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
@@ -27,7 +27,7 @@ Please press enter to continue.
         input()
         init_wizard()
         config_wizard()
-        sync_database._main()
+        sync_database.main()
 
     elif database_helper.get_database_version() < config.default("database_version"):
         if migrate_database() is False:
@@ -60,9 +60,11 @@ Please press enter to continue.
 
     if args.sync:
         sync_database.main()
+        exit(0)
 
     elif args.compress:
         compress.main()
+        exit(0)
 
     elif args.subscribe:
         print("""Attention:
@@ -77,9 +79,11 @@ Please press enter to continue.
 
         input()
         subscribe_to_all_courses()
+        exit(0)
 
     elif args.unsubscribe:
         unsubscribe_from_courses()
+        exit(0)
 
     else:
         # Main routine

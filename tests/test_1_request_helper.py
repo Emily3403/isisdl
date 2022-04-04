@@ -299,7 +299,7 @@ def get_content_to_download(request_helper: RequestHelper) -> List[PreMediaConta
 
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
-    args.num_threads = 16
+    args.num_threads = 4
 
     # Test without filename replacing
     config.filename_replacing = True
