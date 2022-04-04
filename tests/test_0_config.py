@@ -7,7 +7,7 @@ from yaml import safe_load
 from isisdl.backend.crypt import decryptor
 from isisdl.backend.request_helper import RequestHelper
 from isisdl.utils import config, User, export_config, startup
-from isisdl.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
+from isisdl.backend.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
 from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
 
 
@@ -100,7 +100,7 @@ def authentication_prompt_with_password(monkeypatch: Any, username: str, passwor
     choices = iter(["1", username])
     passwords = iter([password, additional_password, additional_password])
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
-    monkeypatch.setattr("isisdl.bin.config.getpass", lambda _=None: next(passwords))
+    monkeypatch.setattr("isisdl.backend.config.getpass", lambda _=None: next(passwords))
 
     authentication_prompt()
 

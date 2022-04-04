@@ -375,7 +375,7 @@ Please confirm that this is okay. [y/n]""")
     print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
     input()
 
-    from isisdl.config import config_wizard, init_wizard
+    from isisdl.backend.config import config_wizard, init_wizard
     from isisdl.backend import sync_database
 
     init_wizard()

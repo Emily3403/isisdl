@@ -8,7 +8,7 @@ from typing import Any, List, Dict, Set
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.downloads import MediaType
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, CourseDownloader, check_for_conflicts_in_files
-from isisdl.utils import path, args, User, config, startup, database_helper
+from isisdl.utils import path, args, User, config, startup, database_helper, calculate_local_checksum
 from isisdl.settings import database_file_location, lock_file_location, testing_download_sizes, env_var_name_username, env_var_name_password
 
 
@@ -304,23 +304,33 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     # Test without filename replacing
     config.filename_replacing = True
     request_helper.make_course_paths()
+    os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
+    os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
 
     content = get_content_to_download(request_helper)
     monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None, __=None: content)
 
-    os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
-    os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
+    # The main entry point
     CourseDownloader().start()
 
     # Now check if everything was downloaded successfully
     allowed_chars = set(string.ascii_letters + string.digits + ".")
+
     for container in content:
-        assert os.path.exists(container.path)
-        assert os.stat(container.path).st_size == container.size
+        assert container.checksum is not None
+        assert container.size != -1
 
-        # The full path only consists of allowed chars
-        assert all(c for item in Path(container.path).parts[1:] for c in item if c not in allowed_chars)
+        existing_file = Path(container.path)
+        assert existing_file.exists()
+        assert existing_file.stat().st_size == container.size
+        assert all(c for item in existing_file.parts[1:] for c in item if c not in allowed_chars)
 
+        dump_container = PreMediaContainer.from_dump(container.url)
+        assert isinstance(dump_container, PreMediaContainer)
+        assert calculate_local_checksum(existing_file) == container.checksum == dump_container.checksum
+        assert container == dump_container
+
+    # Now we do ...
     prev_urls: Set[str] = set()
     container_mapping = {item.url: item for item in content}
     for item in database_helper.get_state()["fileinfo"]:
