@@ -8,7 +8,7 @@ from typing import Any, List, Dict, Set
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.downloads import MediaType
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer, CourseDownloader, check_for_conflicts_in_files
-from isisdl.backend.utils import path, args, User, config, startup, database_helper
+from isisdl.utils import path, args, User, config, startup, database_helper
 from isisdl.settings import database_file_location, lock_file_location, testing_download_sizes, env_var_name_username, env_var_name_password
 
 

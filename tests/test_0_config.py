@@ -6,8 +6,8 @@ from yaml import safe_load
 
 from isisdl.backend.crypt import decryptor
 from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import config, User, export_config, startup
-from isisdl.bin.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
+from isisdl.utils import config, User, export_config, startup
+from isisdl.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
 from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
 
 
@@ -26,7 +26,7 @@ def assert_config_expected(
         update_policy: Optional[Any] = None,
         telemetry_policy: Optional[Any] = None,
         **_: Any) -> None:
-    from isisdl.backend.utils import config
+    from isisdl.utils import config
 
     if password_encrypted is not None:
         assert config.password_encrypted == password_encrypted

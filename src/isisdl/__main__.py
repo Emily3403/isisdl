@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 from isisdl.backend import sync_database
-import isisdl.bin.compress as compress
+import isisdl.compress as compress
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.backend.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
     config, migrate_database
-from isisdl.bin.config import init_wizard, config_wizard
+from isisdl.config import init_wizard, config_wizard
 from isisdl.settings import is_first_time
 from isisdl.settings import is_online
 from isisdl.version import __version__

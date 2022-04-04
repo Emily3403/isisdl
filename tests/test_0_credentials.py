@@ -3,7 +3,7 @@ import string
 from typing import Tuple, Any
 
 from isisdl.backend.crypt import get_credentials, store_user
-from isisdl.backend.utils import config, User
+from isisdl.utils import config, User
 from isisdl.settings import env_var_name_username, env_var_name_password
 
 

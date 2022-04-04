@@ -14,8 +14,7 @@ from typing import List, Tuple, Optional, Dict, DefaultDict
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
 from isisdl.backend.status import SyncStatus, RequestHelperStatus
-from isisdl.backend.utils import path, calculate_local_checksum, database_helper, sanitize_name, acquire_file_lock_or_exit, do_ffprobe
-from isisdl.settings import is_first_time
+from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe
 
 
 # TODO: Check how long this takes

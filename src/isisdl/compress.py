@@ -19,7 +19,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import MediaType
 from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
 from isisdl.backend.status import print_log_messages, RequestHelperStatus
-from isisdl.backend.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
+from isisdl.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
     compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time, error_text
 

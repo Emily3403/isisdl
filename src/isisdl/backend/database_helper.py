@@ -17,7 +17,7 @@ class DatabaseHelper:
     lock = Lock()
 
     def __init__(self) -> None:
-        from isisdl.backend.utils import path
+        from isisdl.utils import path
         self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
         self.cur = self.con.cursor()
         self.create_default_tables()
@@ -59,7 +59,7 @@ class DatabaseHelper:
         return res
 
     def get_database_version(self) -> int:
-        from isisdl.backend.utils import Config
+        from isisdl.utils import Config
 
         config = self.get_config()
         if "database_version" in config:
@@ -149,7 +149,7 @@ class DatabaseHelper:
 
             data.append(url)
             if len(data) != len(set(data)):
-                from isisdl.backend.utils import logger
+                from isisdl.utils import logger
                 logger.message("Assertion failed: len(data) != len(set(data))")
 
             self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("bad_url_cache", json.dumps(data)))

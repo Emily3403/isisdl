@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadThrottler
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
 from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing
 
 ignored_urls = {

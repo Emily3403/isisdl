@@ -6,7 +6,7 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from isisdl.backend.utils import User, config, logger
+from isisdl.utils import User, config, logger
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, error_text
 
 last_password: Optional[str] = None

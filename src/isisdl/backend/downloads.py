@@ -17,7 +17,7 @@ from typing import Optional, List, Any, Iterable, Dict, TYPE_CHECKING, cast
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.backend.utils import args, User, calculate_local_checksum, database_helper, config
+from isisdl.utils import args, User, calculate_local_checksum, database_helper, config
 from isisdl.settings import download_progress_bar_resolution, download_chunk_size, num_tries_download, sleep_time_for_isis, download_timeout, download_timeout_multiplier, \
     token_queue_download_refresh_rate, throttler_low_prio_sleep_time, error_text, token_queue_refresh_rate
 

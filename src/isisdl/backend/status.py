@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any
 import math
 
 from isisdl.backend.downloads import MediaContainer, DownloadThrottler, MediaType
-from isisdl.backend.utils import clear, HumanBytes, args
+from isisdl.utils import clear, HumanBytes, args
 from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution
 
 

@@ -15,7 +15,7 @@ from typing import Any, DefaultDict
 from cryptography.hazmat.primitives.hashes import SHA3_512
 from yaml import safe_load, YAMLError
 
-import isisdl.bin.autorun
+import isisdl.autorun
 
 # The directory where everything lives in.
 
@@ -47,7 +47,7 @@ is_windows = platform.system() == "Windows"
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
 # Check if being automatically run
-is_autorun = sys.argv[0] == isisdl.bin.autorun.__file__
+is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
 # TODO: Add a setting for forcing characters to be ext4 / ntfs
 
