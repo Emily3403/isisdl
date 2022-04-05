@@ -5,8 +5,9 @@ import datetime
 import enum
 import shutil
 import time
+from collections import defaultdict
 from threading import Thread, Lock
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, DefaultDict
 
 import math
 
@@ -14,7 +15,7 @@ from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import MediaContainer
+    from isisdl.backend.request_helper import MediaContainer, PreMediaContainer
 
 
 def maybe_chop_off_str(st: str, width: int) -> str:
@@ -217,24 +218,29 @@ class StatusOptions(enum.Enum):
     startup = 0
     authenticating = 1
     getting_content = 2
-    getting_extern = 3
+    building_cache = 3
     done = 4
 
 
 class RequestHelperStatus(Status):
     status: StatusOptions
+    files: List[PreMediaContainer]
 
     def __init__(self) -> None:
         self.set_status(StatusOptions.startup)
+        self.files = []
         super().__init__()
 
     def set_total(self, total: int) -> None:
         self.total = total
 
+    def set_build_cache_files(self, files: List[PreMediaContainer]) -> None:
+        self.files = files
+
     def set_status(self, status: StatusOptions) -> None:
         self._i = 0
         self.status = status
-        self.count = 0 if status == StatusOptions.getting_content or status == StatusOptions.getting_extern else None
+        self.count = 0 if status == StatusOptions.getting_content or status == StatusOptions.building_cache else None
 
         if self.status == StatusOptions.startup:
             self.message = "Starting up"
@@ -245,34 +251,21 @@ class RequestHelperStatus(Status):
         elif self.status == StatusOptions.getting_content:
             self.message = "Getting the content of the Courses"
 
-        elif self.status == StatusOptions.getting_extern:
-            # TODO: This is not accurate
-            self.message = "Sending webrequests to external websites for additional content"
+        elif self.status == StatusOptions.building_cache:
+            self.message = "Building request cache for files"
 
         else:
             self.message = ""
 
     def generate_log_message(self) -> List[str]:
-        if self.status != StatusOptions.getting_extern:
+        if self.status != StatusOptions.building_cache:
             return []
 
-        from isisdl.backend.request_helper import external_links, MediaContainer
-        video_done, video_total, extern_done, extern_total = 0, 0, 0, 0
+        mapping: DefaultDict[MediaType, int] = defaultdict(int)
 
-        for link in external_links:
-            container = MediaContainer.from_dump(link.url)
-
-            if link.media_type == MediaType.video:
-                video_total += 1
-                if container is not True:
-                    video_done += 1
-
-            elif link.media_type == MediaType.extern:
-                extern_total += 1
-                if container is not True:
-                    extern_done += 1
+        for file in self.files:
+            mapping[file.media_type] += 1
 
         return [
-            f"({video_done:>{int(math.log10(video_total or 1)) + 1}} / {video_total} videos, "
-            f"{extern_done:>{int(math.log10(extern_total or 1))}} / {extern_total} external links, will be cached)", ""
+            "(" + ", ".join(f"{num} {typ}{'s' if num > 1 else ''}" for typ, num in mapping.items()) + ", will be cached)"
         ]

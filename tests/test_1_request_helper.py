@@ -147,7 +147,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     #
     # assert prev_ids.difference(recovered_ids) == set()
 
-# def sample_files(files: List[PreMediaContainer], num: int) -> List[Path]:
+# def sample_files(files: List[MediaContainer], num: int) -> List[Path]:
 #     sizes = {item.size for item in files}
 #     new_files = [item for item in Path(path()).rglob("*") if item.is_file() and item.stat().st_size in sizes]
 #     random.shuffle(files)

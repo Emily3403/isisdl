@@ -1155,6 +1155,18 @@ class MediaType(enum.Enum):
 
         return ""
 
+    def __str__(self) -> str:
+        if self == MediaType.video:
+            return "video"
+        elif self == MediaType.document:
+            return "document"
+        elif self == MediaType.extern:
+            return "external link"
+        elif self == MediaType.corrupted:
+            return "corrupted file"
+
+        assert False
+
     @staticmethod
     def list_dirs() -> Iterable[str]:
         return "Videos", "Extern"

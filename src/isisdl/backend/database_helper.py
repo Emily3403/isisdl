@@ -164,6 +164,9 @@ class DatabaseHelper:
             if len(data) == 0:
                 return []
 
+            if data[0] is None:
+                return []
+
             return cast(List[str], json.loads(data[0]))
 
     def get_cached_pre_containers(self, course_id: int) -> Dict[str, int]:

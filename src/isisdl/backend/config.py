@@ -14,8 +14,6 @@ from isisdl.settings import is_windows, timer_file_location, working_dir_locatio
 was_in_configuration = False
 
 
-# TODO: Add a prompt for absolute location of downloads or only names
-
 def stored_prompt(prev: Any, allowed: Set[str]) -> None:
     if prev is None:
         return
@@ -469,7 +467,6 @@ def blacklist_prompt() -> None:
     RequestHelper(user).get_courses()
 
 
-# TODO: Pytest this... maybe
 def rename_courses_prompt() -> None:
     clear()
     print("""Do you want to rename any of your courses?
@@ -642,12 +639,10 @@ def full_filename_prompt() -> None:
 
 For example:
 
-`/home/emily/isisdl/.pdf`
-or
-`.pdf`
+`/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf.pdf`
+vs
+`Week 8-1.pdf.pdf`
 """)
-    # TODO: Example
-
     bool_prompt("absolute_path_filename")
 
 

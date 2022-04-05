@@ -10,16 +10,17 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from itertools import repeat
 from pathlib import Path
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union, Iterable
+from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union, Iterable, DefaultDict
 from urllib.parse import urlparse
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls, \
     DownloadThrottler, MediaType
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, _testing_bad_urls
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, _testing_bad_urls, url_finder, isis_ignore
 
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
@@ -31,58 +32,6 @@ from src.isisdl.utils import calculate_local_checksum
 ExternalLink = namedtuple("ExternalLink", "url course media_type name")
 external_links: Set[ExternalLink] = set()
 num_uncached_external_links = 0
-
-# Regex copied from https://gist.github.com/gruber/8891611
-url_finder = re.compile(r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.]
-(?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br
-|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk
-|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne
-|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr
-|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)
-(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.]
-(?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs
-|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm
-|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf
-|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt
-|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")
-
-# TODO: Get rid of these / factor them into one big blob
-isis_ignored = re.compile(
-    ".*(?:"
-    # Ignore mod/{whatever}
-    "mod/(?:"
-    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-    "page|data|ratingallocate|book"
-    ")"
-    # Ignore other websites
-    "|tu-berlin.zoom.us"
-    "|arm.com/products"
-    ")/.*")
-
-ignored_urls = {
-    "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
-    "https://isis.tu-berlin.de/mod/resource/view.php?id=910864",
-}
-
-known_bad_isis_urls = {
-    "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
-}
-
-known_bad_extern_urls = {
-    "https://www.sese.tu-berlin.de/kloes",
-    "https://www.qemu.org/docs/master/system/index.html",
-    "https://developer.arm.com/documentation/ihi0042/j/?lang=en",
-    "http://infocenter.arm.com/help/topic/com.arm.doc.qrc0001m/QRC0001_UAL.pdf",
-    "https://gcc.gnu.org/onlinedocs/gcc-10.2.0/gcc/",
-    "https://sourceware.org/gdb/current/onlinedocs/gdb/",
-    "https://elinux.org/BCM2835_datasheet_errata",
-    "http://www.gnu.org/software/make/manual/make.html",
-    "http://de.wikibooks.org/wiki/C-Programmierung",
-    "http://openbook.galileocomputing.de/c_von_a_bis_z/",
-    "https://www.qemu.org/",
-    "https://sourceware.org/binutils/docs-2.35/",
-    "https://developer.arm.com/documentation/ddi0406/latest",
-}
 
 
 class SessionWithKey(Session):
@@ -177,6 +126,37 @@ class SessionWithKey(Session):
         return "~Session~"
 
 
+class PreMediaContainer:
+    url: str
+    name: Optional[str]
+    time: Optional[int]
+    size: Optional[int]
+    course: Course
+    media_type: MediaType
+    is_cached: bool
+    parent_path: Path
+
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
+        relative_location = (relative_location or "").strip("/")
+        if config.make_subdirs is False:
+            relative_location = ""
+
+        if url.endswith("?forcedownload=1"):
+            url = url[:-len("?forcedownload=1")]
+
+        self.url = url
+        self.name = name
+        self.time = time
+        self.size = size
+        self.course = course
+        self.media_type = media_type
+        self.is_cached = url in database_helper.get_bad_urls() or database_helper.get_pre_container_by_url(url) is not None
+        self.parent_path = course.path(sanitize_name(relative_location))
+
+    def __repr__(self) -> str:
+        return f"{self.name}: {self.course}"
+
+
 @dataclass
 class MediaContainer:
     _name: str
@@ -189,6 +169,7 @@ class MediaContainer:
     size: int
     checksum: Optional[str] = None
     current_size: Optional[int] = None
+    already_downloaded: bool = False
     _stop: bool = False
 
     @classmethod
@@ -213,7 +194,121 @@ class MediaContainer:
 
         return container
 
-    # TODO: Add the verification also for Documents + if status code != 200: corrupted
+    @classmethod
+    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus]) -> Optional[MediaContainer]:
+        if container.url in database_helper.get_bad_urls():
+            if status is not None:
+                status.done()
+            return None
+
+        info = database_helper.get_pre_container_by_url(container.url)
+        if info is not None:
+            ret = cls(*info)
+            ret.media_type = MediaType(ret.media_type)
+            ret.path = Path(ret.path)
+            ret.already_downloaded = True
+            ret.course = RequestHelper.course_id_mapping[ret.course]  # type: ignore
+            if status is not None:
+                status.done()
+
+            return ret
+
+        # Now query the url to get more information about the container
+        download_url = ""
+        if "tu-berlin.hosted.exlibrisgroup.com" in container.url:
+            pass
+
+        elif "https://drive.google.com/" in container.url:
+            drive_id = parse_google_drive_url(container.url)
+            if drive_id is None:
+                return None
+
+            temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
+
+            try:
+                con = session.get_(temp_url, stream=True)
+            except Exception:
+                if status is not None:
+                    status.done()
+                return None
+
+            if con is None:
+                if status is not None:
+                    status.done()
+                return None
+
+            if "Content-Disposition" in con.headers:
+                # This is the file
+                download_url = temp_url
+            else:
+                _url = get_url_from_gdrive_confirmation(con.text)
+                if _url is None:
+                    if status is not None:
+                        status.done()
+                    return None
+                download_url = _url
+
+            con.close()
+
+        elif "tubcloud.tu-berlin.de" in container.url:
+            if container.url.endswith("/download"):
+                download_url = container.url
+            else:
+                download_url = container.url + "/download"
+
+        try:
+            con = session.get_(download_url or container.url, stream=True)
+        except Exception:
+            if status is not None:
+                status.done()
+            return None
+
+        if con is None:
+            database_helper.add_bad_url(container.url)
+            if status is not None:
+                status.done()
+            return None
+
+        if download_url == "":
+            download_url = container.url
+
+        media_type = container.media_type
+
+        if container.name is not None:
+            name = container.name
+        else:
+            if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
+                name = maybe_names[0]
+            else:
+                name = os.path.basename(container.url)
+
+        if container.size is not None:
+            size = container.size
+        else:
+            if "Content-Length" not in con.headers:
+                size = -1
+                media_type = MediaType.corrupted
+            else:
+                size = int(con.headers["Content-Length"])
+
+        if container.time is not None:
+            time = container.time
+        elif "Last-Modified" in con.headers:
+            time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
+        else:
+            time = int(datetime.now().timestamp())
+
+        if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+            media_type = MediaType.corrupted
+
+        ret = cls(name, container.url, download_url, container.parent_path.joinpath(name), time, container.course, media_type, size)
+        con.close()
+
+        if status is not None:
+            status.done()
+
+        return ret
+
     @classmethod
     def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[MediaContainer]:
         container = cls.from_dump(url)
@@ -222,10 +317,6 @@ class MediaContainer:
 
         if isinstance(container, MediaContainer):
             return container
-
-        if isis_ignored.match(url):
-            database_helper.add_bad_url(url)
-            return None
 
         # Now check if some things like authentication / form post have to be done
         download_url = ""
@@ -292,7 +383,7 @@ class MediaContainer:
 
             location = course.path(sanitize_name(relative_location), sanitize_name(name))
 
-            if "" in con.headers:
+            if "Last-Modified" in con.headers:
                 time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
             else:
                 time = int(datetime.now().timestamp())
@@ -350,7 +441,6 @@ class MediaContainer:
 
         if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
             logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
-            pass
 
         return cls(name, url, download_url, location, last_modified, course, MediaType.document, size)
 
@@ -455,8 +545,6 @@ class Course:
     name: str
     course_id: int
 
-
-
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:
         old_name = cast(str, info["displayname"])
@@ -477,9 +565,9 @@ class Course:
         for item in MediaType.list_dirs():
             os.makedirs(self.path(item), exist_ok=True)
 
-    def download_videos(self, s: SessionWithKey) -> None:
+    def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
         if config.download_videos is False:
-            return
+            return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
         # Thank you isia-tub for this data <3
@@ -491,54 +579,49 @@ class Course:
 
         videos_res = s.get_(url, params={"sesskey": s.key}, json=video_data)
         if videos_res is None:
-            return
+            return []
 
         videos_json = videos_res.json()[0]
 
         if videos_json["error"]:
-            return
+            return []
 
         videos_json = videos_json["data"]["videos"]
         video_urls = [item["url"] for item in videos_json]
         video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
 
-        external_links.update({ExternalLink(item, self, MediaType.video, name) for item, name in zip(video_urls, video_names)})
+        return [PreMediaContainer(url, self, MediaType.video, name) for url, name in zip(video_urls, video_names)]
 
-    def download_documents(self, helper: RequestHelper) -> List[MediaContainer]:
+    def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
         if content is None:
             return []
 
         content = cast(List[Dict[str, Any]], content)
-        all_content: List[MediaContainer] = []
+        all_content: List[PreMediaContainer] = []
 
         for week in content:
             module: Dict[str, Any]
             for module in week["modules"]:
+                # Check if the description contains url's to be followed
                 if "description" in module:
                     links = url_finder.findall(module["description"])
                     for link in links:
-                        if link in ignored_urls or link in bad_urls:
-                            continue
-
                         parse = urlparse(link)
                         if parse.scheme and parse.netloc and config.follow_links:
-                            external_links.add(ExternalLink(link, self, MediaType.extern, None))
+                            all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
 
                 if "url" not in module:
                     continue
 
                 url: str = module["url"]
-
-                if url in ignored_urls or url in bad_urls:
-                    continue
-
-                ignore = isis_ignored.match(url)
+                ignore = isis_ignore.match(url)
 
                 if ignore is not None:
                     # Blacklist hit
                     continue
 
+                # TODO: Check if any assertions fail
                 if re.match(".*mod/(?:folder|resource)/.*", url) is None:
                     # Probably the black/white- list didn't match.
                     logger.message(f"""Assertion failed: re.match(".*mod/(?:folder|resource)/.*", url) is None\n\nCurrent url: {url}""")
@@ -553,16 +636,16 @@ class Course:
                 if "contents" in module:
                     for file in module["contents"]:
                         if config.follow_links and "type" in file and file["type"] == "url":
-                            external_links.add(ExternalLink(file["fileurl"], self, MediaType.extern, None))
-                        elif file["fileurl"] in bad_urls:
-                            pass
+                            # TODO: Maybe name?
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
-                            all_content.append(MediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
 
                 if len(all_content) == prev_len:
-
-                    if url not in known_bad_isis_urls:
-                        logger.message("""Assertion failed: url not in known_bad_urls""")
+                    if url not in {
+                        "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
+                    }:
+                        logger.message(f"""Assertion failed: url ({url}) not in known_bad_urls""")
                         pass
 
         return all_content
@@ -693,7 +776,7 @@ class RequestHelper:
                 os.makedirs(course.path(), exist_ok=True)
             course.make_directories()
 
-    def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[MediaContainer]:
+    def download_content(self, status: Optional[RequestHelperStatus] = None) -> Dict[MediaType, List[MediaContainer]]:
         """
         Attention: This method does *not* take into account file conflicts.
         You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
@@ -703,94 +786,58 @@ class RequestHelper:
 
         if status is not None:
             status.set_status(StatusOptions.getting_content)
-
-        # The number of threads that are going to spawn
-        if status is not None:
             status.set_total(len(self.courses) + 1)
 
-        def download_documents(course: Course) -> List[MediaContainer]:
+        def download_course(course: Course) -> List[PreMediaContainer]:
             try:
-                course.download_videos(self.session)
-                ret = course.download_documents(self)
-                if status is not None:
-                    status.done()
-
-                return ret
+                return course.download_videos(self.session) + course.download_documents(self)
 
             except Exception as ex:
                 with exception_lock:
                     generate_error_message(ex)
                     return []
 
-        def download_mod_assign(ret: List[MediaContainer]) -> None:
-            try:
-                ret.extend(self.download_mod_assign())
+            finally:
                 if status is not None:
                     status.done()
 
-            except Exception as ex:
-                with exception_lock:
-                    generate_error_message(ex)
-
         if enable_multithread:
-            mod_assign: List[MediaContainer] = []
-            mod_assign_thread = Thread(target=download_mod_assign, args=(mod_assign,))
-            mod_assign_thread.start()
-
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                _documents = list(ex.map(download_documents, self.courses))
-
-            mod_assign_thread.join()
+                _documents = list(ex.map(download_course, self.courses))
 
         else:
-            mod_assign = self.download_mod_assign()
-            _documents = [course.download_documents(self) for course in self.courses]
+            _documents = [download_course(course) for course in self.courses]
 
-        documents = [item for row in _documents for item in row]
+        pre_containers = [item for row in _documents for item in row]
+        pre_containers.extend(self.download_mod_assign())
 
-        # Figure out how many urls to get
-        bad_urls = database_helper.get_bad_urls()
-        for item in external_links:
-            if item[0] not in bad_urls and database_helper.get_pre_container_by_url(item[0]) is None:
-                num_uncached_external_links += 1
+        if status is not None:
+            num_uncached = sum(1 for pre_container in pre_containers if not pre_container.is_cached)
+            if num_uncached:
+                status.set_total(num_uncached)
+                status.set_build_cache_files(pre_containers)
+                status.set_status(StatusOptions.building_cache)
 
-        if external_links:
-            if status is not None:
-                status.set_status(StatusOptions.getting_extern)
-                status.set_total(len(external_links))
+        # Now build the MediaContainers
+        if enable_multithread:
+            with ThreadPoolExecutor(extern_discover_num_threads) as ex:
+                _containers = list(ex.map(MediaContainer.from_pre_container, pre_containers, repeat(self.session), repeat(status)))
+        else:
+            _containers = [MediaContainer.from_pre_container(pre_container, self.session, status) for pre_container in pre_containers]
 
-        extern = self.download_extern(status)
+        containers = [item for item in _containers if item is not None]
+        mapping: DefaultDict[MediaType, List[MediaContainer]] = defaultdict(list)
 
-        videos = []
-        for thing in extern:
-            if thing.media_type == MediaType.video:
-                videos.append(thing)
-            else:
-                documents.append(thing)
-
-        all_files = [item for item in documents + mod_assign + videos if item.url not in _testing_bad_urls]
-        all_files = check_for_conflicts_in_files(all_files)
-
-        documents, extern, videos = [], [], []
-        for container in all_files:
-            if container.media_type == MediaType.document:
-                documents.append(container)
-            elif container.media_type == MediaType.extern:
-                extern.append(container)
-            elif container.media_type == MediaType.video:
-                videos.append(container)
-            elif container.media_type == MediaType.corrupted:
-                pass
-            else:
-                assert False
+        for container in containers:
+            mapping[container.media_type].append(container)
 
         # Download the newest files first
         def sort(lst: List[MediaContainer]) -> List[MediaContainer]:
             return sorted(lst, key=lambda x: x.time, reverse=True)
 
-        return sort(documents) + sort(extern) + sort(videos)
+        return {typ: sort(item) for typ, item in mapping.items()}
 
-    def download_mod_assign(self) -> List[MediaContainer]:
+    def download_mod_assign(self) -> List[PreMediaContainer]:
         all_content = []
         _assignments = self.post_REST('mod_assign_get_assignments')
         if _assignments is None:
@@ -800,16 +847,12 @@ class RequestHelper:
 
         allowed_ids = {item.course_id for item in self.courses}
         for _course in assignments["courses"]:
-            course = next((item for item in self.courses if item.course_id == _course["id"]), None)
-            if course is None:
-                logger.message("Assertion failed: course is None")
-                continue
-
             if _course["id"] in allowed_ids:
                 for assignment in _course["assignments"]:
                     for file in assignment["introattachments"]:
                         file["filepath"] = assignment["name"]
-                        all_content.append(MediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
+                        all_content.append(PreMediaContainer(file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                                             file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
 
         return all_content
 
@@ -821,7 +864,7 @@ class RequestHelper:
             if container is not None:
                 all_content.append(container)
 
-            if status is not None and status.status == StatusOptions.getting_extern:
+            if status is not None and status.status == StatusOptions.building_cache:
                 status.done()
 
         if external_links:
