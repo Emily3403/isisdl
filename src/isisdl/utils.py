@@ -37,14 +37,12 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
-    status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
+from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
+    extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
     error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, isisdl_executable, is_static, \
     enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text
 from isisdl.version import __version__
-
-from src.isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time
+from src.isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time, token_queue_refresh_rate
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer, RequestHelper
@@ -93,12 +91,12 @@ class Config:
     download_videos: bool
     filename_replacing: bool
     timer_enable: bool
-    throttle_rate: int
+    throttle_rate: Optional[int]
     throttle_rate_autorun: int
     update_policy: Optional[str]
     telemetry_policy: bool
     database_version: int
-    absolute_path_filename: bool  # TODO
+    absolute_path_filename: bool
 
     auto_subscribed_courses: Optional[List[int]]
 
@@ -133,9 +131,10 @@ class Config:
     _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Extra backup to maintain for tests
     _in_backup: bool = False
 
-    def __init__(self) -> None:
+    def __init__(self, _prev_config: Optional[Dict[str, Any]] = None) -> None:
         config_file_data = parse_config_file()
         stored_config = database_helper.get_config()
+        prev_config = _prev_config or {}
 
         # Filter out keys for settings
         for k, v in list(config_file_data.items()):
@@ -156,8 +155,11 @@ class Config:
                 assert isinstance(item["renamed_courses"], dict)
                 item["renamed_courses"] = {int(k): v for k, v in item["renamed_courses"].items()}
 
+        assert all(k in self.__slots__ for k in prev_config)
+
         Config.state.update(Config.default_config)
         Config.state.update(stored_config)
+        Config.state.update(prev_config)
         Config.state.update(config_file_data)
 
         # TODO: Verify types
@@ -181,9 +183,7 @@ class Config:
         return Config.state[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
-        ret = {name: getattr(self, name) for name in self.__slots__}
-        ret["username"] = User.sanitize_name(ret["username"])
-        return ret
+        return {name: getattr(self, name) for name in self.__slots__}
 
     def start_backup(self) -> None:
         Config._backup = self.to_dict()
@@ -372,22 +372,23 @@ Please confirm that this is okay. [y/n]""")
     while database_helper.get_database_version() < config.default("database_version"):
         eval(f"migrate_{database_helper.get_database_version()}_to_{database_helper.get_database_version() + 1}()")
 
+    # TODO: Implement hot reload
+
     os.unlink(path(database_file_location))
     database_helper.__init__()  # type: ignore
-    # TODO: This doesn't work. Why?
-    config = Config()
-    print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease restart me")
-    return True
 
-    # from isisdl.backend.config import config_wizard, init_wizard
-    # from isisdl.backend import sync_database
-    #
-    # init_wizard()
-    # config_wizard()
-    #
-    # sync_database.main()
-    #
-    # return True
+    config = Config(config.to_dict())
+    print("\nSuccessfully migrated. All of your previous settings have been saved.\nI will now guide you through the new configuration process.")
+
+    from isisdl.backend.config import config_wizard, init_wizard
+    from isisdl.backend import sync_database
+
+    init_wizard()
+    config_wizard()
+
+    sync_database.main()
+
+    return True
 
 
 def parse_google_drive_url(url: str) -> Optional[str]:
@@ -458,22 +459,6 @@ def run_cmd_with_error(args: List[str]) -> None:
         print(f"The command `{' '.join(result.args)}` exited with exit code {result.returncode}\n{result.stdout.decode()}{result.stderr.decode()}")
         print("\nPress enter to continue")
         input()
-
-
-def do_online_ffprobe(file: MediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
-    # TODO: This doesn't work
-    stream = helper.session.get_(file.download_url, stream=True)
-    if stream is None:
-        return None
-
-    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", "-"]
-
-    p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = p.communicate()
-    if p.returncode != 0:
-        return None
-
-    return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
 
 
 def do_ffprobe(file: Path) -> Optional[Dict[str, Any]]:
@@ -893,7 +878,7 @@ def calculate_local_checksum(filename: Path) -> str:
     with open(filename, "rb") as f:
         i = 1
         while True:
-            f.seek(checksum_base_skip ** i, 1)
+            # f.seek(checksum_base_skip ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
             if not data:
                 break
@@ -1043,29 +1028,35 @@ class Token:
 # TODO: Refactor into 2 queues, 1 streaming, 1 downloading.
 class DownloadThrottler(Thread):
     """
-    This class acts in a way that the download speed is capped at a certain maximum.
+    This class acts in a way that the download speed is capped at a certain maximum speed.
     It does so by handing out tokens, which are limited.
-    With every token you may download a chunk of size `download_chunk_size`.
+    With every token you may download a number of bytes.
     """
 
-    def __init__(self) -> None:
-        self.active_tokens: Queue[Token] = Queue()
-        self.used_tokens: Queue[Token] = Queue()
-        self.timestamps_tokens: List[float] = []
-        self._streaming_loc: Optional[Path] = None
+    download_queue: Queue[Token]
+    streaming_queue: Queue[Token]
+    used_tokens: Queue[Token]
+    timestamps_tokens: List[float]
+    download_rate: Optional[int]
+    refresh_rate: float
 
-        self.download_rate = args.download_rate or config.throttle_rate or -1
+    _streaming_loc: Optional[Path]
+
+    def __init__(self) -> None:
+        self.download_queue, self.streaming_queue, self.used_tokens = Queue(), Queue(), Queue()
+        self.timestamps_tokens = []
+        self._streaming_loc: Optional[Path] = None
+        self.download_rate = args.download_rate or config.throttle_rate
+        self.refresh_rate = token_queue_refresh_rate
 
         # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
         # Check if that will be the case and adapt it accordingly.
-
-        import isisdl.settings
         if self.download_rate != -1:
             while self.max_tokens() < args.num_threads:
-                isisdl.settings.token_queue_refresh_rate *= 2
+                self.refresh_rate *= 2
 
         for _ in range(self.max_tokens()):
-            self.active_tokens.put(Token())
+            self.download_queue.put(Token())
 
         # Dummy token used to maybe return it all the time.
         self.token = Token()
@@ -1092,7 +1083,7 @@ class DownloadThrottler(Thread):
                 # If a download limit is imposed hand out new tokens
                 try:
                     for _ in range(num):
-                        self.active_tokens.put(self.used_tokens.get(block=False))
+                        self.download_queue.put(self.used_tokens.get(block=False))
 
                 except (Full, Empty):
                     pass
@@ -1116,7 +1107,7 @@ class DownloadThrottler(Thread):
             if self.download_rate == -1:
                 return self.token
 
-            token = self.active_tokens.get()
+            token = self.download_queue.get()
             self.used_tokens.put(token)
 
             return token

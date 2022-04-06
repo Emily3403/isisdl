@@ -172,7 +172,7 @@ class DownloadStatus(Status):
             log_strings.append("")
             if self.stream_file is not None:
                 log_strings.append(f"Stream: {self.progress_bar_container(self.stream_file)} "
-                                   f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file.path}")
+                                   f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file}")
             else:
                 log_strings.append("Stream: Waiting")
         else:
@@ -191,7 +191,7 @@ class DownloadStatus(Status):
                     continue
 
                 log_strings.append(
-                    f"{thread_string} {self.progress_bar_container(container)} [ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ] - {container.path}")
+                    f"{thread_string} {self.progress_bar_container(container)} [ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ] - {container}")
                 pass
 
             # Optional streaming info
@@ -199,7 +199,7 @@ class DownloadStatus(Status):
                 log_strings.append("")
                 log_strings.append(
                     f"Stream:  {self.progress_bar_container(self.stream_file)} [ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                    f" - {self.stream_file.path}")
+                    f" - {self.stream_file}")
             else:
                 log_strings.extend(["", ""])
 

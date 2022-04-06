@@ -25,13 +25,8 @@ from isisdl.settings import enable_multithread, extern_discover_num_threads, is_
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from src.isisdl.settings import error_text, download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
-from src.isisdl.utils import calculate_local_checksum
-
-# TODO: is_cached as attribute of ExternalLink
-ExternalLink = namedtuple("ExternalLink", "url course media_type name")
-external_links: Set[ExternalLink] = set()
-num_uncached_external_links = 0
+from isisdl.settings import error_text, download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
+from isisdl.utils import calculate_local_checksum
 
 
 class SessionWithKey(Session):
@@ -175,8 +170,7 @@ class MediaContainer:
     @classmethod
     def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
         """
-        A return value of True indicates that the container does not exist, but should be downloaded.
-        A return value of False indicates that the container does not exist and should not be downloaded.
+        The `bool` return value indicates if the container should be downloaded.
         """
         if url in database_helper.get_bad_urls():
             return False
@@ -196,285 +190,128 @@ class MediaContainer:
 
     @classmethod
     def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus]) -> Optional[MediaContainer]:
-        if container.url in database_helper.get_bad_urls():
-            if status is not None:
-                status.done()
-            return None
-
-        info = database_helper.get_pre_container_by_url(container.url)
-        if info is not None:
-            ret = cls(*info)
-            ret.media_type = MediaType(ret.media_type)
-            ret.path = Path(ret.path)
-            ret.already_downloaded = True
-            ret.course = RequestHelper.course_id_mapping[ret.course]  # type: ignore
-            if status is not None:
-                status.done()
-
-            return ret
-
-        # Now query the url to get more information about the container
-        download_url = ""
-        if "tu-berlin.hosted.exlibrisgroup.com" in container.url:
-            pass
-
-        elif "https://drive.google.com/" in container.url:
-            drive_id = parse_google_drive_url(container.url)
-            if drive_id is None:
-                return None
-
-            temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
-
-            try:
-                con = session.get_(temp_url, stream=True)
-            except Exception:
-                if status is not None:
-                    status.done()
-                return None
-
-            if con is None:
-                if status is not None:
-                    status.done()
-                return None
-
-            if "Content-Disposition" in con.headers:
-                # This is the file
-                download_url = temp_url
-            else:
-                _url = get_url_from_gdrive_confirmation(con.text)
-                if _url is None:
-                    if status is not None:
-                        status.done()
-                    return None
-                download_url = _url
-
-            con.close()
-
-        elif "tubcloud.tu-berlin.de" in container.url:
-            if container.url.endswith("/download"):
-                download_url = container.url
-            else:
-                download_url = container.url + "/download"
-
         try:
+            maybe_container = MediaContainer.from_dump(container.url)
+            if isinstance(maybe_container, MediaContainer):
+                return maybe_container
+
+            elif maybe_container is False:
+                return None
+
+            # TODO: Can we check for 451 here?
+            if container.name is not None and container.time is not None and container.size is not None:
+                return cls(container.name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container.name)),
+                           container.time, container.course, container.media_type, container.size).dump()
+
+            # If there was not enough information to determine name, size and time for the container, get it.
+            download_url = None
+            if "tu-berlin.hosted.exlibrisgroup.com" in container.url:
+                pass
+
+            elif "https://drive.google.com/" in container.url:
+                drive_id = parse_google_drive_url(container.url)
+                if drive_id is None:
+                    return None
+
+                temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
+
+                try:
+                    con = session.get_(temp_url, stream=True)
+                    if con is None:
+                        raise ValueError
+                except Exception:
+                    return None
+
+                if "Content-Disposition" in con.headers:
+                    # This is the file
+                    download_url = temp_url
+                else:
+                    _url = get_url_from_gdrive_confirmation(con.text)
+                    if _url is None:
+                        if status is not None:
+                            status.done()
+                        return None
+                    download_url = _url
+
+                con.close()
+
+            elif "tubcloud.tu-berlin.de" in container.url:
+                if container.url.endswith("/download"):
+                    download_url = container.url
+                else:
+                    download_url = container.url + "/download"
+
             con = session.get_(download_url or container.url, stream=True)
-        except Exception:
-            if status is not None:
-                status.done()
-            return None
-
-        if con is None:
-            database_helper.add_bad_url(container.url)
-            if status is not None:
-                status.done()
-            return None
-
-        if download_url == "":
-            download_url = container.url
-
-        media_type = container.media_type
-
-        if container.name is not None:
-            name = container.name
-        else:
-            if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
-                name = maybe_names[0]
-            else:
-                name = os.path.basename(container.url)
-
-        if container.size is not None:
-            size = container.size
-        else:
-            if "Content-Length" not in con.headers:
-                size = -1
-                media_type = MediaType.corrupted
-            else:
-                size = int(con.headers["Content-Length"])
-
-        if container.time is not None:
-            time = container.time
-        elif "Last-Modified" in con.headers:
-            time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
-        else:
-            time = int(datetime.now().timestamp())
-
-        if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
-            media_type = MediaType.corrupted
-
-        ret = cls(name, container.url, download_url, container.parent_path.joinpath(name), time, container.course, media_type, size)
-
-        if status is not None:
-            status.done()
-
-        con.close()
-        ret.dump()
-        return ret
-
-    @classmethod
-    def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[MediaContainer]:
-        container = cls.from_dump(url)
-        if container is False:
-            return None
-
-        if isinstance(container, MediaContainer):
-            return container
-
-        # Now check if some things like authentication / form post have to be done
-        download_url = ""
-        if "tu-berlin.hosted.exlibrisgroup.com" in url:
-            pass
-
-        elif "https://drive.google.com/" in url:
-            # page = session.get_(url)
-            drive_id = parse_google_drive_url(url)
-            if drive_id is None:
-                return None
-
-            temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
-
-            try:
-                con = session.get_(temp_url, stream=True)
-            except Exception:
-                return None
-
             if con is None:
+                database_helper.add_bad_url(container.url)
                 return None
 
-            if "Content-Disposition" in con.headers:
-                # This is the file
-                download_url = temp_url
+            media_type = container.media_type
+            if not con.ok:
+                media_type = MediaType.corrupted
+
+            if container.name is not None:
+                name = container.name
             else:
-                _url = get_url_from_gdrive_confirmation(con.text)
-                if _url is None:
-                    return None
-                download_url = _url
-
-            con.close()
-
-        elif "tubcloud.tu-berlin.de" in url:
-            if url.endswith("/download"):
-                download_url = url
-            else:
-                download_url = url + "/download"
-
-        try:
-            con = session.get_(download_url or url, stream=True)
-        except Exception:
-            return None
-
-        if con is None:
-            database_helper.add_bad_url(url)
-            return None
-
-        if download_url == "":
-            download_url = url
-
-        if "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/")):
-            if filename is not None:
-                name = filename
-            else:
-                maybe_names = re.findall("filename=\"(.*?)\"", str(con.headers))
-                if maybe_names:
+                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
                     name = maybe_names[0]
                 else:
-                    name = os.path.basename(url)
+                    name = os.path.basename(container.url)
 
-            size = int(con.headers["Content-Length"])
-            relative_location = media_type.dir_name
+            if container.size is not None:
+                size = container.size
+            else:
+                if "Content-Length" not in con.headers:
+                    size = -1
+                    media_type = MediaType.corrupted
+                else:
+                    size = int(con.headers["Content-Length"])
 
-            location = course.path(sanitize_name(relative_location), sanitize_name(name))
-
-            if "Last-Modified" in con.headers:
+            if container.time is not None:
+                time = container.time
+            elif "Last-Modified" in con.headers:
                 time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
             else:
                 time = int(datetime.now().timestamp())
 
-            if download_url.endswith("?forcedownload=1"):
-                download_url = download_url[:-len("?forcedownload=1")]
+            if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+                media_type = MediaType.corrupted
 
-            container = MediaContainer(name, url, download_url, location, time, course, media_type, size)
+            con.close()
 
-        else:
-            database_helper.add_bad_url(url)
-            # if url not in known_bad_extern_urls:
-            #     logger.message(f"Assertion failed: url not ignored: {url}")
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(name), time, container.course, media_type, size).dump()
 
-        con.close()
-        if isinstance(container, MediaContainer):
-            container.dump()
-            return container
-
-            # An attempt at making streaming more transparent. The metadata of mp4 files is located at the beginning / end.
-            # If we download both at the startup, then vlc *should* just assume they are normal files.
-            # This, unfortunately does not work this way.
-            # TODO: Figure out why
-
-            # if container.media_type == MediaType.video:
-            #     with open(container.path, "wb") as f:
-            #         start_of_file = con.raw.read(video_discover_download_size, decode_content=True)
-            #         end_of_file = session.get(download_url, headers={"Range": f"bytes={container.size - video_discover_download_size}-{container.size}"}).content
-            #         f.write(start_of_file)
-            #         f.seek(container.size - len(end_of_file), 0)
-            #         f.write(end_of_file)
-
-        return None
-
-    @classmethod
-    def document_from_api(cls, name: str, url: str, download_url: str, course: Course, last_modified: int, relative_location: Optional[str] = "", size: int = -1) -> MediaContainer:
-        # Sanitize bad names
-        relative_location = relative_location or ""
-        relative_location = relative_location.strip("/")
-        if config.make_subdirs is False:
-            relative_location = ""
-
-        if relative_location:
-            if database_helper.get_checksum_from_url(url) is None:
-                os.makedirs(course.path(sanitize_name(relative_location)), exist_ok=True)
-
-        is_video = "mod/videoservice/file.php" in url
-        if is_video:
-            relative_location = os.path.join(relative_location, "Videos")
-
-        if url.endswith("?forcedownload=1"):
-            url = url[:-len("?forcedownload=1")]
-
-        location = course.path(sanitize_name(relative_location), sanitize_name(name))
-
-        if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
-            logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
-
-        return cls(name, url, download_url, location, last_modified, course, MediaType.document, size)
+        finally:
+            if status is not None:
+                status.done()
 
     @property
     def should_download(self) -> bool:
         if self.media_type == MediaType.corrupted:
             return False
 
+        # TODO: Remove
         assert self.size != 0
         assert self.size != -1
 
-        if os.stat(self.path).st_size != self.size:
+        # TODO: This could bite me in the ass if the stat-ed size is different from the actual (gzip)
+        if self.path.stat().st_size != self.size:
             return True
 
         maybe_container = MediaContainer.from_dump(self.url)
         if isinstance(maybe_container, bool):
             return maybe_container
 
-        if maybe_container.checksum is None:
-            return True
+        return maybe_container.checksum is None
 
-        if maybe_container.checksum != calculate_local_checksum(Path(self.path)):
-            return True
-
-        return False
-
-    def check_is_corrupted(self) -> bool:
-        pass
-
-    def dump(self) -> None:
+    def dump(self) -> MediaContainer:
         database_helper.add_pre_container(self)
+        return self
 
     def __str__(self) -> str:
+        if config.absolute_path_filename:
+            return str(self.path)
+
         return sanitize_name(self._name)
 
     def __repr__(self) -> str:
@@ -508,9 +345,8 @@ class MediaContainer:
             self.current_size = self.size
             return
 
-        # We copy in chunks to add the rate limiter and status indicator.
-        # This could also be done with `shutil.copyfileobj(…)`, but, with this approach, the download rate can be limited.
-        with open(self.path, "wb") as f:
+        # We copy in chunks so the download rate can be limited. This could also be done with `shutil.copyfileobj(…)`
+        with self.path.open("wb") as f:
             while True:
                 token = throttler.get(self.path)
 
@@ -537,8 +373,7 @@ class MediaContainer:
 
         # Only register the file after successfully downloading it.
         assert self.path.stat().st_size == self.size == self.current_size
-
-        self.checksum = calculate_local_checksum(Path(self.path))
+        self.checksum = calculate_local_checksum(self.path)
         self.dump()
 
 
@@ -785,7 +620,6 @@ class RequestHelper:
         Attention: This method does *not* take into account file conflicts.
         You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
         """
-        global num_uncached_external_links
         exception_lock = Lock()
 
         if status is not None:
@@ -853,27 +687,6 @@ class RequestHelper:
                         file["filepath"] = assignment["name"]
                         all_content.append(PreMediaContainer(file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
                                                              file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
-
-        return all_content
-
-    def download_extern(self, status: Optional[RequestHelperStatus]) -> List[MediaContainer]:
-        all_content = []
-
-        def add_extern_link(extern: ExternalLink) -> None:
-            container = MediaContainer.from_extern_link(extern.url, extern.course, self.session, extern.media_type, extern.name)
-            if container is not None:
-                all_content.append(container)
-
-            if status is not None and status.status == StatusOptions.building_cache:
-                status.done()
-
-        if external_links:
-            if enable_multithread:
-                with ThreadPoolExecutor(extern_discover_num_threads) as ex:
-                    list(ex.map(add_extern_link, external_links))
-            else:
-                for link in external_links:
-                    add_extern_link(link)
 
         return all_content
 
@@ -968,9 +781,9 @@ class CourseDownloader:
         if is_windows:
             return
 
-        return
+        # return
 
-        if sys.version_info >= (3, 10):
+        if sys.version_info >= (3, 2):
             # TODO: Figure out how to support python3.10
             return
 

@@ -175,7 +175,7 @@ class CompressStatus(Thread):
         for file in files:
             self.total_prev_size += file.size
 
-            actual_file_size = os.stat(file.path).st_size
+            actual_file_size = file.path.stat().st_size
             self.total_now_size += actual_file_size
 
             if database_helper.make_inefficient_file_name(file) in self.inefficient_videos:
@@ -296,7 +296,7 @@ class CompressStatus(Thread):
 
                                 cur_file = self.cur_file
                                 total_frames = int(video_stream['nb_frames'])
-                                prev_size = os.stat(cur_file.path).st_size
+                                prev_size = cur_file.path.stat().st_size
                                 try:
                                     current_size = os.stat(make_temp_filename(cur_file)).st_size
                                 except OSError:
@@ -398,26 +398,26 @@ class CompressStatus(Thread):
             "size_skipped": 0,
             "num_processed": 0,
             "num_skipped": 0,
-        } for course in self.helper.courses if any((file.course_id == course.course_id for file in self.files))}
+        } for course in self.helper.courses if any((file.course.course_id == course.course_id for file in self.files))}
 
         # TODO: Fix this
         # inefficient = database_helper.get_inefficient_videos()
 
         for file in self.files:
-            curr_size = os.stat(file.path).st_size
+            curr_size = file.path.stat().st_size
 
             # if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
             #     continue
 
-            infos[file.course_id]["total_size"] += file.size
+            infos[file.course.course_id]["total_size"] += file.size
 
             if file.size != curr_size:
-                infos[file.course_id]["size_compressed"] += curr_size
-                infos[file.course_id]["num_processed"] += 1
+                infos[file.course.course_id]["size_compressed"] += curr_size
+                infos[file.course.course_id]["num_processed"] += 1
 
             else:
-                infos[file.course_id]["size_skipped"] += curr_size
-                infos[file.course_id]["num_skipped"] += 1
+                infos[file.course.course_id]["size_skipped"] += curr_size
+                infos[file.course.course_id]["num_skipped"] += 1
 
         max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
         max_course_name_len = max(len(str(course)) for course in self.helper.courses)
@@ -471,7 +471,7 @@ def compress(files: List[MediaContainer]) -> None:
 
             ffmpeg = popen([
                 "ffmpeg",
-                "-i", file.path,
+                "-i", str(file.path),
                 "-y", "-loglevel", "warning", "-stats",
                 "-movflags", "use_metadata_tags", "-metadata", f"previous_size=\"{file.size}\"",
                 *ffmpeg_args,
@@ -486,7 +486,7 @@ def compress(files: List[MediaContainer]) -> None:
             compress_status.done_thing(ret_code == 0)
 
             if ret_code == 0:
-                os.replace(new_file_name, file.path)
+                file.path.replace(new_file_name)
 
             else:
                 try:

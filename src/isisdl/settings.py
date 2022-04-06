@@ -63,9 +63,8 @@ error_text = "\033[1;91mError!\033[0m"
 checksum_algorithm = sha256
 
 # The number of bytes sampled per iteration to compute a checksum
-checksum_num_bytes = 1024 * 4
+checksum_num_bytes = 1024 * 1024 * 4
 
-1
 checksum_base_skip = 2
 
 # -/- Checksum options ---
@@ -417,7 +416,7 @@ _testing_bad_urls = {
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile("""
 ".*mod/(?:"
-"forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm" 
+"forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
 "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book"
 ")/.*"
 """)
@@ -549,7 +548,7 @@ testing_download_sizes = {
     1: 5_000_000_000,  # Video
     2: 2_500_000_000,  # Documents
     3: 1_000_000_000,  # Extern
-    4: 0,              # Corrupted
+    4: 0,  # Corrupted
 }
 
 # </ Test Options >
