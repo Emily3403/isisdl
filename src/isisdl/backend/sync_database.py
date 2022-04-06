@@ -15,7 +15,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import SyncStatus, RequestHelperStatus
 from isisdl.settings import database_file_location, lock_file_location
-from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input
+from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType
 
 
 # TODO: Check how long this takes
@@ -118,7 +118,8 @@ def get_it(
             status.done()
 
 
-def restore_database_state(content: List[MediaContainer], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
+def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
+    content = [item for row in list(item for item in _content.values()) for item in row]
     filename_mapping = {file.path: file for file in content}
     files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 

@@ -2,6 +2,7 @@ import os
 import random
 import shutil
 import string
+from itertools import permutations
 from pathlib import Path
 from typing import Any, List, Dict, Set
 
@@ -44,29 +45,27 @@ def test_request_helper(request_helper: RequestHelper) -> None:
     assert len(request_helper.courses) > 5
 
 
-def chop_down_size(pre_containers: List[MediaContainer]) -> Dict[MediaType, List[MediaContainer]]:
-    possible: Dict[MediaType, List[MediaContainer]] = {MediaType.document: [], MediaType.extern: [], MediaType.video: []}
+def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[MediaType, List[MediaContainer]]:
+    ret_files: Dict[MediaType, List[MediaContainer]] = {typ: [] for typ in MediaType}
 
-    for typ, lst in possible.items():
-        containers = sorted([item for item in pre_containers if item.media_type == typ], key=lambda x: x.size)
-        weights = [i for i, _ in enumerate(containers)]
-
-        if not containers:
+    for (typ, files), ret in zip(files_type.items(), ret_files.values()):
+        if not files or sum(file.size for file in files) == 0:
             continue
 
-        while True:
-            choice = random.choices(containers, weights, k=1)[0]
+        files.sort()
+        cur_size = 0
+        max_size = testing_download_sizes[typ.value]
 
-            if sum(item.size for item in lst) + choice.size > testing_download_sizes[typ.value]:
-                break
+        while cur_size < max_size:
+            choice = random.choices(files, list(range(len(files))), k=1)[0]
+            ret.append(choice)
+            cur_size += choice.size
 
-            lst.append(choice)
-
-    return possible
+    return ret_files
 
 
 def get_content_to_download(request_helper: RequestHelper) -> List[MediaContainer]:
-    conflict_free = chop_down_size(check_for_conflicts_in_files(request_helper.download_content()))
+    conflict_free = chop_down_size(request_helper.download_content())
     return [item for row in conflict_free.values() for item in row]
 
 

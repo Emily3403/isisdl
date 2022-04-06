@@ -102,28 +102,23 @@ status_time = 0.1 if not is_windows else 0.75
 
 # --- Download options ---
 
-# Number of threads to discover video sizes
-# TODO: Experiment with sizes
-extern_discover_num_threads = 32
-
-# Sets the chunk size for a download.
+# Chunks of this size are read and saved to files.
 download_chunk_size = 2 ** 16
 
-video_discover_download_size = 2 ** 8
-
-# When ISIS is complaining that you are downloading too fast (Connection Aborted) ↓ s are waited.
-sleep_time_for_isis = 3
-
-# Will retry downloading an url ↓ times. If it fails, that MediaContainer will not get downloaded.
-num_tries_download = 4
+# Number of threads to discover sizes for urls
+extern_discover_num_threads = 32
 
 # Will fail a download if ISIS is not responding in
 """
 for i in range(num_tries_download):
     download_timeout + download_timeout_multiplier ** (0.5 * i)
 """
+num_tries_download = 4
 download_timeout = 6
 download_timeout_multiplier = 2
+
+# If a download files (`except Exception`) will wait ↓ and retry.
+download_static_sleep_time = 3
 
 # -/- Download options ---
 
@@ -135,13 +130,14 @@ token_queue_refresh_rate = 0.01
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3
 
-# When streaming, threads poll. This will get changed.
+# When streaming, threads poll with this sleep time. # TODO: changed this
 throttler_low_prio_sleep_time = 0.1
 
 # -/- Throttler options ---
 
 # --- FFMpeg options ---
-# Options for the `--compress` feature
+
+# Options for the ffmpeg executable
 ffmpeg_args = ["-crf", "28", "-c:v", "libx265", "-c:a", "copy", "-preset", "superfast"]
 
 # TODO: Document this
@@ -156,8 +152,8 @@ compress_duration_for_insta_kill = 0
 # -/- FFMpeg options ---
 
 # Options for the `--subscribe` feature
-subscribed_courses_file_location = "subscribed_courses.json"
-subscribe_courses_range = (24005, 24010)
+subscribed_courses_file_location = "subscribed_courses.json"  # TODO
+subscribe_courses_range = (24005, 24010)  # TODO
 subscribe_num_threads = 32
 
 # --- Linux only feature options ---
@@ -172,13 +168,14 @@ export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
 # The path to the systemd timer files. (Only supported on systemd-based linux)
 systemd_dir_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
-timer_file_location = os.path.join(systemd_dir_location, "isisdl.timer")
-service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
+systemd_timer_file_location = os.path.join(systemd_dir_location, "isisdl.timer")
+systemd_service_file_location = os.path.join(systemd_dir_location, "isisdl.service")
 
 # -/- Linux only feature options ---
 
-# Regex copied from https://gist.github.com/gruber/8891611
-url_finder = re.compile(r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.]
+# Finds all urls in a given piece of text. Copied from https://gist.github.com/gruber/8891611
+url_finder = re.compile(r"""(?i)\b((?:https?:
+(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.]
 (?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br
 |bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk
 |hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne
@@ -191,6 +188,7 @@ url_finder = re.compile(r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.
 |ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt
 |tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")
 
+# Testing urls to be excluded  # TODO: Make this minimal
 _testing_bad_urls = {
     "https://befragung.tu-berlin.de/evasys/online.php?p=PCHVN",
     "https://cse.buffalo.edu/~rapaport/191/S09/whatisdiscmath.html",
@@ -416,19 +414,16 @@ _testing_bad_urls = {
     "https://www.mathsisfun.com/games/towerofhanoi.html",
 }
 
+# Ignore mod/{whatever} isis urls
+isis_ignore = re.compile("""
+".*mod/(?:"
+"forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm" 
+"|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book"
+")/.*"
+""")
+
 
 # # TODO: Get rid of these / factor them into one big blob
-isis_ignore = re.compile(
-    ".*(?:"
-    # Ignore mod/{whatever}
-    "mod/(?:"
-    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-    "page|data|ratingallocate|book"
-    ")"
-    # Ignore other websites
-    "|tu-berlin.zoom.us"
-    "|arm.com/products"
-    ")/.*")
 #
 # ignored_urls = {
 #     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
@@ -456,7 +451,6 @@ isis_ignore = re.compile(
 # }
 
 
-# Now load any options the user may overwrite (Linux exclusive)
 def parse_config_file() -> DefaultDict[str, Any]:
     try:
         with open(config_file_location) as f:
@@ -552,9 +546,10 @@ enable_multithread = True
 global_vars = globals()
 
 testing_download_sizes = {
-    1: 1_000_000_000,  # Video
-    2: 1_000_000_000,  # Documents
-    3: 1_000_000_000  # Extern
+    1: 5_000_000_000,  # Video
+    2: 2_500_000_000,  # Documents
+    3: 1_000_000_000,  # Extern
+    4: 0,              # Corrupted
 }
 
 # </ Test Options >

@@ -516,17 +516,15 @@ def main() -> None:
     user = get_credentials()
     with RequestHelperStatus() as status:
         helper = RequestHelper(user, status)
-        _content = helper.download_content(status)
+        content = [item for item in helper.download_content(status)[MediaType.video] if item.path.stat().st_size == item.size]
 
     print("\n\nProcessing ...\n")
 
-    _content = list(filter(lambda x: x.media_type == MediaType.video and os.path.exists(x.path), _content))
-
     if enable_multithread:
         with ThreadPoolExecutor(os.cpu_count()) as ex:
-            _ffprobes = list(ex.map(lambda x: do_ffprobe(x.path), _content))
+            _ffprobes = list(ex.map(lambda x: do_ffprobe(x.path), content))
     else:
-        _ffprobes = [do_ffprobe(item.path) for item in _content]
+        _ffprobes = [do_ffprobe(item.path) for item in content]
 
     ffprobes = filter(lambda x: x is not None, _ffprobes)
     content_and_score: List[Tuple[MediaContainer, int]] = []
@@ -535,7 +533,7 @@ def main() -> None:
     already_h265 = []
     inefficient_videos = []
 
-    for con, ff in zip(_content, ffprobes):
+    for con, ff in zip(content, ffprobes):
         if database_helper.make_inefficient_file_name(con) in to_inefficient:
             inefficient_videos.append(con)
             continue

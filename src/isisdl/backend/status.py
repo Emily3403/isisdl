@@ -106,10 +106,10 @@ class DownloadStatus(Status):
     message = "Downloading videos"
     _progress_bar = False
 
-    def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler):
-        self.files = files
+    def __init__(self, files: Dict[MediaType, List[MediaContainer]], num_threads: int, throttler: DownloadThrottler):
+        self.files = [item for row in list(files.values()) for item in row]
         self.finished_files = 0
-        self.total_size = sum(item.size for item in files if item.size != -1)
+        self.total_size = sum(item.size for item in self.files if item.size != -1)
         self.total_downloaded = 0
 
         self.num_threads = num_threads
@@ -117,7 +117,7 @@ class DownloadStatus(Status):
 
         self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
         self.stream_file: Optional[MediaContainer] = None
-        super().__init__(len(files))
+        super().__init__(len(self.files))
 
     def add_container(self, thread_id: int, container: MediaContainer) -> None:
         self.thread_files[thread_id] = container

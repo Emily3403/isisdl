@@ -25,7 +25,7 @@ from isisdl.settings import enable_multithread, extern_discover_num_threads, is_
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from src.isisdl.settings import error_text, download_timeout, download_timeout_multiplier, sleep_time_for_isis, num_tries_download
+from src.isisdl.settings import error_text, download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
 from src.isisdl.utils import calculate_local_checksum
 
 # TODO: is_cached as attribute of ExternalLink
@@ -107,7 +107,7 @@ class SessionWithKey(Session):
                 return func(*args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except Exception:
-                time.sleep(sleep_time_for_isis)
+                time.sleep(download_static_sleep_time)
                 i += 1
 
     def get_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
@@ -302,11 +302,12 @@ class MediaContainer:
             media_type = MediaType.corrupted
 
         ret = cls(name, container.url, download_url, container.parent_path.joinpath(name), time, container.course, media_type, size)
-        con.close()
 
         if status is not None:
             status.done()
 
+        con.close()
+        ret.dump()
         return ret
 
     @classmethod
@@ -395,8 +396,8 @@ class MediaContainer:
 
         else:
             database_helper.add_bad_url(url)
-            if url not in known_bad_extern_urls:
-                logger.message(f"Assertion failed: url not ignored: {url}")
+            # if url not in known_bad_extern_urls:
+            #     logger.message(f"Assertion failed: url not ignored: {url}")
 
         con.close()
         if isinstance(container, MediaContainer):
@@ -484,6 +485,9 @@ class MediaContainer:
 
     def __eq__(self, other: Any) -> bool:
         return self.__class__ == other.__class__ and all(getattr(self, item) == getattr(other, item) for item in self.__dict__ if item != "current_size")
+
+    def __gt__(self, other: MediaContainer) -> bool:
+        return int.__gt__(self.size, other.size)
 
     def stop(self) -> None:
         self._stop = True
@@ -825,17 +829,13 @@ class RequestHelper:
         else:
             _containers = [MediaContainer.from_pre_container(pre_container, self.session, status) for pre_container in pre_containers]
 
-        containers = [item for item in _containers if item is not None]
+        containers = check_for_conflicts_in_files([item for item in _containers if item is not None])
         mapping: DefaultDict[MediaType, List[MediaContainer]] = defaultdict(list)
 
         for container in containers:
             mapping[container.media_type].append(container)
 
-        # Download the newest files first
-        def sort(lst: List[MediaContainer]) -> List[MediaContainer]:
-            return sorted(lst, key=lambda x: x.time, reverse=True)
-
-        return {typ: sort(item) for typ, item in mapping.items()}
+        return {typ: sorted(item, key=lambda x: x.time, reverse=True) for typ, item in mapping.items()}
 
     def download_mod_assign(self) -> List[PreMediaContainer]:
         all_content = []
@@ -887,10 +887,21 @@ class RequestHelper:
 # TODO: Return dict based on MediaTypes?
 def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
     content: List[MediaContainer] = []
-    conflicts = defaultdict(list)
 
-    for item in set(files):
-        conflicts[item.path].append(item)
+    conflicts = defaultdict(list)
+    hard_link_conflicts = defaultdict(list)
+
+    for file in files:
+        conflicts[file.path].append(file)
+        hard_link_conflicts[file.size].append(file)
+
+    for conflict in hard_link_conflicts.values():
+        if len(conflict) == 1:
+            continue
+
+        print()
+
+        pass
 
     for conflict in conflicts.values():
         conflict.sort(key=lambda x: x.time)
@@ -915,17 +926,12 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
 
 class CourseDownloader:
-    containers: List[MediaContainer] = []
+    containers: Dict[MediaType, List[MediaContainer]] = {}
 
     def start(self) -> None:
         with RequestHelperStatus() as status:
             helper = RequestHelper(get_credentials(), status)
             containers = helper.download_content(status)
-
-        # Make all files so that they can be streamed
-        for container in containers:
-            if not os.path.exists(container.path):
-                open(container.path, "w").close()
 
         CourseDownloader.containers = containers
 
@@ -944,8 +950,8 @@ class CourseDownloader:
                 "num_g_files": len(containers),
                 "num_c_files": len(containers),
 
-                "total_g_bytes": sum((item.size for item in containers)),
-                "total_c_bytes": sum((item.size for item in containers)),
+                "total_g_bytes": sum((item.size for row in containers.values() for item in row)),
+                "total_c_bytes": sum((item.size for row in containers.values() for item in row)),
 
                 "course_ids": sorted([course.course_id for course in helper._courses]),
 
@@ -962,6 +968,8 @@ class CourseDownloader:
         if is_windows:
             return
 
+        return
+
         if sys.version_info >= (3, 10):
             # TODO: Figure out how to support python3.10
             return
@@ -971,7 +979,7 @@ class CourseDownloader:
 
             class EventHandler(pyinotify.ProcessEvent):  # type: ignore
                 def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
-                    self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
+                    self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
                     self.throttler = throttler
                     super().__init__(**kwargs)
 
@@ -981,17 +989,17 @@ class CourseDownloader:
                         return
 
                     file = self.files.get(event.pathname, None)
-                    if file is not None and file.curr_size is not None:
+                    if file is not None and file.current_size is not None:
                         return
 
                     if file is None:
                         return
 
-                    if file.curr_size is not None:
+                    if file.current_size is not None:
                         return
 
                     status.add_streaming(file)
-                    file.download(self.throttler, True)
+                    file.download(self.throttler, SessionWithKey("uwu", "owo"), True)  # TODO
                     status.done_streaming()
 
             wm = pyinotify.WatchManager()
@@ -1000,7 +1008,7 @@ class CourseDownloader:
 
             notifier.loop()
 
-    def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
@@ -1022,9 +1030,9 @@ class CourseDownloader:
 
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
-                list(ex.map(download, files))
+                list(ex.map(download, [item for row in list(files.values()) for item in row]))
         else:
-            for file in files:
+            for file in [item for row in list(files.values()) for item in row]:
                 download(file)
 
     @staticmethod
@@ -1037,9 +1045,10 @@ class CourseDownloader:
         if args.stream:
             return
 
-        for item in downloading_files:
-            item.stop()
+        for row in downloading_files.values():
+            for item in row:
+                item.stop()
 
         # Now wait for the downloads to finish
-        while not all(item.current_size != item.size for item in downloading_files):
+        while not all(item.current_size != item.size for row in downloading_files.values() for item in row):
             time.sleep(0.25)
