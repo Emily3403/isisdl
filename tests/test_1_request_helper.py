@@ -14,7 +14,7 @@ from isisdl.settings import database_file_location, lock_file_location, testing_
 
 def remove_old_files() -> None:
     for item in os.listdir(path()):
-        if item != database_file_location and item != lock_file_location:
+        if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
             shutil.rmtree(path(item))
 
     startup()
@@ -68,14 +68,11 @@ def get_content_to_download(request_helper: RequestHelper) -> List[MediaContaine
     conflict_free = chop_down_size(request_helper.download_content())
     return [item for row in conflict_free.values() for item in row]
 
+# request_helper.make_course_paths()
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
-    args.num_threads = 4
-
-    # Test without filename replacing
     config.filename_replacing = True
 
-    request_helper.make_course_paths()
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
     os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
 
@@ -86,14 +83,14 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     CourseDownloader().start()
 
     # Now check if everything was downloaded successfully
-    allowed_chars = set(string.ascii_letters + string.digits + ".")
 
+    allowed_chars = set(string.ascii_letters + string.digits + ".")
     for container in content:
         assert container.path.exists()
-        assert container.size != 0 and container.size != -1
         assert all(c for item in container.path.parts[1:] for c in item if c not in allowed_chars)
 
         if container.media_type != MediaType.corrupted:
+            assert container.size != 0 and container.size != -1
             assert container.path.stat().st_size == container.size
             assert container.checksum is not None
 
@@ -103,6 +100,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
             assert container == dump_container
 
         else:
+            assert container.size == 0 and container.size == -1  # TODO: Assert only 0 / -1
             assert container.path.stat().st_size == 0
 
     # Now we do ...

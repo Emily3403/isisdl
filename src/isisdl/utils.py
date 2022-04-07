@@ -40,9 +40,9 @@ from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
     error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, isisdl_executable, is_static, \
-    enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text
+    enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
 from isisdl.version import __version__
-from src.isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time, token_queue_refresh_rate
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer, RequestHelper
@@ -820,12 +820,13 @@ def acquire_file_lock_or_exit() -> None:
         if is_autorun:
             os._exit(1)
 
-        print("\nIf you want, I can also delete it for you.\nDo you want me to do that? [y/n]")
+        print("\nIf you want, I can also delete it for you: [y/n]")
         choice = get_input({"y", "n"})
         if choice == "y":
             os.remove(path(lock_file_location))
             acquire_file_lock()
         else:
+            print("Exiting ...")
             os._exit(1)
 
 
@@ -872,6 +873,7 @@ class User:
 
 
 def calculate_local_checksum(filename: Path) -> str:
+    # TODO: Better checksum algorithm
     sha = checksum_algorithm()
 
     sha.update(str(os.path.getsize(filename)).encode())
@@ -961,6 +963,7 @@ def unsubscribe_from_courses() -> None:
     print(f"Took {time.perf_counter() - s:.3f}s")
 
 
+# TODO: Implement assert
 class DataLogger(Thread):
     """
     What to log:
@@ -1122,13 +1125,11 @@ class DownloadThrottler(Thread):
     def end_stream(self) -> None:
         self._streaming_loc = None
 
-    def max_tokens(self, refresh_rate: Optional[float] = None) -> int:
-        import isisdl.settings
-
-        if self.download_rate == -1:
+    def max_tokens(self) -> int:
+        if self.download_rate == -1 or self.download_rate is None:
             return 1
 
-        return int(self.download_rate * 1024 ** 2 // download_chunk_size * (refresh_rate or isisdl.settings.token_queue_refresh_rate)) or 1
+        return int((self.download_rate * 1024 ** 2) // download_chunk_size * self.refresh_rate) or 1
 
 
 class MediaType(enum.Enum):

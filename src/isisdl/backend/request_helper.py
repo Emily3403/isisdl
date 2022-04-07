@@ -20,7 +20,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls, \
     DownloadThrottler, MediaType
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, _testing_bad_urls, url_finder, isis_ignore
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
@@ -191,17 +191,15 @@ class MediaContainer:
     @classmethod
     def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus]) -> Optional[MediaContainer]:
         try:
+            if is_testing and container.url in testing_bad_urls:
+                return None
+
             maybe_container = MediaContainer.from_dump(container.url)
             if isinstance(maybe_container, MediaContainer):
                 return maybe_container
 
             elif maybe_container is False:
                 return None
-
-            # TODO: Can we check for 451 here?
-            if container.name is not None and container.time is not None and container.size is not None:
-                return cls(container.name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container.name)),
-                           container.time, container.course, container.media_type, container.size).dump()
 
             # If there was not enough information to determine name, size and time for the container, get it.
             download_url = None
@@ -249,6 +247,10 @@ class MediaContainer:
             media_type = container.media_type
             if not con.ok:
                 media_type = MediaType.corrupted
+
+            if container.name is not None and container.time is not None and container.size is not None:
+                return cls(container.name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container.name)),
+                           container.time, container.course, media_type, container.size).dump()
 
             if container.name is not None:
                 name = container.name
@@ -321,7 +323,17 @@ class MediaContainer:
         return self.url.__hash__()
 
     def __eq__(self, other: Any) -> bool:
-        return self.__class__ == other.__class__ and all(getattr(self, item) == getattr(other, item) for item in self.__dict__ if item != "current_size")
+        if self.__class__ == other.__class__:
+            return False
+
+        acc = True
+        for attr in self.__dict__:
+            self_val = getattr(self, attr)
+            other_val = getattr(other, attr)
+
+            acc &= self_val == other_val and type(self_val) == type(other_val)
+
+        return acc
 
     def __gt__(self, other: MediaContainer) -> bool:
         return int.__gt__(self.size, other.size)
@@ -616,10 +628,6 @@ class RequestHelper:
             course.make_directories()
 
     def download_content(self, status: Optional[RequestHelperStatus] = None) -> Dict[MediaType, List[MediaContainer]]:
-        """
-        Attention: This method does *not* take into account file conflicts.
-        You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
-        """
         exception_lock = Lock()
 
         if status is not None:
@@ -712,11 +720,11 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         if len(conflict) == 1:
             continue
 
-        print()
+    for typ, conflict in conflicts.items():
+        # TODO
+        if conflict == MediaType.corrupted:
+            continue
 
-        pass
-
-    for conflict in conflicts.values():
         conflict.sort(key=lambda x: x.time)
 
         if len(conflict) == 1 or all(item.size == conflict[0].size for item in conflict):

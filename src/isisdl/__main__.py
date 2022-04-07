@@ -39,7 +39,9 @@ Please press enter to continue.
         print(f"isisdl Version {__version__}")
         exit(0)
 
-    elif args.init:
+    acquire_file_lock_or_exit()
+
+    if args.init:
         init_wizard()
         exit(0)
 
@@ -87,9 +89,7 @@ Please press enter to continue.
 
     else:
         # Main routine
-        acquire_file_lock_or_exit()
         CourseDownloader().start()
-
         print("\n\nDone! Have a nice day ^.^")
 
 

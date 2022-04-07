@@ -44,7 +44,7 @@ def print_log_messages(strings: List[str], last_num: int) -> int:
     # Erase all previous chars
     return final_str.count("\n") + 1
 
-
+# TODO: ETA based on done / total in seconds
 class Status(Thread):
     total: Optional[int]
 
