@@ -24,7 +24,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, Iterable
+from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, Iterable, NoReturn
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -483,7 +483,7 @@ def is_h265(file: Path) -> Optional[bool]:
         return None
 
     if "codec_name" not in video_stream:
-        logger.message("""Assertion failed: "codec_name" not in video_stream""")
+        logger.assert_fail('"codec_name" not in video_stream')
         return None
 
     return bool(video_stream["codec_name"] == "hevc")
@@ -1009,6 +1009,9 @@ class DataLogger(Thread):
         deliver["message"] = msg
         self.messages.put(deliver)
 
+    def assert_fail(self, msg: str) -> None:
+        self.message(f"Assertion failed: {msg}")
+
     def post(self, msg: Dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:
             return
@@ -1133,9 +1136,9 @@ class DownloadThrottler(Thread):
 
 
 class MediaType(enum.Enum):
-    video = 1
-    document = 2
-    extern = 3
+    document = 1
+    extern = 2
+    video = 3
     corrupted = 4
 
     @property
@@ -1206,7 +1209,7 @@ class HumanBytes:
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 
 
-def generate_error_message(ex: Exception) -> None:
+def generate_error_message(ex: Exception) -> NoReturn:
     if is_testing:
         raise ex
 

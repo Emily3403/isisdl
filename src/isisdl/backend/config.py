@@ -247,7 +247,7 @@ If you do have systemd installed, please submit a bug-report at
 https://github.com/Emily3403/isisdl/issues
 
 Press enter to continue.""")
-        logger.message("Systemd not installed")
+        logger.assert_fail("Systemd not installed")
         input()
         return
 

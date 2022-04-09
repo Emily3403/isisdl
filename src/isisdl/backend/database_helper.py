@@ -150,7 +150,7 @@ class DatabaseHelper:
             data.append(url)
             if len(data) != len(set(data)):
                 from isisdl.utils import logger
-                logger.message("Assertion failed: len(data) != len(set(data))")
+                logger.assert_fail("len(data) != len(set(data))")
 
             self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("bad_url_cache", json.dumps(data)))
             self.con.commit()

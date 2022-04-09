@@ -1,18 +1,18 @@
 # TODO: Syntactic sugar: define __exit__ and __enter__ for `with SyncStatus():`
 from __future__ import annotations
 
-import datetime
 import enum
 import shutil
 import time
 from collections import defaultdict
+from datetime import datetime, timedelta
 from threading import Thread, Lock
 from typing import List, Optional, Dict, Any, TYPE_CHECKING, DefaultDict
 
 import math
 
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution, token_queue_download_refresh_rate
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer, PreMediaContainer
@@ -44,13 +44,17 @@ def print_log_messages(strings: List[str], last_num: int) -> int:
     # Erase all previous chars
     return final_str.count("\n") + 1
 
+
 # TODO: ETA based on done / total in seconds
 class Status(Thread):
     total: Optional[int]
 
     message: str = "Doing stuff..."
     count: Optional[int] = None
-    _progress_bar: bool = True
+    _show_progress_bar: bool = True
+    _show_eta: bool = True
+    _eta_start_time: datetime = datetime.now()
+
     _i = 0
     _last_text_len = 0
     _running = True
@@ -76,9 +80,15 @@ class Status(Thread):
     def run(self) -> None:
         while self._running:
             log_strings = ["", self.message + " " + "." * self._i, ""]
-            log_strings.extend(self.generate_log_message())
+            if self._show_eta:
+                time_diff = datetime.now() - self._eta_start_time
 
-            if self._progress_bar and self.count is not None and self.total is not None:
+                # TODO: Estimate ETA
+                # log_strings.append(f"ETA: {(self.count or 0) / (time_diff.seconds or 1) }")
+            log_strings.extend(self.generate_log_message())
+            log_strings.append("")
+
+            if self._show_progress_bar and self.count is not None and self.total is not None:
                 perc_done = int(self.count / self.total * status_progress_bar_resolution)
                 log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
@@ -99,12 +109,13 @@ class Status(Thread):
     def done(self, *args: Any, **kwargs: Any) -> None:
         if self.count is not None:
             self.count += 1
+            assert self.total is None or self.count <= self.total
 
 
 # TODO: When already done file add them in the beginning instead of subtracting: 0 / 300 → 200 / 500
 class DownloadStatus(Status):
-    message = "Downloading videos"
-    _progress_bar = False
+    message = "Downloading content"
+    _show_progress_bar = False
 
     def __init__(self, files: Dict[MediaType, List[MediaContainer]], num_threads: int, throttler: DownloadThrottler):
         self.files = [item for row in list(files.values()) for item in row]
@@ -179,7 +190,7 @@ class DownloadStatus(Status):
             # General meta-info
             log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
-            log_strings.append(f"ETA: {datetime.timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
+            log_strings.append(f"ETA: {timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
             log_strings.append("")
 
             # Now determine the already downloaded amount and display it
@@ -261,11 +272,12 @@ class RequestHelperStatus(Status):
         if self.status != StatusOptions.building_cache:
             return []
 
-        mapping: DefaultDict[MediaType, int] = defaultdict(int)
+        mapping: Dict[MediaType, List[PreMediaContainer]] = {typ: [] for typ in MediaType}
 
         for file in self.files:
-            mapping[file.media_type] += 1
+            mapping[file.media_type].append(file)
 
         return [
-            "(" + ", ".join(f"{num} {typ}{'s' if num > 1 else ''}" for typ, num in mapping.items()) + ", will be cached)"
-        ]
+            f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) > 1 else ''}"
+            for typ, files in mapping.items() if typ != MediaType.corrupted
+        ] + ["", "(will be cached)"]

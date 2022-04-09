@@ -11,7 +11,7 @@ from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
 from linecache import getline
-from typing import Any, DefaultDict
+from typing import Any, DefaultDict, Set
 
 from cryptography.hazmat.primitives.hashes import SHA3_512
 from yaml import safe_load, YAMLError
@@ -28,7 +28,7 @@ database_file_location = ".state.db"
 current_database_version = 2
 
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 error_directory_location = ".errors"
 
@@ -192,7 +192,7 @@ url_finder = re.compile(
 )
 
 # Testing urls to be excluded  # TODO: Make this minimal
-testing_bad_urls = {}
+testing_bad_urls: Set[str] = set()
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(

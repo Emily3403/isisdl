@@ -68,8 +68,6 @@ def get_content_to_download(request_helper: RequestHelper) -> List[MediaContaine
     conflict_free = chop_down_size(request_helper.download_content())
     return [item for row in conflict_free.values() for item in row]
 
-# request_helper.make_course_paths()
-
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
     config.filename_replacing = True
 
