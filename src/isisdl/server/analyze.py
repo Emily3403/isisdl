@@ -110,6 +110,7 @@ def remove_bad_files() -> None:
 
 def main() -> None:
     remove_bad_files()
+    print("Done removing")
 
     analyze_versions()
     analyze_users_per_day()
