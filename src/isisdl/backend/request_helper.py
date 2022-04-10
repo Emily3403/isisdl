@@ -335,6 +335,9 @@ class MediaContainer:
 
         acc = True
         for attr in self.__dict__:
+            if attr == "current_size":
+                continue
+
             self_val = getattr(self, attr)
             other_val = getattr(other, attr)
 
