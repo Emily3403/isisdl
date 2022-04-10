@@ -112,9 +112,9 @@ extern_discover_num_threads = 32
 for i in range(num_tries_download):
     download_timeout + download_timeout_multiplier ** (0.5 * i)
 """
-num_tries_download = 4
-download_timeout = 6
-download_timeout_multiplier = 2
+num_tries_download = 15
+download_timeout = 15
+download_timeout_multiplier = 3
 
 # If a download files (`except Exception`) will wait ↓ and retry.
 download_static_sleep_time = 3
@@ -335,7 +335,7 @@ enable_multithread = True
 global_vars = globals()
 
 testing_download_sizes = {
-    1: 5_000_000_000,  # Video
+    1: 1_000_000_000,  # Video
     2: 2_500_000_000,  # Documents
     3: 1_000_000_000,  # Extern
     4: 0,  # Corrupted

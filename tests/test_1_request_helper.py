@@ -39,7 +39,7 @@ def test_request_helper(request_helper: RequestHelper) -> None:
     assert request_helper.session is not None
 
     assert len(request_helper._courses) > 5
-    assert len(request_helper.courses) > 5
+    # assert len(request_helper.courses) > 5
 
 
 def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[MediaType, List[MediaContainer]]:
@@ -70,6 +70,7 @@ def get_content_to_download(request_helper: RequestHelper, monkeypatch: Any) -> 
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
     config.filename_replacing = True
+    config.whitelist = [24337]
     request_helper.make_course_paths()
 
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
@@ -92,11 +93,10 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
             assert container.size != 0 and container.size != -1
             assert container.size == container.current_size
             assert container.path.stat().st_size == container.size
-            assert container.checksum is not None
+            assert container.checksum == calculate_local_checksum(container.path)
 
             dump_container = MediaContainer.from_dump(container.url)
             assert isinstance(dump_container, MediaContainer)
-            assert calculate_local_checksum(container.path) == container.checksum == dump_container.checksum
             assert container == dump_container
 
         else:
