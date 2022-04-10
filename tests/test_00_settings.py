@@ -40,9 +40,9 @@ def test_settings() -> None:
     assert 16 <= extern_discover_num_threads <= 48
     assert 2 ** 15 <= download_chunk_size <= 2 ** 17
     assert 0 <= download_static_sleep_time <= 4
-    assert 3 <= num_tries_download <= 5
-    assert 1 <= download_timeout <= 10
-    assert 1.5 <= download_timeout_multiplier <= 2.5
+    assert 3 <= num_tries_download <= 15
+    assert 1 <= download_timeout <= 15
+    assert 1.5 <= download_timeout_multiplier <= 3.56
 
     assert 0.001 <= token_queue_refresh_rate <= 0.2
     assert 1 <= token_queue_download_refresh_rate <= 5
