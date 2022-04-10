@@ -335,7 +335,7 @@ class MediaContainer:
 
         acc = True
         for attr in self.__dict__:
-            if attr == "current_size":
+            if attr in {"current_size", "_link"}:
                 continue
 
             self_val = getattr(self, attr)
@@ -367,7 +367,10 @@ class MediaContainer:
 
             self.path.unlink(missing_ok=True)
             os.link(self._link.path, self.path)
-            self.current_size = self._link.size
+
+            self.current_size = self._link.current_size
+            self.checksum = calculate_local_checksum(self.path)
+            self.dump()
             return
 
         if not self.should_download:
