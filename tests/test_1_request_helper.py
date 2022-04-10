@@ -1,23 +1,24 @@
 import os
 import random
+import shutil
 import string
 from typing import Any, List, Dict
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper, MediaContainer, CourseDownloader
-from isisdl.settings import testing_download_sizes, env_var_name_username, env_var_name_password
-from isisdl.utils import User, config, calculate_local_checksum, MediaType
+from isisdl.settings import testing_download_sizes, env_var_name_username, env_var_name_password, database_file_location, lock_file_location
+from isisdl.utils import User, config, calculate_local_checksum, MediaType, path, startup, database_helper
 
 
 def remove_old_files() -> None:
-    # for item in os.listdir(path()):
-    #     if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
-    #         shutil.rmtree(path(item))
-    #
-    # startup()
-    # config.__init__()  # type: ignore
-    # database_helper.__init__()  # type: ignore
-    return
+    for item in os.listdir(path()):
+        if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
+            shutil.rmtree(path(item))
+
+    startup()
+    config.__init__()  # type: ignore
+    database_helper.__init__()  # type: ignore
+    config.filename_replacing = True
 
 
 def test_remove_old_files() -> None:
@@ -69,7 +70,6 @@ def get_content_to_download(request_helper: RequestHelper, monkeypatch: Any) -> 
 
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
-    config.filename_replacing = True
     request_helper.make_course_paths()
 
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
