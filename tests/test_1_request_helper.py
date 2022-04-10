@@ -16,8 +16,8 @@ def remove_old_files() -> None:
             shutil.rmtree(path(item))
 
     startup()
-    config.__init__()  # type: ignore
-    database_helper.__init__()  # type: ignore
+    # config.__init__()  # type: ignore
+    # database_helper.__init__()  # type: ignore
     config.filename_replacing = True
 
 
@@ -56,6 +56,7 @@ def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[Me
 
         while cur_size < max_size:
             choice = random.choices(files, list(range(len(files))), k=1)[0]
+
             ret.append(choice)
             cur_size += choice.size
 
@@ -63,7 +64,8 @@ def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[Me
 
 
 def get_content_to_download(request_helper: RequestHelper, monkeypatch: Any) -> Dict[MediaType, List[MediaContainer]]:
-    content = chop_down_size(request_helper.download_content())
+    con = request_helper.download_content()
+    content = chop_down_size(con)
     monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None, __=None: content)
 
     return content

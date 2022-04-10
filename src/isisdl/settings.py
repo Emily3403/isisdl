@@ -102,7 +102,7 @@ status_time = 0.1 if not is_windows else 0.75
 # --- Download options ---
 
 # Chunks of this size are read and saved to files.
-download_chunk_size = 2**16
+download_chunk_size = 2 ** 16
 
 # Number of threads to discover sizes for urls
 extern_discover_num_threads = 32
@@ -192,7 +192,9 @@ url_finder = re.compile(
 )
 
 # Testing urls to be excluded  # TODO: Make this minimal
-testing_bad_urls: Set[str] = set()
+testing_bad_urls: Set[str] = set(
+    'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj'
+)
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
@@ -251,10 +253,10 @@ def parse_config_file() -> DefaultDict[str, Any]:
     except YAMLError as ex:
         # Unfortunately mypy doesn't support this well...
         if (
-            hasattr(ex, "problem_mark")
-            and hasattr(ex, "context")
-            and hasattr(ex, "problem")
-            and hasattr(ex, "context_mark")
+                hasattr(ex, "problem_mark")
+                and hasattr(ex, "context")
+                and hasattr(ex, "problem")
+                and hasattr(ex, "context_mark")
         ):
             assert hasattr(ex, "problem_mark")
             if ex.context is None:  # type: ignore
