@@ -330,7 +330,7 @@ class MediaContainer:
         return self.url.__hash__()
 
     def __eq__(self, other: Any) -> bool:
-        if self.__class__ == other.__class__:
+        if self.__class__ != other.__class__:
             return False
 
         acc = True
@@ -817,7 +817,7 @@ class CourseDownloader:
 
             downloader.join()
 
-    def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+    def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus) -> None:
         if is_windows:
             return
 
@@ -856,7 +856,7 @@ class CourseDownloader:
                     status.done_streaming()
 
             wm = pyinotify.WatchManager()
-            notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
+            notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler))
             wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
             notifier.loop()
