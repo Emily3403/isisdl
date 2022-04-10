@@ -16,8 +16,8 @@ def remove_old_files() -> None:
             shutil.rmtree(path(item))
 
     startup()
-    # config.__init__()  # type: ignore
-    # database_helper.__init__()  # type: ignore
+    config.__init__()  # type: ignore
+    database_helper.__init__()  # type: ignore
     config.filename_replacing = True
 
 
@@ -40,7 +40,7 @@ def test_request_helper(request_helper: RequestHelper) -> None:
     assert request_helper.session is not None
 
     assert len(request_helper._courses) > 5
-    # assert len(request_helper.courses) > 5
+    assert len(request_helper.courses) > 5
 
 
 def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[MediaType, List[MediaContainer]]:
@@ -54,8 +54,10 @@ def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[Me
         cur_size = 0
         max_size = testing_download_sizes[typ.value]
 
-        while cur_size < max_size:
+        while True:
             choice = random.choices(files, list(range(len(files))), k=1)[0]
+            if cur_size + choice.size > max_size:
+                break
 
             ret.append(choice)
             cur_size += choice.size
