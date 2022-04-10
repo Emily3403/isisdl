@@ -399,6 +399,12 @@ class MediaContainer:
 
                     except Exception:
                         i += 1
+                else:
+                    self.media_type = MediaType.corrupted
+                    self.size = 0
+                    self.current_size = None
+                    database_helper.add_bad_url(self.url)
+                    break
 
                 if not new:
                     # No file left
@@ -406,6 +412,11 @@ class MediaContainer:
 
                 f.write(new)
                 self.current_size += len(new)
+
+        if self.media_type == MediaType.corrupted:
+            with self.path.open("wb"):
+                # Reopen the file such that previous content is ignored.
+                pass
 
         if is_stream:
             throttler.end_stream()
