@@ -70,7 +70,6 @@ def get_content_to_download(request_helper: RequestHelper, monkeypatch: Any) -> 
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
     config.filename_replacing = True
-    config.whitelist = [24337]
     request_helper.make_course_paths()
 
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]

@@ -368,7 +368,7 @@ class MediaContainer:
             self.path.unlink(missing_ok=True)
             os.link(self._link.path, self.path)
 
-            self.current_size = self._link.current_size
+            self.current_size = self.path.stat().st_size
             self.checksum = calculate_local_checksum(self.path)
             self.dump()
             return
