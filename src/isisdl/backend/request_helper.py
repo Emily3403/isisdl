@@ -5,7 +5,7 @@ import re
 import sys
 import time
 from base64 import standard_b64decode
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,19 +13,18 @@ from email.utils import parsedate_to_datetime
 from itertools import repeat
 from pathlib import Path
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union, Iterable, DefaultDict
+from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict
 from urllib.parse import urlparse
-
-from isisdl.backend.crypt import get_credentials
-from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls, \
-    DownloadThrottler, MediaType
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 
 from requests import Session, Response
 from requests.exceptions import InvalidSchema
 
-from isisdl.settings import error_text, download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
+from isisdl.backend.crypt import get_credentials
+from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
+    DownloadThrottler, MediaType
 from isisdl.utils import calculate_local_checksum
 
 
@@ -125,7 +124,7 @@ class SessionWithKey(Session):
 
 class PreMediaContainer:
     url: str
-    name: Optional[str]
+    _name: Optional[str]
     time: Optional[int]
     size: Optional[int]
     course: Course
@@ -142,16 +141,17 @@ class PreMediaContainer:
             url = url[:-len("?forcedownload=1")]
 
         self.url = url
-        self.name = name
+        self._name = name
         self.time = time
         self.size = size
         self.course = course
         self.media_type = media_type
         self.is_cached = url in database_helper.get_bad_urls() or database_helper.get_pre_container_by_url(url) is not None
         self.parent_path = course.path(sanitize_name(relative_location))
+        self.parent_path.mkdir(exist_ok=True)
 
     def __repr__(self) -> str:
-        return f"{self.name}: {self.course}"
+        return f"{self._name}: {self.course}"
 
 
 @dataclass
@@ -191,7 +191,7 @@ class MediaContainer:
         return container
 
     @classmethod
-    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus]) -> Optional[MediaContainer]:
+    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus] = None) -> Optional[MediaContainer]:
         try:
             if is_testing and container.url in testing_bad_urls:
                 return None
@@ -248,12 +248,12 @@ class MediaContainer:
             if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
                 media_type = MediaType.corrupted
 
-            if container.name is not None and container.time is not None and container.size is not None:
-                return cls(container.name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container.name)),
+            if container._name is not None and container.time is not None and container.size is not None:
+                return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name)),
                            container.time, container.course, media_type, container.size if media_type != MediaType.corrupted else 0).dump()
 
-            if container.name is not None:
-                name = container.name
+            if container._name is not None:
+                name = container._name
             else:
                 if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
                     name = maybe_names[0]
@@ -283,7 +283,7 @@ class MediaContainer:
 
             con.close()
 
-            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(name), time, container.course, media_type, size).dump()
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name)), time, container.course, media_type, size).dump()
 
         finally:
             container.is_cached = True
@@ -349,7 +349,8 @@ class MediaContainer:
         self._stop = True
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
-        if self.media_type == MediaType.corrupted or self._link is not None and self._link.media_type == MediaType.corrupted:
+        # TODO: Add option to ignore corrupted and still download it.
+        if self._stop or self.media_type == MediaType.corrupted or self._link is not None and self._link.media_type == MediaType.corrupted:
             return
 
         if self.current_size is not None:
@@ -363,6 +364,11 @@ class MediaContainer:
 
             self.path.unlink(missing_ok=True)
             os.link(self._link.path, self.path)
+            self.current_size = self._link.size
+            return
+
+        if not self.should_download:
+            self.current_size = self.size
             return
 
         if is_stream:
@@ -615,6 +621,10 @@ class RequestHelper:
         self._courses = sorted(self._courses)
         self.courses = sorted(self.courses)
 
+    def make_course_paths(self) -> None:
+        for course in self.courses:
+            course.make_directories()
+
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
 
@@ -810,14 +820,14 @@ class CourseDownloader:
 
         # return
 
-        if sys.version_info >= (3, 2):
+        if sys.version_info >= (3, 10):
             # TODO: Figure out how to support python3.10
             return
 
         else:
             import pyinotify
 
-            class EventHandler(pyinotify.ProcessEvent):  # type: ignore
+            class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
                 def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
                     self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
                     self.throttler = throttler
@@ -844,7 +854,7 @@ class CourseDownloader:
 
             wm = pyinotify.WatchManager()
             notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
-            wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
+            wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
             notifier.loop()
 
@@ -853,7 +863,6 @@ class CourseDownloader:
         exception_lock = Lock()
 
         def download(file: MediaContainer) -> None:
-            assert status is not None
             if enable_multithread:
                 thread_id = int(current_thread().name.split("T_")[-1])
             else:
@@ -875,31 +884,31 @@ class CourseDownloader:
             for file in _files:
                 if not file.should_download:
                     first_files.append(file)
-                elif not file.media_type == MediaType.corrupted:
+                else:
                     second_files.append(file)
 
         if enable_multithread:
             with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
-                # TODO: Add option to add corrupted
                 list(ex.map(download, first_files + second_files))
         else:
             for file in first_files + second_files:
                 download(file)
 
+        print()
+
     @staticmethod
     @on_kill(2)
     def shutdown_running_downloads(*_: Any) -> None:
-        downloading_files = CourseDownloader.containers
-        if not downloading_files:
+        if not CourseDownloader.containers:
             return
 
         if args.stream:
             return
 
-        for row in downloading_files.values():
+        for row in CourseDownloader.containers.values():
             for item in row:
                 item.stop()
 
         # Now wait for the downloads to finish
-        while not all(item.current_size != item.size for row in downloading_files.values() for item in row):
+        while not all(item.current_size is not None or item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
             time.sleep(0.25)

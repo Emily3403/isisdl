@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import enum
+import math
 import shutil
 import time
-from collections import defaultdict
 from datetime import datetime, timedelta
 from threading import Thread, Lock
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, DefaultDict
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-import math
-
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution, token_queue_download_refresh_rate
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer, PreMediaContainer
@@ -82,9 +80,9 @@ class Status(Thread):
             log_strings = ["", self.message + " " + "." * self._i, ""]
             if self._show_eta:
                 time_diff = datetime.now() - self._eta_start_time
-
                 # TODO: Estimate ETA
-                # log_strings.append(f"ETA: {(self.count or 0) / (time_diff.seconds or 1) }")
+                log_strings.append(f"ETA: {time_diff}")
+
             log_strings.extend(self.generate_log_message())
             log_strings.append("")
 
@@ -278,6 +276,6 @@ class RequestHelperStatus(Status):
             mapping[file.media_type].append(file)
 
         return [
-            f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) > 1 else ''}"
-            for typ, files in mapping.items() if typ != MediaType.corrupted
-        ] + ["", "(will be cached)"]
+                   f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) > 1 else ''}"
+                   for typ, files in mapping.items() if typ != MediaType.corrupted
+               ] + ["", "(will be cached)"]

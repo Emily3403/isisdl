@@ -24,7 +24,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast, Iterable, NoReturn
+from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -37,15 +37,12 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
-    extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
-    error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, isisdl_executable, is_static, \
-    enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
-from isisdl.version import __version__
 from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, throttler_low_prio_sleep_time
-
-if TYPE_CHECKING:
-    from isisdl.backend.request_helper import MediaContainer, RequestHelper
+from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
+    extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
+    enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
+    isisdl_executable, is_static, enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
+from isisdl.version import __version__
 
 
 def get_args() -> argparse.Namespace:
@@ -92,7 +89,7 @@ class Config:
     filename_replacing: bool
     timer_enable: bool
     throttle_rate: Optional[int]
-    throttle_rate_autorun: int
+    throttle_rate_autorun: Optional[int]
     update_policy: Optional[str]
     telemetry_policy: bool
     database_version: int
@@ -1043,7 +1040,7 @@ class DownloadThrottler(Thread):
     streaming_queue: Queue[Token]
     used_tokens: Queue[Token]
     timestamps_tokens: List[float]
-    download_rate: Optional[int]
+    download_rate: int
     refresh_rate: float
 
     _streaming_loc: Optional[Path]
@@ -1052,7 +1049,7 @@ class DownloadThrottler(Thread):
         self.download_queue, self.streaming_queue, self.used_tokens = Queue(), Queue(), Queue()
         self.timestamps_tokens = []
         self._streaming_loc: Optional[Path] = None
-        self.download_rate = args.download_rate or config.throttle_rate
+        self.download_rate = args.download_rate or config.throttle_rate or -1
         self.refresh_rate = token_queue_refresh_rate
 
         # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
@@ -1071,11 +1068,6 @@ class DownloadThrottler(Thread):
         self.start()
 
     def run(self) -> None:
-        import isisdl.settings
-
-        # num has to be distributed over `token_queue_refresh_rate` seconds. We're inserting them all at the beginning.
-        num = self.max_tokens()
-
         while True:
             # Clear old timestamps
             start = time.perf_counter()
@@ -1085,17 +1077,17 @@ class DownloadThrottler(Thread):
                 else:
                     break
 
-            if self.download_rate is not None:
+            if self.download_rate != -1:
                 # If a download limit is imposed hand out new tokens
                 try:
-                    for _ in range(num):
+                    for _ in range(self.max_tokens()):
                         self.download_queue.put(self.used_tokens.get(block=False))
 
                 except (Full, Empty):
                     pass
 
             # Finally, compute how much time we've spent doing this stuff and sleep the remainder.
-            time.sleep(max(isisdl.settings.token_queue_refresh_rate - (time.perf_counter() - start), 0))
+            time.sleep(max(self.refresh_rate - (time.perf_counter() - start), 0))
 
     @property
     def bandwidth_used(self) -> float:
@@ -1110,7 +1102,7 @@ class DownloadThrottler(Thread):
             time.sleep(throttler_low_prio_sleep_time)
 
         try:
-            if self.download_rate == -1:
+            if self.download_rate == -1 or self.download_rate:
                 return self.token
 
             token = self.download_queue.get()
@@ -1129,7 +1121,7 @@ class DownloadThrottler(Thread):
         self._streaming_loc = None
 
     def max_tokens(self) -> int:
-        if self.download_rate == -1 or self.download_rate is None:
+        if self.download_rate == -1 or self.download_rate:
             return 1
 
         return int((self.download_rate * 1024 ** 2) // download_chunk_size * self.refresh_rate) or 1

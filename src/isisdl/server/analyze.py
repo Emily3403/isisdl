@@ -8,7 +8,6 @@ from datetime import datetime
 from distutils.version import Version
 from typing import List, Union, Dict, Any, Optional, Set, DefaultDict
 
-import matplotlib
 import matplotlib.pyplot as plt
 from distlib.version import LegacyVersion
 
@@ -54,15 +53,14 @@ def get_data() -> List[DataV1]:
 
 def analyze_versions() -> None:
     data = get_data()
-    counted: Set[str] = set()
     users: DefaultDict[str, List[Union[LegacyVersion, Version]]] = defaultdict(list)
 
     for dat in data:
         users[dat.username].append(dat.version)
 
     versions: Dict[str, Union[LegacyVersion, Version]] = {}
-    for user, version in users.items():
-        versions[user] = max(version)
+    for user, _version in users.items():
+        versions[user] = max(_version)
 
     perc_versions = []
     labels = []
@@ -110,7 +108,6 @@ def remove_bad_files() -> None:
 
 def main() -> None:
     remove_bad_files()
-    print("Done removing")
 
     analyze_versions()
     analyze_users_per_day()

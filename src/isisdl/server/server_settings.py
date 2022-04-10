@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -8,4 +7,3 @@ log_dir_location = "logs"
 log_dir_version = "v1"
 log_type = "logs"
 graph_dir_location = "graphs"
-

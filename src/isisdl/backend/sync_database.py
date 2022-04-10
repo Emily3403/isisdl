@@ -49,7 +49,7 @@ class FileStatus(enum.Enum):
     corrupted = 2
 
 
-def get_it(
+def restore_file(
         file: Path, filename_mapping: Dict[str, MediaContainer], files_for_course: Dict[str, DefaultDict[int, List[MediaContainer]]], status: Optional[SyncStatus] = None
 ) -> Tuple[Optional[FileStatus], Path]:
     try:
@@ -96,7 +96,7 @@ def get_it(
 
         # Second heuristic: File size
         for course, files in files_for_course.items():
-            if course in str(file):
+            if str(course) in str(file):
                 break
         else:
             return FileStatus.corrupted, file
@@ -129,7 +129,7 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
         files_for_course[course_id_path_mapping[container.course.course_id]][container.size].append(container)
 
     with ThreadPoolExecutor(cpu_count() * 2) as ex:
-        files = list(ex.map(get_it, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
+        files = list(ex.map(restore_file, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
 
     if status is not None:
         status.stop()
@@ -156,8 +156,6 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
 
     if num_corrupted < 50:
         print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
-    else:
-        print(f"There are {num_corrupted} files! ")
 
     print(f"\nDo you want me to{' bulk' if num_corrupted > 50 else ''} delete them? [y/n]")
     choice = get_input({"y", "n"})

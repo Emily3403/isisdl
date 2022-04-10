@@ -1,25 +1,22 @@
 import os
 import random
-import shutil
 import string
-from itertools import permutations
-from pathlib import Path
-from typing import Any, List, Dict, Set
+from typing import Any, List, Dict
 
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.backend.request_helper import RequestHelper, MediaContainer, CourseDownloader, check_for_conflicts_in_files
-from isisdl.utils import path, args, User, config, startup, database_helper, calculate_local_checksum, MediaType
-from isisdl.settings import database_file_location, lock_file_location, testing_download_sizes, env_var_name_username, env_var_name_password
+from isisdl.backend.request_helper import RequestHelper, MediaContainer, CourseDownloader
+from isisdl.settings import testing_download_sizes, env_var_name_username, env_var_name_password
+from isisdl.utils import User, config, calculate_local_checksum, MediaType
 
 
 def remove_old_files() -> None:
-    for item in os.listdir(path()):
-        if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
-            shutil.rmtree(path(item))
-
-    startup()
-    config.__init__()  # type: ignore
-    database_helper.__init__()  # type: ignore
+    # for item in os.listdir(path()):
+    #     if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
+    #         shutil.rmtree(path(item))
+    #
+    # startup()
+    # config.__init__()  # type: ignore
+    # database_helper.__init__()  # type: ignore
     return
 
 
@@ -64,31 +61,34 @@ def chop_down_size(files_type: Dict[MediaType, List[MediaContainer]]) -> Dict[Me
     return ret_files
 
 
-def get_content_to_download(request_helper: RequestHelper) -> List[MediaContainer]:
-    conflict_free = chop_down_size(request_helper.download_content())
-    return [item for row in conflict_free.values() for item in row]
+def get_content_to_download(request_helper: RequestHelper, monkeypatch: Any) -> Dict[MediaType, List[MediaContainer]]:
+    content = chop_down_size(request_helper.download_content())
+    monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None, __=None: content)
+
+    return content
+
 
 def test_normal_download(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
     config.filename_replacing = True
+    request_helper.make_course_paths()
 
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
     os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
 
-    content = get_content_to_download(request_helper)
-    monkeypatch.setattr("isisdl.backend.request_helper.RequestHelper.download_content", lambda _=None, __=None: content)
+    allowed_chars = set(string.ascii_letters + string.digits + ".")
+    content = get_content_to_download(request_helper, monkeypatch)
 
     # The main entry point
     CourseDownloader().start()
 
     # Now check if everything was downloaded successfully
-
-    allowed_chars = set(string.ascii_letters + string.digits + ".")
-    for container in content:
+    for container in [item for row in content.values() for item in row]:
         assert container.path.exists()
         assert all(c for item in container.path.parts[1:] for c in item if c not in allowed_chars)
 
         if container.media_type != MediaType.corrupted:
             assert container.size != 0 and container.size != -1
+            assert container.size == container.current_size
             assert container.path.stat().st_size == container.size
             assert container.checksum is not None
 
@@ -99,48 +99,60 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
 
         else:
             assert container.size == 0 and container.size == -1  # TODO: Assert only 0 / -1
+            assert container.current_size is None
             assert container.path.stat().st_size == 0
 
-    # Now we do ...
-    prev_urls: Set[str] = set()
-    container_mapping = {item.url: item for item in content}
-    for item in database_helper.get_state()["fileinfo"]:
-        url = item[1]
+# def test_sync_database_normal(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:
+#     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
+#     os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
+#
+#     content = get_content_to_download(request_helper, monkeypatch)
+#
+#     for typ, containers in content.items():
+#         for container in containers:
+#             pre_container = PreMediaContainer(container.url, container.course, container.media_type, container._name, str(container.path.parent), container.size, container.time)
+#             if typ == MediaType.corrupted:
+#                 assert container.from_pre_container(pre_container, request_helper.session) is None
+#
+#     prev_urls: Set[str] = set()
+#     container_mapping = {item.url: item for item in content}
+#     for item in database_helper.get_state()["fileinfo"]:
+#         url = item[1]
+#
+#         if url in container_mapping.values():
+#             container = container_mapping[url]
+#             restored = MediaContainer.from_dump(item[1])
+#             assert item[8] is not None
+#             assert isinstance(restored, MediaContainer)
+#             assert restored.checksum is not None
+#             assert container == restored
+#             prev_urls.update(url)
+#
+#         else:
+#             # Not downloaded (yet), checksum should be None.
+#             assert item[8] is None
+#
+# dupl = defaultdict(list)
+# for item in content:
+#     dupl[item.size].append(item)
 
-        if url in container_mapping:
-            container = container_mapping[url]
-            restored = MediaContainer.from_dump(item[1])
-            assert item[8] is not None
-            assert isinstance(restored, MediaContainer)
-            assert restored.checksum is not None
-            assert container == restored
-            prev_urls.update(url)
+# not_downloaded = [item for row in dupl.values() for item in row if len(row) > 1]
 
-        else:
-            # Not downloaded (yet), checksum should be None.
-            assert item[8] is None
-    #
-    # dupl = defaultdict(list)
-    # for item in content:
-    #     dupl[item.size].append(item)
-
-    # not_downloaded = [item for row in dupl.values() for item in row if len(row) > 1]
-
-    # TODO
-    # for item in not_downloaded:
-    #     try:
-    #         prev_ids.remove(item.file_id)
-    #     except KeyError:
-    #         pass
-    #
-    # monkeypatch.setattr("builtins.input", lambda _=None: "n")
-    # database_helper.delete_file_table()
-    # restore_database_state(request_helper.download_content(), request_helper)
-    #
-    # # Now check if everything is restored (except `possible_duplicates`)
-    # recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
-    #
-    # assert prev_ids.difference(recovered_ids) == set()
+# TODO
+# for item in not_downloaded:
+#     try:
+#         prev_ids.remove(item.file_id)
+#     except KeyError:
+#         pass
+#
+# monkeypatch.setattr("builtins.input", lambda _=None: "n")
+# database_helper.delete_file_table()
+# restore_database_state(request_helper.download_content(), request_helper)
+#
+# # Now check if everything is restored (except `possible_duplicates`)
+# recovered_ids = {item[1] for item in database_helper.get_state()["fileinfo"]}
+#
+# assert prev_ids.difference(recovered_ids) == set()
 
 # def sample_files(files: List[MediaContainer], num: int) -> List[Path]:
 #     sizes = {item.size for item in files}

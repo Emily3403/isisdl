@@ -28,7 +28,7 @@ database_file_location = ".state.db"
 current_database_version = 2
 
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 error_directory_location = ".errors"
 
