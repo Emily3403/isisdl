@@ -75,11 +75,13 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
     os.environ[env_var_name_username] = os.environ["ISISDL_ACTUAL_USERNAME"]
     os.environ[env_var_name_password] = os.environ["ISISDL_ACTUAL_PASSWORD"]
 
-    allowed_chars = set(string.ascii_letters + string.digits + ".")
     content = get_content_to_download(request_helper, monkeypatch)
 
     # The main entry point
     CourseDownloader().start()
+
+    allowed_chars = set(string.ascii_letters + string.digits + ".")
+    bad_urls = set(database_helper.get_bad_urls())
 
     # Now check if everything was downloaded successfully
     for container in [item for row in content.values() for item in row]:
@@ -100,6 +102,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
         else:
             assert container.size == 0 and container.size == -1  # TODO: Assert only 0 / -1
             assert container.current_size is None
+            assert container.url in bad_urls
             assert container.path.stat().st_size == 0
 
 # def test_sync_database_normal(request_helper: RequestHelper, database_helper: DatabaseHelper, user: User, monkeypatch: Any) -> None:

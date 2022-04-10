@@ -335,9 +335,9 @@ enable_multithread = True
 global_vars = globals()
 
 testing_download_sizes = {
-    1: 100_000_000,  # Video
-    2: 100_000_000,  # Documents
-    3: 100_000_000,  # Extern
+    1: 5_000_000_000,  # Video
+    2: 2_500_000_000,  # Documents
+    3: 1_000_000_000,  # Extern
     4: 0,  # Corrupted
 }
 
