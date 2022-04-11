@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
+from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
 
 from isisdl.settings import database_file_location
 
