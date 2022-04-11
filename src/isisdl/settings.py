@@ -129,7 +129,7 @@ token_queue_refresh_rate = 0.01
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_download_refresh_rate = 3
 
-# When streaming, threads poll with this sleep time. # TODO: changed this
+# When streaming, threads poll with this sleep time.
 throttler_low_prio_sleep_time = 0.1
 
 # -/- Throttler options ---
@@ -191,48 +191,18 @@ url_finder = re.compile(
 |tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""
 )
 
-# Testing urls to be excluded  # TODO: Make this minimal
+# Testing urls to be excluded. We know that they will not lead to a valid download.
 testing_bad_urls: Set[str] = set(
     'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj'
 )
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
-    """
-".*mod/(?:"
-"forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
-"|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book"
-")/.*"
-"""
+    ".*mod/(?:"
+    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
+    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book"
+    ")/.*"
 )
-
-
-# # TODO: Get rid of these / factor them into one big blob
-#
-# ignored_urls = {
-#     "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
-#     "https://isis.tu-berlin.de/mod/resource/view.php?id=910864",
-# }
-#
-# known_bad_isis_urls = {
-#     "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
-# }
-#
-# known_bad_extern_urls = {
-#     "https://www.sese.tu-berlin.de/kloes",
-#     "https://www.qemu.org/docs/master/system/index.html",
-#     "https://developer.arm.com/documentation/ihi0042/j/?lang=en",
-#     "http://infocenter.arm.com/help/topic/com.arm.doc.qrc0001m/QRC0001_UAL.pdf",
-#     "https://gcc.gnu.org/onlinedocs/gcc-10.2.0/gcc/",
-#     "https://sourceware.org/gdb/current/onlinedocs/gdb/",
-#     "https://elinux.org/BCM2835_datasheet_errata",
-#     "http://www.gnu.org/software/make/manual/make.html",
-#     "http://de.wikibooks.org/wiki/C-Programmierung",
-#     "http://openbook.galileocomputing.de/c_von_a_bis_z/",
-#     "https://www.qemu.org/",
-#     "https://sourceware.org/binutils/docs-2.35/",
-#     "https://developer.arm.com/documentation/ddi0406/latest",
-# }
 
 
 def parse_config_file() -> DefaultDict[str, Any]:

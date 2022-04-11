@@ -104,7 +104,6 @@ def main() -> None:
 
 # TODO:
 #   Use mp4 metadata to recognize files
-#   Better support for streaming
 #   Subscribe to *all* courses
 
 # Future todos:

@@ -877,7 +877,7 @@ def calculate_local_checksum(filename: Path) -> str:
     with open(filename, "rb") as f:
         i = 1
         while True:
-            f.seek(checksum_base_skip ** i, 1)  # This enables O(log(n)) time.
+            # f.seek(checksum_base_skip ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
             if not data:
                 break

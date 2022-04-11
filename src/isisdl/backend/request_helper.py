@@ -303,7 +303,6 @@ class MediaContainer:
         assert self.size != 0
         assert self.size != -1
 
-        # TODO: This could bite me in the ass if the stat-ed size is different from the actual (gzip)
         if self.path.stat().st_size != self.size:
             return True
 
@@ -528,7 +527,6 @@ class Course:
                 if "contents" in module:
                     for file in module["contents"]:
                         if config.follow_links and "type" in file and file["type"] == "url":
-                            # TODO: Maybe name?
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
@@ -666,13 +664,13 @@ class RequestHelper:
         """
         The main download routine. You always call this one.
         """
+        # TODO: Faster
         exception_lock = Lock()
 
         if status is not None:
             status.set_status(StatusOptions.getting_content)
             status.set_total(len(self.courses) + 2)
 
-        # TODO: Benchmark on how to make this faster
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
                 _pre_containers = list(ex.map(self._download_course, self.courses, repeat(exception_lock), repeat(status)))
@@ -805,7 +803,7 @@ class CourseDownloader:
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
         with DownloadStatus(containers, args.num_threads, throttler) as status:
-            Thread(target=self.stream_files, args=(containers, throttler, status), daemon=True).start()
+            Thread(target=self.stream_files, args=(containers, throttler, status, helper.session), daemon=True).start()
             if not args.stream:
                 downloader = Thread(target=self.download_files, args=(containers, throttler, helper.session, status))
                 downloader.start()
@@ -831,11 +829,9 @@ class CourseDownloader:
 
             downloader.join()
 
-    def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+    def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus, session: SessionWithKey) -> None:
         if is_windows:
             return
-
-        # return
 
         if sys.version_info >= (3, 10):
             # TODO: Figure out how to support python3.10
@@ -845,12 +841,13 @@ class CourseDownloader:
             import pyinotify
 
             class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
-                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
-                    self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
+                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler,session: SessionWithKey, **kwargs: Any):
+                    self.session = session
                     self.throttler = throttler
+                    self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
+
                     super().__init__(**kwargs)
 
-                # TODO: Also watch for close events and end the stream
                 def process_IN_OPEN(self, event: pyinotify.Event) -> None:
                     if event.dir:
                         return
@@ -866,11 +863,11 @@ class CourseDownloader:
                         return
 
                     status.add_streaming(file)
-                    file.download(self.throttler, SessionWithKey("uwu", "owo"), True)  # TODO
+                    file.download(self.throttler, self.session, True)
                     status.done_streaming()
 
             wm = pyinotify.WatchManager()
-            notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler))
+            notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler, session))
             wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
             notifier.loop()
@@ -910,8 +907,6 @@ class CourseDownloader:
         else:
             for file in first_files + second_files:
                 download(file)
-
-        print()
 
     @staticmethod
     @on_kill(2)

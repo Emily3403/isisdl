@@ -387,7 +387,7 @@ class CompressStatus(Thread):
             generate_error_message(ex)
 
     def generate_final_message(self) -> None:
-        print("TODO: Generate the final message is currently out of order.")
+        print("TODO: Generating the final message is currently out of order.")
         exit(1)
 
         course_name_mapping = {course.course_id: course.name for course in self.helper.courses}  # type: ignore

@@ -1,4 +1,3 @@
-# TODO: Syntactic sugar: define __exit__ and __enter__ for `with SyncStatus():`
 from __future__ import annotations
 
 import enum
@@ -69,7 +68,6 @@ class Status(Thread):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        # TODO: Figure out type
         self._running = False
 
     def stop(self) -> None:
@@ -110,7 +108,6 @@ class Status(Thread):
             assert self.total is None or self.count <= self.total
 
 
-# TODO: When already done file add them in the beginning instead of subtracting: 0 / 300 → 200 / 500
 class DownloadStatus(Status):
     message = "Downloading content"
     _show_progress_bar = False
@@ -222,7 +219,6 @@ class SyncStatus(Status):
         return []
 
 
-# TODO: When sync-ing after lot of deleting the progress bar becomes large.
 class StatusOptions(enum.Enum):
     startup = 0
     authenticating = 1
