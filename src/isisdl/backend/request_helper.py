@@ -841,7 +841,7 @@ class CourseDownloader:
             import pyinotify
 
             class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
-                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler,session: SessionWithKey, **kwargs: Any):
+                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, **kwargs: Any):
                     self.session = session
                     self.throttler = throttler
                     self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
