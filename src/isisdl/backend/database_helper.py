@@ -90,12 +90,18 @@ class DatabaseHelper:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
 
+        DatabaseHelper._url_container_mapping = self.get_containers()
+
     def add_pre_container(self, file: MediaContainer) -> None:
+        tup = (file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
+
         with self.lock:
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum))
+            """, tup)
             self.con.commit()
+
+        self._url_container_mapping[file.url] = tup
 
     def get_checksums_per_course(self) -> Dict[int, Set[str]]:
         ret = defaultdict(set)
@@ -153,12 +159,6 @@ class DatabaseHelper:
                 return []
 
             return cast(List[str], json.loads(data[0]))
-
-    def get_urls(self) -> List[str]:
-        with self.lock:
-            res = self.cur.execute("SELECT url FROM fileinfo").fetchall()
-
-        return list(res)
 
     def get_containers(self) -> Dict[str, Iterable[Any]]:
         with self.lock:

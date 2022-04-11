@@ -134,7 +134,6 @@ class PreMediaContainer:
     media_type: MediaType
     is_cached: bool
     parent_path: Path
-    _known_bad_urls = set() | set(database_helper.get_urls())
 
     def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
         relative_location = (relative_location or "").strip("/")
