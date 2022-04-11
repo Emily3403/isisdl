@@ -12,6 +12,7 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from itertools import repeat
 from pathlib import Path
+from queue import Queue
 from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict
 from urllib.parse import urlparse
@@ -21,7 +22,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, max_connections_to_hostname
 from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType
@@ -29,6 +30,11 @@ from isisdl.utils import calculate_local_checksum
 
 
 class SessionWithKey(Session):
+    key: str
+    token: str
+    _blocks: DefaultDict[str, Queue[None]] = defaultdict(Queue)
+    _lock = Lock()
+
     def __init__(self, key: str, token: str):
         super().__init__()
         self.key = key
@@ -93,6 +99,15 @@ class SessionWithKey(Session):
 
     @staticmethod
     def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+        if (_url := urlparse(url).hostname) is not None:
+            with SessionWithKey._lock:
+                q = SessionWithKey._blocks[_url]  # TODO: What part of the url to use?
+
+            while q.qsize() == max_connections_to_hostname:
+                q.get()
+
+            q.put(None)
+
         if "tubcloud.tu-berlin.de" in url:
             # The tubcloud is *really* slow
             _download_timeout = 20

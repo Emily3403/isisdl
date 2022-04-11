@@ -101,11 +101,14 @@ status_time = 0.1 if not is_windows else 0.75
 
 # --- Download options ---
 
-# Chunks of this size are read and saved to files.
+# Chunks of this size are read and saved to file.
 download_chunk_size = 2 ** 16
 
-# Number of threads to discover sizes for urls
+# Number of threads to discover sizes for urls.
 extern_discover_num_threads = 32
+
+# THe maximum number of connections to simultaneously have with a single hostname.
+max_connections_to_hostname = 32
 
 # Will fail a download if ISIS is not responding in
 """
@@ -116,7 +119,7 @@ num_tries_download = 15
 download_timeout = 15
 download_timeout_multiplier = 3
 
-# If a download files (`except Exception`) will wait ↓ and retry.
+# If a download fails (`except Exception`) will wait ↓ and retry.
 download_static_sleep_time = 3
 
 # -/- Download options ---
@@ -302,7 +305,7 @@ env_var_name_username = "ISISDL_USERNAME"
 env_var_name_password = "ISISDL_PASSWORD"
 
 # Should multithread be enabled? (Usually yes)
-enable_multithread = False
+enable_multithread = True
 
 global_vars = globals()
 

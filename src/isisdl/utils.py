@@ -993,6 +993,7 @@ class DataLogger(Thread):
         }
         self.messages: Queue[Union[str, Dict[str, Any]]] = Queue()
         super().__init__(daemon=True)
+        self.start()
 
     def run(self) -> None:
         while True:
@@ -1029,27 +1030,24 @@ class Token:
     num_bytes: int = download_chunk_size
 
 
-# TODO: Refactor into 2 queues, 1 streaming, 1 downloading.
+# TODO: When streaming a file the download rate will not be limited.
 class DownloadThrottler(Thread):
     """
     This class acts in a way that the download speed is capped at a certain maximum speed.
     It does so by handing out tokens, which are limited.
     With every token you may download a number of bytes.
     """
-
     download_queue: Queue[Token]
-    streaming_queue: Queue[Token]
     used_tokens: Queue[Token]
-    timestamps_tokens: List[float]
     download_rate: int
     refresh_rate: float
 
-    _streaming_loc: Optional[Path]
+    token = Token()
+    timestamps: List[float] = []
+    _streaming_loc: Optional[Path] = None
 
     def __init__(self) -> None:
-        self.download_queue, self.streaming_queue, self.used_tokens = Queue(), Queue(), Queue()
-        self.timestamps_tokens = []
-        self._streaming_loc: Optional[Path] = None
+        self.download_queue, self.used_tokens = Queue(), Queue()
         self.download_rate = args.download_rate or config.throttle_rate or -1
         self.refresh_rate = token_queue_refresh_rate
 
@@ -1062,24 +1060,22 @@ class DownloadThrottler(Thread):
         for _ in range(self.max_tokens()):
             self.download_queue.put(Token())
 
-        # Dummy token used to maybe return it all the time.
-        self.token = Token()
-
         super().__init__(daemon=True)
         self.start()
 
     def run(self) -> None:
         while True:
-            # Clear old timestamps
             start = time.perf_counter()
-            while self.timestamps_tokens:
-                if self.timestamps_tokens[0] < start - token_queue_download_refresh_rate:
-                    self.timestamps_tokens.pop(0)
+
+            # Clear old timestamps
+            while self.timestamps:
+                if self.timestamps[0] < start - token_queue_download_refresh_rate:
+                    self.timestamps.pop(0)
                 else:
                     break
 
-            if self.download_rate != -1:
-                # If a download limit is imposed hand out new tokens
+            # If a download limit is imposed hand out new tokens
+            if self.download_rate != -1 and self._streaming_loc is None:
                 try:
                     for _ in range(self.max_tokens()):
                         self.download_queue.put(self.used_tokens.get(block=False))
@@ -1095,15 +1091,11 @@ class DownloadThrottler(Thread):
         """
         Returns the bandwidth used in bytes / second
         """
-        return float(len(self.timestamps_tokens) * download_chunk_size / token_queue_download_refresh_rate)
+        return float(len(self.timestamps) * download_chunk_size / token_queue_download_refresh_rate)
 
     def get(self, location: Path) -> Token:
-        # TODO: Get rid of polling in favor of Queues
-        while self._streaming_loc is not None and location != self._streaming_loc:
-            time.sleep(throttler_low_prio_sleep_time)
-
         try:
-            if self.download_rate == -1 or self.download_rate:
+            if self.download_rate == -1 or location == self._streaming_loc:
                 return self.token
 
             token = self.download_queue.get()
@@ -1113,7 +1105,7 @@ class DownloadThrottler(Thread):
 
         finally:
             # Only append it at exit
-            self.timestamps_tokens.append(time.perf_counter())
+            self.timestamps.append(time.perf_counter())
 
     def start_stream(self, location: Path) -> None:
         self._streaming_loc = location
@@ -1235,4 +1227,3 @@ config = Config()
 created_lock_file = False
 
 logger = DataLogger()
-logger.start()

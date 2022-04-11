@@ -62,9 +62,9 @@ class Status(Thread):
         self.total = total
 
         super().__init__(daemon=True)
+        self.start()
 
     def __enter__(self) -> Any:
-        self.start()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
