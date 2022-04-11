@@ -4,8 +4,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from threading import Lock
-from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict
-
+from typing import TYPE_CHECKING, Optional, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
 
 from isisdl.settings import database_file_location
 
@@ -15,12 +14,17 @@ if TYPE_CHECKING:
 
 class DatabaseHelper:
     lock = Lock()
+    _bad_urls: Set[str] = set()
+    _url_container_mapping: Dict[str, Iterable[Any]] = {}
 
     def __init__(self) -> None:
         from isisdl.utils import path
         self.con = sqlite3.connect(path(database_file_location), check_same_thread=False)
         self.cur = self.con.cursor()
         self.create_default_tables()
+
+        self._bad_urls.update(self.get_bad_urls())
+        self._url_container_mapping.update(self.get_containers())
 
     def create_default_tables(self) -> None:
         with self.lock:
@@ -75,19 +79,13 @@ class DatabaseHelper:
 
         return 1
 
-    def get_name_by_checksum(self, checksum: str) -> Optional[str]:
-        return cast(Optional[str], self._get_attr_by_equal("name", checksum, "checksum"))
+    def get_file_by_url(self, url: str) -> Optional[Any]:
+        return self._get_attr_by_equal("*", url, "url")
 
     def does_checksum_exist(self, checksum: str) -> bool:
         return bool(self._get_attr_by_equal("checksum", checksum, "checksum"))
 
-    def get_checksum_from_url(self, url: str) -> Optional[str]:
-        return cast(Optional[str], self._get_attr_by_equal("checksum", url, "url"))
-
-    def get_size_from_url(self, url: str) -> Optional[int]:
-        return cast(Optional[int], self._get_attr_by_equal("size", url, "url"))
-
-    def delete_by_checksum(self, checksum: str) -> None:
+    def delete_file_by_checksum(self, checksum: str) -> None:
         with self.lock:
             self.cur.execute("""DELETE FROM fileinfo WHERE checksum = ?""", (checksum,))
             self.con.commit()
@@ -97,17 +95,6 @@ class DatabaseHelper:
             self.cur.execute("""
                 INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum))
-            self.con.commit()
-
-    def add_pre_containers(self, files: List[MediaContainer]) -> None:
-        """
-        Returns true iff the element already existed
-        """
-        with self.lock:
-            self.cur.executemany("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [(file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
-                  for file in files])
             self.con.commit()
 
     def get_checksums_per_course(self) -> Dict[int, Set[str]]:
@@ -136,9 +123,6 @@ class DatabaseHelper:
 
             return defaultdict(lambda: None, json.loads(data[0]))
 
-    def get_pre_container_by_url(self, url: str) -> Optional[Any]:
-        return self._get_attr_by_equal("*", url, "url")
-
     def add_bad_url(self, url: str) -> None:
         with self.lock:
             _data = self.cur.execute("SELECT json FROM json_strings where id=\"bad_url_cache\"").fetchone()
@@ -154,6 +138,7 @@ class DatabaseHelper:
 
             self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("bad_url_cache", json.dumps(data)))
             self.con.commit()
+            self._bad_urls.add(url)
 
     def get_bad_urls(self) -> List[str]:
         with self.lock:
@@ -169,27 +154,27 @@ class DatabaseHelper:
 
             return cast(List[str], json.loads(data[0]))
 
-    def get_cached_pre_containers(self, course_id: int) -> Dict[str, int]:
+    def get_urls(self) -> List[str]:
         with self.lock:
-            data = self.cur.execute(f"SELECT json FROM json_strings where id=\"video_cache_{course_id}\"").fetchone()
-            if data is None:
-                return {}
+            res = self.cur.execute("SELECT url FROM fileinfo").fetchall()
 
-            if len(data) == 0:
-                return {}
+        return list(res)
 
-            return cast(Dict[str, int], json.loads(data[0]))
-
-    def get_video_cache_exists(self) -> bool:
+    def get_containers(self) -> Dict[str, Iterable[Any]]:
         with self.lock:
-            data = self.cur.execute("SELECT * FROM json_strings WHERE id LIKE '%video%'").fetchone()
-            if data is None:
-                return False
+            res = self.cur.execute("SELECT * FROM fileinfo").fetchall()
 
-            if len(data) == 0:
-                return False
+        return {item[2]: item for item in res}
 
+    def know_url(self, url: str) -> Union[bool, Iterable[Any]]:
+        if url in self._bad_urls:
+            return False
+
+        info = self._url_container_mapping.get(url, None)
+        if info is None:
             return True
+
+        return info
 
     def update_inefficient_videos(self, file: MediaContainer, estimated_efficiency: float) -> None:
         with self.lock:

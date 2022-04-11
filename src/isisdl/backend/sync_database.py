@@ -37,7 +37,7 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
     count = 0
     for row in checksums.values():
         for item in row:
-            database_helper.delete_by_checksum(item)
+            database_helper.delete_file_by_checksum(item)
             count += 1
 
     print(f"Dropped {count} entries from the database to be re-downloaded.")

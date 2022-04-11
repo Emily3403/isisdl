@@ -526,6 +526,7 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 
 def install_latest_version() -> None:
+    # TODO: Thread this
     if is_first_time:
         return
 

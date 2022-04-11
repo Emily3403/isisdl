@@ -40,22 +40,22 @@ class SessionWithKey(Session):
             s = cls("", "")
             s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
-            s.get("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
-            s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
-                   data={
-                       "shib_idp_ls_exception.shib_idp_session_ss": "",
-                       "shib_idp_ls_success.shib_idp_session_ss": "false",
-                       "shib_idp_ls_value.shib_idp_session_ss": "",
-                       "shib_idp_ls_exception.shib_idp_persistent_ss": "",
-                       "shib_idp_ls_success.shib_idp_persistent_ss": "false",
-                       "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                       "shib_idp_ls_supported": "", "_eventId_proceed": "",
-                   })
+            s.get_("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+            s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+                    data={
+                        "shib_idp_ls_exception.shib_idp_session_ss": "",
+                        "shib_idp_ls_success.shib_idp_session_ss": "false",
+                        "shib_idp_ls_value.shib_idp_session_ss": "",
+                        "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                        "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                        "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                        "shib_idp_ls_supported": "", "_eventId_proceed": "",
+                    })
 
-            response = s.post("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
-                              params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
+            response = s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                               params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
 
-            if response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+            if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
                 # The redirection did not work → credentials are wrong
                 return None
 
@@ -76,6 +76,8 @@ class SessionWithKey(Session):
                 #
                 # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
 
+                # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
+
                 s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
                 raise InvalidSchema
             except InvalidSchema as ex:
@@ -90,8 +92,8 @@ class SessionWithKey(Session):
             generate_error_message(ex)
 
     @staticmethod
-    def _timeouter(func: Any, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
-        if "tubcloud.tu-berlin.de" in args[0]:
+    def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+        if "tubcloud.tu-berlin.de" in url:
             # The tubcloud is *really* slow
             _download_timeout = 20
         else:
@@ -100,20 +102,21 @@ class SessionWithKey(Session):
         i = 0
         while i < num_tries_download:
             try:
-                return func(*args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
+                return func(url, *args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
             except Exception:
                 time.sleep(download_static_sleep_time)
                 i += 1
 
-    def get_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
-        return cast(Optional[Response], self._timeouter(super().get, *args, **kwargs))
+    # TODO: Transparently have a thread pool waiting, which handles the requests.
+    def get_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().get, url, *args, **kwargs))
 
-    def post_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
-        return cast(Optional[Response], self._timeouter(super().post, *args, **kwargs))
+    def post_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().post, url, *args, **kwargs))
 
-    def head_(self, *args: Any, **kwargs: Any) -> Optional[Response]:
-        return cast(Optional[Response], self._timeouter(super().head, *args, **kwargs))
+    def head_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().head, url, *args, **kwargs))
 
     def __str__(self) -> str:
         return "~Session~"
@@ -131,6 +134,7 @@ class PreMediaContainer:
     media_type: MediaType
     is_cached: bool
     parent_path: Path
+    _known_bad_urls = set() | set(database_helper.get_urls())
 
     def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
         relative_location = (relative_location or "").strip("/")
@@ -146,12 +150,15 @@ class PreMediaContainer:
         self.size = size
         self.course = course
         self.media_type = media_type
-        self.is_cached = url in database_helper.get_bad_urls() or database_helper.get_pre_container_by_url(url) is not None
+        self.is_cached = not (database_helper.know_url(url) is True)
         self.parent_path = course.path(sanitize_name(relative_location))
         self.parent_path.mkdir(exist_ok=True)
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"{self._name}: {self.course}"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 @dataclass
@@ -174,13 +181,11 @@ class MediaContainer:
         """
         The `bool` return value indicates if the container should be downloaded.
         """
-        if url in database_helper.get_bad_urls():
-            return False
+        info = database_helper.know_url(url)
+        if isinstance(info, bool):
+            return info
 
-        info = database_helper.get_pre_container_by_url(url)
-        if info is None:
-            return True
-
+        # TODO: Version compatibility: This might not always work.
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
         container.path = Path(container.path)
