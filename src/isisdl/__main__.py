@@ -109,6 +109,15 @@ def main() -> None:
 # Future todos:
 #   Windows autorun
 
+# TODO:
+#   How to speed things up
+#       Check online → check latest version
+#       Check latest version → threads
+#       When discovering have 64 threads that do the lifting + 32 max for every hostname
+#       Maybe make download_videos own thread again
+
+#       → More threads!
+
 
 if __name__ == "__main__":
     main()

@@ -192,9 +192,9 @@ url_finder = re.compile(
 )
 
 # Testing urls to be excluded. We know that they will not lead to a valid download.
-testing_bad_urls: Set[str] = set(
-    'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj'
-)
+testing_bad_urls: Set[str] = {
+    'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj',
+}
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
@@ -302,7 +302,7 @@ env_var_name_username = "ISISDL_USERNAME"
 env_var_name_password = "ISISDL_PASSWORD"
 
 # Should multithread be enabled? (Usually yes)
-enable_multithread = True
+enable_multithread = False
 
 global_vars = globals()
 

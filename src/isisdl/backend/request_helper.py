@@ -197,7 +197,7 @@ class MediaContainer:
     @classmethod
     def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus] = None) -> Optional[MediaContainer]:
         try:
-            if is_testing and container.url in testing_bad_urls:
+            if container.url in testing_bad_urls:
                 return None
 
             maybe_container = MediaContainer.from_dump(container.url)

@@ -79,9 +79,6 @@ class DatabaseHelper:
 
         return 1
 
-    def get_file_by_url(self, url: str) -> Optional[Any]:
-        return self._get_attr_by_equal("*", url, "url")
-
     def does_checksum_exist(self, checksum: str) -> bool:
         return bool(self._get_attr_by_equal("checksum", checksum, "checksum"))
 
