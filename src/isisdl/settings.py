@@ -28,7 +28,7 @@ database_file_location = ".state.db"
 current_database_version = 2
 
 lock_file_location = ".lock"
-enable_lock = True
+enable_lock = False
 
 error_directory_location = ".errors"
 
@@ -94,7 +94,7 @@ download_progress_bar_resolution = 10
 status_chop_off = 2
 
 # The status message is replaced every ↓ seconds  (on Windows™ cmd it is *very* slow)
-status_time = 0.1 if not is_windows else 0.75
+status_time = 0.25 if not is_windows else 0.75
 
 # -/- Status options ---
 

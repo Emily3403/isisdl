@@ -105,6 +105,8 @@ def main() -> None:
 # TODO:
 #   Use mp4 metadata to recognize files
 #   Subscribe to *all* courses
+#   When using --config the password seams to be reset
+#   Whitelisting doesn't work?
 
 # Future todos:
 #   Windows autorun

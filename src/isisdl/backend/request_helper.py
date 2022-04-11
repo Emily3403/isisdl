@@ -319,8 +319,8 @@ class MediaContainer:
             return True
 
         # TODO: Remove
-        assert self.size != 0
-        assert self.size != -1
+        # assert self.size != 0
+        # assert self.size != -1
 
         if self.path.stat().st_size != self.size:
             return True
@@ -380,10 +380,13 @@ class MediaContainer:
 
         self.current_size = 0
         if self._link is not None:
+            self._link.current_size = 0
+            self._link.download(throttler, session, is_stream)
+
+            self.path.unlink(missing_ok=True)
             if not self._link.path.exists():
                 self._link.download(throttler, session, is_stream)
 
-            self.path.unlink(missing_ok=True)
             os.link(self._link.path, self.path)
 
             self.current_size = self.path.stat().st_size
@@ -771,7 +774,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         hard_link_conflicts[f"{file.course.course_id} {file.size}"].append(file)
 
     new_files = []
-    for _, conflict in hard_link_conflicts.items():
+    for conflict in hard_link_conflicts.values():
         if len(conflict) == 1:
             new_files.extend(conflict)
             continue
@@ -941,5 +944,6 @@ class CourseDownloader:
                 item.stop()
 
         # Now wait for the downloads to finish
+        # TODO: This doesnt work.
         while not all(item.current_size is not None or item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
             time.sleep(0.25)

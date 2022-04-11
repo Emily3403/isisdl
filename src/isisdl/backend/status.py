@@ -272,6 +272,6 @@ class RequestHelperStatus(Status):
             mapping[file.media_type].append(file)
 
         return [
-                   f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) > 1 else ''}"
+                   f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) != 1 else ''}"
                    for typ, files in mapping.items() if typ != MediaType.corrupted
                ] + ["", "(will be cached)"]
