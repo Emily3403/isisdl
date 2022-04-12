@@ -7,8 +7,8 @@ from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.request_helper import RequestHelper, SessionWithKey
-from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer
-from isisdl.settings import is_online, error_text
+from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, path
+from isisdl.settings import is_online, error_text, database_file_location
 from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
 
 was_in_configuration = False
@@ -142,10 +142,21 @@ For example:
 --- Note ---
 The character{'s' if is_windows else ''} `{forbidden_chars}` {'are' if is_windows else 'is'} always replaced (not supported on a filesystem level).
 
-When changing this option every file will be re-downloaded.
+Changing this option after initial configuration is not supported (yet).
 ------------
 """)
+    if config.user("filename_replacing") is not None:
+        print(f"{error_text} Changing this option after initial configuration is not supported (yet).\nIf you want, you can delete `{path(database_file_location)}`, "
+              f"and re-configure me.\n\nPlease press enter to continue.\n")
+        input()
+        return
+
     bool_prompt("filename_replacing")
+
+    # Version 1.4:
+    #   Don't store the path in the database but rather re-build it every time
+    #   Migrate the old filenames to the new ones
+    #   Invalidate caches
 
 
 def throttler_prompt() -> None:

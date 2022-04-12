@@ -176,8 +176,11 @@ class Config:
         return Config.default_config[attr]
 
     @staticmethod
-    def user(attr: str) -> Any:
-        return Config.state[attr]
+    def user(attr: str) -> Optional[Any]:
+        if attr not in Config._stored:
+            return None
+
+        return Config._stored[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
         return {name: getattr(self, name) for name in self.__slots__}

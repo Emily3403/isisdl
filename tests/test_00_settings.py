@@ -22,7 +22,7 @@ def test_settings() -> None:
     assert enable_lock is True
 
     assert error_directory_location == ".errors"
-    assert error_text == "\033[1;91mError!\033[0m"
+    assert error_text == "\033[1;91mError:\033[0m"
 
     assert checksum_algorithm == sha256
     assert 1024 * 1024 * 3 <= checksum_num_bytes <= 1024 * 1024 * 5

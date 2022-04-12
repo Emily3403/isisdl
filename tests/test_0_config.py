@@ -140,6 +140,11 @@ def test_filename_prompt(monkeypatch: Any) -> None:
     monkeypatch.setattr("builtins.input", lambda _=None: "1")
 
     config.filename_replacing = False
+    try:
+        del config._stored["filename_replacing"]
+    except KeyError:
+        pass
+
     filename_prompt()
 
     assert config.filename_replacing is True

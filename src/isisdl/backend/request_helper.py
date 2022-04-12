@@ -7,7 +7,7 @@ import time
 from base64 import standard_b64decode
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from itertools import repeat
@@ -188,7 +188,7 @@ class MediaContainer:
     checksum: Optional[str] = None
     current_size: Optional[int] = None
     _stop: bool = False
-    _link: Optional[MediaContainer] = None  # TODO: Change this to _links.
+    _links: List[MediaContainer] = field(default_factory=list)
 
     @classmethod
     def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
@@ -274,7 +274,7 @@ class MediaContainer:
             if container._name is not None:
                 name = container._name
             else:
-                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
+                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):  # TODO: utf8 filename
                     name = maybe_names[0]
                 else:
                     name = os.path.basename(container.url)
@@ -371,7 +371,7 @@ class MediaContainer:
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
         # TODO: Add option to ignore corrupted and still download it.
-        if self._stop or self.media_type == MediaType.corrupted or self._link is not None and self._link.media_type == MediaType.corrupted:
+        if self._stop or self.media_type == MediaType.corrupted:
             return
 
         if self.current_size is not None:
@@ -379,20 +379,6 @@ class MediaContainer:
             return
 
         self.current_size = 0
-        if self._link is not None:
-            self._link.current_size = 0
-            self._link.download(throttler, session, is_stream)
-
-            self.path.unlink(missing_ok=True)
-            if not self._link.path.exists():
-                self._link.download(throttler, session, is_stream)
-
-            os.link(self._link.path, self.path)
-
-            self.current_size = self.path.stat().st_size
-            self.checksum = calculate_local_checksum(self.path)
-            self.dump()
-            return
 
         if not self.should_download:
             self.current_size = self.size
@@ -450,6 +436,19 @@ class MediaContainer:
 
         self.checksum = calculate_local_checksum(self.path)
         self.dump()
+
+        # Resolve hard links
+        for link in self._links:
+            assert link.size == self.size
+            assert link._links == []
+
+            link.current_size = self.current_size
+            link.media_type = self.media_type
+            link.checksum = self.checksum
+
+            link.path.unlink(missing_ok=True)
+            os.link(self.path, link.path)
+            link.dump()
 
 
 @dataclass
@@ -775,14 +774,11 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
     new_files = []
     for conflict in hard_link_conflicts.values():
-        if len(conflict) == 1:
-            new_files.extend(conflict)
-            continue
+        if len(conflict) != 1:
+            conflict.sort(key=lambda x: x.time)
+            conflict[0]._links.extend(conflict[1:])
 
-        for conf in conflict[1:]:
-            conf._link = conflict[0]
-
-        final_list.extend(conflict)
+        final_list.append(conflict[0])
 
     files = new_files
 

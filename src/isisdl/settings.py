@@ -28,7 +28,7 @@ database_file_location = ".state.db"
 current_database_version = 2
 
 lock_file_location = ".lock"
-enable_lock = False
+enable_lock = True
 
 error_directory_location = ".errors"
 
@@ -52,7 +52,7 @@ is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
 # TODO: Add a setting for forcing characters to be ext4 / ntfs
 
-error_text = "\033[1;91mError!\033[0m"
+error_text = "\033[1;91mError:\033[0m"
 
 # -/- Options for this executable ---
 
