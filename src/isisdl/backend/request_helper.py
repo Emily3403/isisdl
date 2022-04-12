@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
+import random
 import re
-import sys
 import time
 from base64 import standard_b64decode
 from collections import defaultdict
@@ -18,11 +18,12 @@ from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict
 from urllib.parse import urlparse
 
 from requests import Session, Response
+from requests.adapters import HTTPAdapter
 from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, max_connections_to_hostname
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time
 from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType
@@ -39,6 +40,9 @@ class SessionWithKey(Session):
         super().__init__()
         self.key = key
         self.token = token
+
+        # Increase the number of recycled connections (Copied from https://stackoverflow.com/a/18845952/18680554)
+        self.mount("https://", HTTPAdapter(pool_maxsize=extern_discover_num_threads // 2, pool_block=True))
 
     @classmethod
     def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
@@ -99,15 +103,6 @@ class SessionWithKey(Session):
 
     @staticmethod
     def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
-        if (_url := urlparse(url).hostname) is not None:
-            with SessionWithKey._lock:
-                q = SessionWithKey._blocks[_url]  # TODO: What part of the url to use?
-
-            while q.qsize() == max_connections_to_hostname:
-                q.get()
-
-            q.put(None)
-
         if "tubcloud.tu-berlin.de" in url:
             # The tubcloud is *really* slow
             _download_timeout = 20
@@ -210,8 +205,9 @@ class MediaContainer:
 
     @classmethod
     def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus] = None) -> Optional[MediaContainer]:
+        con: Optional[Response] = None
         try:
-            if container.url in testing_bad_urls:
+            if is_testing and container.url in testing_bad_urls:
                 return None
 
             maybe_container = MediaContainer.from_dump(container.url)
@@ -299,12 +295,13 @@ class MediaContainer:
             if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
                 media_type = MediaType.corrupted
 
-            con.close()
-
             return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name)), time, container.course, media_type, size).dump()
 
         finally:
             container.is_cached = True
+            if con is not None:
+                con.close()
+
             if status is not None and status.status == StatusOptions.building_cache:
                 status.done()
 
@@ -334,6 +331,9 @@ class MediaContainer:
 
     def dump(self) -> MediaContainer:
         database_helper.add_pre_container(self)
+        if not self.path.exists():
+            self.path.open("w").close()
+
         return self
 
     def __str__(self) -> str:
@@ -700,6 +700,8 @@ class RequestHelper:
 
         pre_containers = [item for row in _pre_containers for item in row]
         pre_containers.extend(self._download_mod_assign())
+        random.seed(0)
+        random.shuffle(pre_containers)
 
         if status is not None:
             status.set_total(len(pre_containers))
@@ -851,44 +853,39 @@ class CourseDownloader:
         if is_windows:
             return
 
-        if sys.version_info >= (3, 11):
-            # TODO: Figure out how to support python3.10
-            return
+        import pyinotify
 
-        else:
-            import pyinotify
+        class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
+            def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, **kwargs: Any):
+                self.session = session
+                self.throttler = throttler
+                self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
 
-            class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
-                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, **kwargs: Any):
-                    self.session = session
-                    self.throttler = throttler
-                    self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
+                super().__init__(**kwargs)
 
-                    super().__init__(**kwargs)
+            def process_IN_OPEN(self, event: pyinotify.Event) -> None:
+                if event.dir:
+                    return
 
-                def process_IN_OPEN(self, event: pyinotify.Event) -> None:
-                    if event.dir:
-                        return
+                file = self.files.get(event.pathname, None)
+                if file is not None and file.current_size is not None:
+                    return
 
-                    file = self.files.get(event.pathname, None)
-                    if file is not None and file.current_size is not None:
-                        return
+                if file is None:
+                    return
 
-                    if file is None:
-                        return
+                if file.current_size is not None:
+                    return
 
-                    if file.current_size is not None:
-                        return
+                status.add_streaming(file)
+                file.download(self.throttler, self.session, True)
+                status.done_streaming()
 
-                    status.add_streaming(file)
-                    file.download(self.throttler, self.session, True)
-                    status.done_streaming()
+        wm = pyinotify.WatchManager()
+        notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler, session))
+        wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
-            wm = pyinotify.WatchManager()
-            notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler, session))
-            wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
-
-            notifier.loop()
+        notifier.loop()
 
     def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
@@ -940,6 +937,5 @@ class CourseDownloader:
                 item.stop()
 
         # Now wait for the downloads to finish
-        # TODO: This doesnt work.
-        while not all(item.current_size is not None or item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
-            time.sleep(0.25)
+        while any(item.current_size is not None and item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
+            time.sleep(status_time)

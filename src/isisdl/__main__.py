@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-from isisdl.backend import sync_database
 import isisdl.compress as compress
-from isisdl.backend.request_helper import CourseDownloader
-from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
-    config, migrate_database, OnKill
+from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
+from isisdl.backend.request_helper import CourseDownloader
 from isisdl.settings import is_first_time
 from isisdl.settings import is_online
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
+    config, migrate_database
 from isisdl.version import __version__
 
 
@@ -99,8 +99,6 @@ def main() -> None:
     except Exception as ex:
         generate_error_message(ex)
 
-    OnKill.exit()
-
 
 # TODO:
 #   Use mp4 metadata to recognize files
@@ -121,6 +119,7 @@ def main() -> None:
 # Feature discussion:
 #   Windows autorun
 #   Download of corrupted files
+#   Streaming files: Is it worth it?
 
 if __name__ == "__main__":
     main()

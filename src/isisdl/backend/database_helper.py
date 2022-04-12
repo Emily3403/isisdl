@@ -80,7 +80,7 @@ class DatabaseHelper:
         return 1
 
     def does_checksum_exist(self, checksum: str) -> bool:
-        return bool(self._get_attr_by_equal("checksum", checksum, "checksum"))
+        return bool()
 
     def delete_file_by_checksum(self, checksum: str) -> None:
         with self.lock:
@@ -99,6 +99,15 @@ class DatabaseHelper:
             self.con.commit()
 
         self._url_container_mapping[file.url] = tup
+
+    def add_pre_containers(self, files: List[MediaContainer]) -> None:
+        with self.lock:
+            self.cur.executemany("""
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [(file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum) for file in files])
+            self.con.commit()
+
+        self._url_container_mapping.update(self.get_containers())
 
     def get_checksums_per_course(self) -> Dict[int, Set[str]]:
         ret = defaultdict(set)
@@ -162,6 +171,12 @@ class DatabaseHelper:
             res = self.cur.execute("SELECT * FROM fileinfo").fetchall()
 
         return {item[2]: item for item in res}
+
+    def get_checksums(self) -> Set[str]:
+        with self.lock:
+            res = self.cur.execute("SELECT checksum FROM fileinfo").fetchall()
+
+        return set(map(lambda x: str(x[0]), res))
 
     def know_url(self, url: str) -> Union[bool, Iterable[Any]]:
         if url in self._bad_urls:

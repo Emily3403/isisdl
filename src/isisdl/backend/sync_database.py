@@ -4,17 +4,18 @@ from __future__ import annotations
 import enum
 import mimetypes
 import os
+import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, DefaultDict, Set
+from typing import List, Tuple, Optional, Dict, DefaultDict, Set, Union
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import SyncStatus, RequestHelperStatus
-from isisdl.settings import database_file_location, lock_file_location
+from isisdl.settings import database_file_location, lock_file_location, enable_multithread
 from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType
 
 
@@ -44,14 +45,15 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
 
 
 class FileStatus(enum.Enum):
-    recovered = 0
+    to_dump = 0
     unchanged = 1
     corrupted = 2
 
 
+# TODO: Faster
 def restore_file(
-        file: Path, filename_mapping: Dict[str, MediaContainer], files_for_course: Dict[str, DefaultDict[int, List[MediaContainer]]], status: Optional[SyncStatus] = None
-) -> Tuple[Optional[FileStatus], Path]:
+        file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[SyncStatus] = None
+) -> Tuple[Optional[FileStatus], Union[Path, MediaContainer]]:
     try:
         if file in {
             path(database_file_location),
@@ -64,17 +66,8 @@ def restore_file(
         if os.path.isdir(file):
             return None, file
 
-        if database_helper.does_checksum_exist(calculate_local_checksum(file)):
+        if calculate_local_checksum(file) in checksums:
             return FileStatus.unchanged, file
-
-        def dump_file(possible: Optional[MediaContainer]) -> bool:
-            if possible is not None and possible.size == file_size:
-                possible.path = file
-                possible.checksum = calculate_local_checksum(file)
-                possible.dump()
-                return True
-
-            return False
 
         # Adapt the size if the attribute is existent
         file_size = file.stat().st_size
@@ -90,9 +83,12 @@ def restore_file(
             return FileStatus.corrupted, file
 
         # First heuristic: File path
-        possible = filename_mapping.get(str(file), None)
-        if dump_file(possible):
-            return FileStatus.recovered, file
+        possible = filename_mapping.get(file, None)
+        if possible is not None and possible.size == file_size:
+            possible.path = file
+            possible.checksum = calculate_local_checksum(file)
+
+            return FileStatus.to_dump, possible
 
         # Second heuristic: File size
         for course, files in files_for_course.items():
@@ -108,8 +104,11 @@ def restore_file(
             # If there are multiple use the file name as a last resort to differentiate them
             possible = next((item for item in possible_files if sanitize_name(item._name) == file.name), None)
 
-        if dump_file(possible):
-            return FileStatus.recovered, file
+        if possible is not None and possible.size == file_size:
+            possible.path = file
+            possible.checksum = calculate_local_checksum(file)
+
+            return FileStatus.to_dump, possible
 
         return FileStatus.corrupted, file
 
@@ -121,15 +120,27 @@ def restore_file(
 def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
     content = [item for row in list(item for item in _content.values()) for item in row]
     filename_mapping = {file.path: file for file in content}
+    checksums = database_helper.get_checksums()
     files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
     course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
 
     for container in content:
         files_for_course[course_id_path_mapping[container.course.course_id]][container.size].append(container)
+        for link in container._links:
+            files_for_course[course_id_path_mapping[container.course.course_id]][link.size].append(container)
+            filename_mapping[link.path] = link
 
-    with ThreadPoolExecutor(cpu_count() * 2) as ex:
-        files = list(ex.map(restore_file, Path(path()).rglob("*"), repeat(filename_mapping), repeat(files_for_course), repeat(status)))
+    _files = list(path().rglob("*"))
+    random.shuffle(_files)
+
+    if enable_multithread:
+        with ThreadPoolExecutor(cpu_count()) as ex:
+            files = list(ex.map(restore_file, _files, repeat(filename_mapping), repeat(files_for_course), repeat(checksums), repeat(status)))
+    else:
+        files = [restore_file(file, filename_mapping, files_for_course, checksums, status) for file in _files]
+
+    database_helper.add_pre_containers([file[1] for file in files if file[0] == FileStatus.to_dump and isinstance(file[1], MediaContainer)])
 
     if status is not None:
         status.stop()
@@ -139,17 +150,17 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
     for item in files:
         if item[0] is None:
             pass
-        elif item[0] == FileStatus.corrupted:
+        elif item[0] == FileStatus.corrupted and isinstance(item[1], Path):
             num_corrupted += 1
             corrupted_files.add(item[1])
-        elif item[0] == FileStatus.recovered:
+        elif item[0] == FileStatus.to_dump:
             num_recovered += 1
         elif item[0] == FileStatus.unchanged:
             num_unchanged += 1
         else:
             assert False
 
-    print(f"Recovered: {num_recovered}\nUnchanged: {num_unchanged}\nCorrupted: {num_corrupted}")
+    print(f"I have achieved the following:\n\nRecovered files: {num_recovered}\nUnchanged files: {num_unchanged}\nCorrupted files: {num_corrupted}")
 
     if num_corrupted == 0:
         return

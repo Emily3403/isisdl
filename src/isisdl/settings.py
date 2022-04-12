@@ -18,13 +18,17 @@ from yaml import safe_load, YAMLError
 
 import isisdl.autorun
 
-# The directory where everything lives in.
 
+
+# --- Options for this executable ---
+
+# The directory where everything lives in.
 working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 
 # The name of the SQLite Database
 database_file_location = ".state.db"
 
+# Fallback current database version
 current_database_version = 2
 
 lock_file_location = ".lock"
@@ -32,7 +36,6 @@ enable_lock = True
 
 error_directory_location = ".errors"
 
-# --- Options for this executable ---
 # Static settings
 is_static = False
 
@@ -63,9 +66,9 @@ error_text = "\033[1;91mError:\033[0m"
 checksum_algorithm = sha256
 
 # The number of bytes sampled per iteration to compute a checksum
-checksum_num_bytes = 1024 * 1024 * 4
+checksum_num_bytes = 1024 * 500
 
-checksum_base_skip = 2
+checksum_base_skip = 4
 
 # -/- Checksum options ---
 
@@ -107,17 +110,14 @@ download_chunk_size = 2 ** 16
 # Number of threads to discover sizes for urls.
 extern_discover_num_threads = 32
 
-# THe maximum number of connections to simultaneously have with a single hostname.
-max_connections_to_hostname = 32
-
 # Will fail a download if ISIS is not responding in
 """
 for i in range(num_tries_download):
     download_timeout + download_timeout_multiplier ** (0.5 * i)
 """
-num_tries_download = 15
-download_timeout = 15
-download_timeout_multiplier = 3
+num_tries_download = 4
+download_timeout = 6
+download_timeout_multiplier = 2
 
 # If a download fails (`except Exception`) will wait ↓ and retry.
 download_static_sleep_time = 3

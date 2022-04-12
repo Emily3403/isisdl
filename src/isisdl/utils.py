@@ -773,7 +773,7 @@ class OnKill:
 
         OnKill._already_killed = True
         OnKill.do_funcs()
-        os._exit(sig)
+        os._exit(0)
 
     @staticmethod
     def do_funcs() -> None:
@@ -875,21 +875,22 @@ class User:
 
 def calculate_local_checksum(filename: Path) -> str:
     # TODO: Better checksum algorithm
-    sha = checksum_algorithm()
+    alg = checksum_algorithm()
 
-    sha.update(str(os.path.getsize(filename)).encode())
+    alg.update(str(os.path.getsize(filename)).encode())
     with open(filename, "rb") as f:
         i = 1
         while True:
             # f.seek(checksum_base_skip ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
+
             if not data:
                 break
 
-            sha.update(data)
+            alg.update(data)
             i += 1
 
-    return sha.hexdigest()
+    return alg.hexdigest()
 
 
 def subscribe_to_all_courses() -> None:
@@ -964,7 +965,6 @@ def unsubscribe_from_courses() -> None:
     print(f"Took {time.perf_counter() - s:.3f}s")
 
 
-# TODO: Implement assert
 class DataLogger(Thread):
     """
     What to log:

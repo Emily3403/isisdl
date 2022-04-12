@@ -25,8 +25,8 @@ def test_settings() -> None:
     assert error_text == "\033[1;91mError:\033[0m"
 
     assert checksum_algorithm == sha256
-    assert 1024 * 1024 * 3 <= checksum_num_bytes <= 1024 * 1024 * 5
-    assert 1.5 <= checksum_base_skip <= 2.5
+    assert 1024 <= checksum_num_bytes <= 1024 * 1024
+    assert 3 <= checksum_base_skip <= 5
 
     assert password_hash_algorithm == SHA3_512
     assert 390_000 <= password_hash_iterations <= 1_000_000
