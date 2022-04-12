@@ -123,7 +123,6 @@ class SessionWithKey(Session):
                 time.sleep(download_static_sleep_time)
                 i += 1
 
-    # TODO: Transparently have a thread pool waiting, which handles the requests.
     def get_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
         return cast(Optional[Response], self._timeouter(super().get, url, *args, **kwargs))
 
@@ -312,15 +311,17 @@ class MediaContainer:
     @property
     def should_download(self) -> bool:
         if self.media_type == MediaType.corrupted:
-            assert self.size == 0
+            if is_testing:
+                assert self.size == 0
+
             return False
 
         if not self.path.exists():
             return True
 
-        # TODO: Remove
-        # assert self.size != 0
-        # assert self.size != -1
+        if is_testing:
+            assert self.size != 0
+            assert self.size != -1
 
         if self.path.stat().st_size != self.size:
             return True

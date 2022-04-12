@@ -108,9 +108,6 @@ def main() -> None:
 #   When using --config the password seams to be reset
 #   Whitelisting doesn't work?
 
-# Future todos:
-#   Windows autorun
-
 # TODO:
 #   How to speed things up
 #       Check online → check latest version
@@ -120,6 +117,10 @@ def main() -> None:
 
 #       → More threads!
 
+
+# Feature discussion:
+#   Windows autorun
+#   Download of corrupted files
 
 if __name__ == "__main__":
     main()

@@ -650,9 +650,9 @@ def full_filename_prompt() -> None:
 
 For example:
 
-`/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf.pdf`
+`/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf`
 vs
-`Week 8-1.pdf.pdf`
+`Week 8-1.pdf`
 """)
     bool_prompt("absolute_path_filename")
 
