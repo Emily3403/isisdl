@@ -42,7 +42,6 @@ def print_log_messages(strings: List[str], last_num: int) -> int:
     return final_str.count("\n") + 1
 
 
-# TODO: ETA based on done / total in seconds
 class Status(Thread):
     total: Optional[int]
 
@@ -65,6 +64,7 @@ class Status(Thread):
         self.start()
 
     def __enter__(self) -> Any:
+        self._eta_start_time = datetime.now()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -75,12 +75,15 @@ class Status(Thread):
 
     def run(self) -> None:
         while self._running:
-            log_strings = ["", self.message + " " + "." * self._i, ""]
+            log_strings = ["", self.message + " " + "." * self._i]
             if self._show_eta:
-                time_diff = datetime.now() - self._eta_start_time
-                # TODO: Estimate ETA
-                log_strings.append(f"ETA: {time_diff}")
+                if self.total and self.count and (time_diff := datetime.now() - self._eta_start_time).total_seconds() > 0.2:
+                    avg_time = self.count / time_diff.total_seconds()
+                    log_strings.append(f"Done in: {timedelta(seconds=int((self.total - self.count) / avg_time))}")
+                else:
+                    log_strings.append("Done in: ?")
 
+            log_strings.append("")
             log_strings.extend(self.generate_log_message())
             log_strings.append("")
 
@@ -111,6 +114,7 @@ class Status(Thread):
 class DownloadStatus(Status):
     message = "Downloading content"
     _show_progress_bar = False
+    _show_eta = False
 
     def __init__(self, files: Dict[MediaType, List[MediaContainer]], num_threads: int, throttler: DownloadThrottler):
         self.files = [item for row in list(files.values()) for item in row]
@@ -185,7 +189,7 @@ class DownloadStatus(Status):
             # General meta-info
             log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {total_size}")
             log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
-            log_strings.append(f"ETA: {timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
+            log_strings.append(f"Done in: {timedelta(seconds=int((self.total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
             log_strings.append("")
 
             # Now determine the already downloaded amount and display it
@@ -271,7 +275,10 @@ class RequestHelperStatus(Status):
         for file in self.files:
             mapping[file.media_type].append(file)
 
+        counts = {typ: (sum(1 for file in files if file.is_cached), len(files)) for typ, files in mapping.items()}
+        max_len = max(len(str(item[1])) for item in counts.values())
+
         return [
-                   f"{sum(1 for file in files if file.is_cached)} / {len(files)} {typ}{'s' if len(files) != 1 else ''}"
-                   for typ, files in mapping.items() if typ != MediaType.corrupted
+                   f"{str(cached).rjust(max_len)} / {str(total).rjust(max_len)} {typ}{'s' if total != 1 else ''}"
+                   for typ, (cached, total) in counts.items() if typ != MediaType.corrupted
                ] + ["", "(will be cached)"]

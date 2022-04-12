@@ -50,7 +50,6 @@ class FileStatus(enum.Enum):
     corrupted = 2
 
 
-# TODO: Faster
 def restore_file(
         file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[SyncStatus] = None
 ) -> Tuple[Optional[FileStatus], Union[Path, MediaContainer]]:
@@ -167,8 +166,10 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
 
     if num_corrupted < 50:
         print("\n\nThe following files are corrupted / not recognized:\n\n" + "\n".join(str(item) for item in sorted(corrupted_files)))
+        print("Do you want me to delete them? [y/n]")
+    else:
+        print(f"Do you want me to bulk delete all {num_corrupted} corrupted files? [y/n]")
 
-    print(f"\nDo you want me to{' bulk' if num_corrupted > 50 else ''} delete them? [y/n]")
     choice = get_input({"y", "n"})
     if choice == "n":
         return

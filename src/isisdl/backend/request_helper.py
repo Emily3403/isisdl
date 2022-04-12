@@ -269,7 +269,7 @@ class MediaContainer:
             if container._name is not None:
                 name = container._name
             else:
-                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):  # TODO: utf8 filename
+                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
                     name = maybe_names[0]
                 else:
                     name = os.path.basename(container.url)
@@ -375,7 +375,7 @@ class MediaContainer:
             return
 
         if self.current_size is not None:
-            # assert self.current_size == self.size  # TODO
+            assert self.current_size == self.size
             return
 
         self.current_size = 0
@@ -690,7 +690,7 @@ class RequestHelper:
 
         if status is not None:
             status.set_status(StatusOptions.getting_content)
-            status.set_total(len(self.courses) + 2)
+            status.set_total(len(self.courses))
 
         if enable_multithread:
             with ThreadPoolExecutor(len(self.courses)) as ex:
@@ -699,7 +699,7 @@ class RequestHelper:
             _pre_containers = [self._download_course(course, exception_lock, status) for course in self.courses]
 
         pre_containers = [item for row in _pre_containers for item in row]
-        pre_containers.extend(self._download_mod_assign())
+        # pre_containers.extend(self._download_mod_assign())
         random.seed(0)
         random.shuffle(pre_containers)
 
