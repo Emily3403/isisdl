@@ -296,7 +296,7 @@ global_vars = globals()
 testing_download_sizes = {
     1: 1_000_000_000,  # Video
     2: 2_500_000_000,  # Documents
-    3: 1_000_000_000,  # Extern
+    3: 0,  # Extern
     4: 0,  # Corrupted
 }
 
