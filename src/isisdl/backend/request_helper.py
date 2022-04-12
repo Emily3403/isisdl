@@ -375,7 +375,7 @@ class MediaContainer:
             return
 
         if self.current_size is not None:
-            assert self.current_size == self.size
+            # assert self.current_size == self.size  # TODO
             return
 
         self.current_size = 0
