@@ -353,7 +353,7 @@ class MediaContainer:
 
         acc = True
         for attr in self.__dict__:
-            if attr in {"current_size", "_link"}:
+            if attr in {"current_size", "_links"}:
                 continue
 
             self_val = getattr(self, attr)
