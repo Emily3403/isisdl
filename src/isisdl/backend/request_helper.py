@@ -371,7 +371,6 @@ class MediaContainer:
         self._stop = True
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
-        # TODO: Add option to ignore corrupted and still download it.
         if self._stop or self.media_type == MediaType.corrupted:
             return
 
@@ -852,7 +851,7 @@ class CourseDownloader:
         if is_windows:
             return
 
-        if sys.version_info >= (3, 10):
+        if sys.version_info >= (3, 11):
             # TODO: Figure out how to support python3.10
             return
 
