@@ -188,7 +188,7 @@ class MediaContainer:
     checksum: Optional[str] = None
     current_size: Optional[int] = None
     _stop: bool = False
-    _link: Optional[MediaContainer] = None
+    _link: Optional[MediaContainer] = None  # TODO: Change this to _links.
 
     @classmethod
     def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
