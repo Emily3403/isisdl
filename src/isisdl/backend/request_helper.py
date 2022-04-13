@@ -1,252 +1,357 @@
 from __future__ import annotations
 
 import os
+import random
 import re
-import sys
 import time
-from collections import defaultdict, namedtuple
+from base64 import standard_b64decode
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from itertools import repeat
+from pathlib import Path
+from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Tuple, Set, Union
+from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict
 from urllib.parse import urlparse
 
+from requests import Session, Response
+from requests.adapters import HTTPAdapter
+from requests.exceptions import InvalidSchema
+
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import SessionWithKey, MediaType, MediaContainer, DownloadThrottler
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.backend.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, bad_urls
-from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing
-
-ignored_urls = {
-    "https://isis.tu-berlin.de/mod/resource/view.php?id=756880",
-    "https://isis.tu-berlin.de/mod/resource/view.php?id=910864",
-}
-
-known_bad_isis_urls = {
-    "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
-}
-
-known_bad_extern_urls = {
-    "https://www.sese.tu-berlin.de/kloes",
-    "https://www.qemu.org/docs/master/system/index.html",
-    "https://developer.arm.com/documentation/ihi0042/j/?lang=en",
-    "http://infocenter.arm.com/help/topic/com.arm.doc.qrc0001m/QRC0001_UAL.pdf",
-    "https://gcc.gnu.org/onlinedocs/gcc-10.2.0/gcc/",
-    "https://sourceware.org/gdb/current/onlinedocs/gdb/",
-    "https://elinux.org/BCM2835_datasheet_errata",
-    "http://www.gnu.org/software/make/manual/make.html",
-    "http://de.wikibooks.org/wiki/C-Programmierung",
-    "http://openbook.galileocomputing.de/c_von_a_bis_z/",
-    "https://www.qemu.org/",
-    "https://sourceware.org/binutils/docs-2.35/",
-    "https://developer.arm.com/documentation/ddi0406/latest",
-}
-
-ExternalLink = namedtuple("ExternalLink", "url course media_type name")
-external_links: Set[ExternalLink] = set()
-num_uncached_external_links = 0
-
-# Regex copied from https://gist.github.com/gruber/8891611
-url_finder = re.compile(
-    r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))""")  # noqa C201
-
-isis_ignored = re.compile(
-    ".*(?:"
-    # Ignore mod/{whatever}
-    "mod/(?:"
-    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm|etherpadlite|lti|h5pactivity|"
-    "page|data|ratingallocate|book"
-    ")"
-    # Ignore other websites
-    "|tu-berlin.zoom.us"
-    "|arm.com/products"
-    ")/.*")
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum
+from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
+    DownloadThrottler, MediaType
+from isisdl.utils import calculate_local_checksum
 
 
-@dataclass
-class PreMediaContainer:
-    _name: str
-    url: str
-    download_url: str
-    location: str
-    time: int
-    course_id: int
-    media_type: MediaType
-    size: int = -1
-    checksum: Optional[str] = None
+class SessionWithKey(Session):
+    key: str
+    token: str
+    _blocks: DefaultDict[str, Queue[None]] = defaultdict(Queue)
+    _lock = Lock()
+
+    def __init__(self, key: str, token: str):
+        super().__init__()
+        self.key = key
+        self.token = token
+
+        # Increase the number of recycled connections (Copied from https://stackoverflow.com/a/18845952/18680554)
+        self.mount("https://", HTTPAdapter(pool_maxsize=extern_discover_num_threads // 2, pool_block=True))
 
     @classmethod
-    def from_dump(cls, url: str) -> Union[bool, PreMediaContainer]:
-        """
-        A return value of True indicates that the container does not exist, but should be downloaded.
-        A return value of False indicates that the container does not exist and should not be downloaded.
-        """
-        if url in database_helper.get_bad_urls():
-            return False
+    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
+        try:
+            s = cls("", "")
+            s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
-        info = database_helper.get_pre_container_by_url(url)
-        if info is None:
-            return True
+            s.get_("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+            s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
+                    data={
+                        "shib_idp_ls_exception.shib_idp_session_ss": "",
+                        "shib_idp_ls_success.shib_idp_session_ss": "false",
+                        "shib_idp_ls_value.shib_idp_session_ss": "",
+                        "shib_idp_ls_exception.shib_idp_persistent_ss": "",
+                        "shib_idp_ls_success.shib_idp_persistent_ss": "false",
+                        "shib_idp_ls_value.shib_idp_persistent_ss": "",
+                        "shib_idp_ls_supported": "", "_eventId_proceed": "",
+                    })
 
-        container = cls(*info)
-        container.media_type = MediaType(container.media_type)
+            response = s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
+                               params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
 
-        return container
-
-    @classmethod
-    def from_extern_link(cls, url: str, course: Course, session: SessionWithKey, media_type: MediaType, filename: Optional[str] = None) -> Optional[PreMediaContainer]:
-        # Use the cache
-
-        container = cls.from_dump(url)
-        if container is False:
-            return None
-
-        if isinstance(container, PreMediaContainer):
-            return container
-
-        # Now check if some things like authentication / form post have to be done
-        if isis_ignored.match(url):
-            database_helper.add_bad_url(url)
-            return None
-
-        download_url = ""
-        if "tu-berlin.hosted.exlibrisgroup.com" in url:
-            pass
-
-        elif "https://drive.google.com/" in url:
-            # page = session.get_(url)
-            drive_id = parse_google_drive_url(url)
-            if drive_id is None:
+            if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+                # The redirection did not work → credentials are wrong
                 return None
 
-            temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
+            # Extract the session key
+            _key = re.findall(r"\"sesskey\":\"(.*?)\"", response.text)
+            if not _key:
+                return None
+
+            key = _key[0]
 
             try:
-                con = session.get_(temp_url, stream=True)
-            except Exception:
-                return None
+                # This is a somewhat dirty hack.
+                # The Moodle API always wants to have a token. This is obtained through the `/login/token.php` site.
+                # Since ISIS handles authentication via SSO, the entered password is invalid every time.
 
-            if con is None:
-                return None
+                # In [1] this way of obtaining the token is described.
+                # I would love to get a better way working, but unfortunately it seems as if it is not supported.
+                #
+                # [1]: https://github.com/C0D3D3V/Moodle-Downloader-2/wiki/Obtain-a-Token#get-a-token-with-sso-login
 
-            if "Content-Disposition" in con.headers:
-                # This is the file
-                download_url = temp_url
-            else:
-                _url = get_url_from_gdrive_confirmation(con.text)
-                if _url is None:
-                    return None
-                download_url = _url
+                # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
 
-            con.close()
+                s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
+                raise InvalidSchema
+            except InvalidSchema as ex:
+                token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
 
-        elif "tubcloud.tu-berlin.de" in url:
-            if url.endswith("/download"):
-                download_url = url
-            else:
-                download_url = url + "/download"
+            s.key = key
+            s.token = token
 
-        try:
-            con = session.get_(download_url or url, stream=True)
-        except Exception:
-            return None
+            return s
 
-        if con is None:
-            database_helper.add_bad_url(url)
-            return None
+        except Exception as ex:
+            generate_error_message(ex)
 
-        if download_url == "":
-            download_url = url
-
-        if "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/")):
-            if filename is not None:
-                name = filename
-            else:
-                maybe_names = re.findall("filename=\"(.*?)\"", str(con.headers))
-                if maybe_names:
-                    name = maybe_names[0]
-                else:
-                    name = os.path.basename(url)
-
-            size = int(con.headers["Content-Length"])
-            relative_location = media_type.dir_name
-
-            location = course.path(sanitize_name(relative_location))
-
-            if "" in con.headers:
-                time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
-            else:
-                time = int(datetime.now().timestamp())
-
-            if download_url.endswith("?forcedownload=1"):
-                download_url = download_url[:-len("?forcedownload=1")]
-
-            container = PreMediaContainer(name, url, download_url, location, time, course.course_id, media_type, size)
-
+    @staticmethod
+    def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+        if "tubcloud.tu-berlin.de" in url:
+            # The tubcloud is *really* slow
+            _download_timeout = 20
         else:
-            database_helper.add_bad_url(url)
-            if url not in known_bad_extern_urls:
-                logger.message(f"Assertion failed: url not ignored: {url}")
+            _download_timeout = download_timeout
 
-        con.close()
-        if isinstance(container, PreMediaContainer):
-            container.dump()
-            return container
+        i = 0
+        while i < num_tries_download:
+            try:
+                return func(url, *args, timeout=_download_timeout + download_timeout_multiplier ** (0.5 * i), **kwargs)
 
-            # An attempt at making streaming more transparent. The metadata of mp4 files is located at the beginning / end.
-            # If we download both at the startup, then vlc *should* just assume they are normal files.
-            # This, unfortunately does not work this way.
-            # TODO: Figure out why
+            except Exception:
+                time.sleep(download_static_sleep_time)
+                i += 1
 
-            # if container.media_type == MediaType.video:
-            #     with open(container.path, "wb") as f:
-            #         start_of_file = con.raw.read(video_discover_download_size, decode_content=True)
-            #         end_of_file = session.get(download_url, headers={"Range": f"bytes={container.size - video_discover_download_size}-{container.size}"}).content
-            #         f.write(start_of_file)
-            #         f.seek(container.size - len(end_of_file), 0)
-            #         f.write(end_of_file)
-            #         f.flush()
+    def get_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().get, url, *args, **kwargs))
 
-        return None
+    def post_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().post, url, *args, **kwargs))
 
-    @classmethod
-    def document_from_api(cls, name: str, url: str, download_url: str, course: Course, last_modified: int, relative_location: Optional[str] = "", size: int = -1) -> PreMediaContainer:
-        # Sanitize bad names
-        relative_location = relative_location or ""
-        relative_location = relative_location.strip("/")
+    def head_(self, url: str, *args: Any, **kwargs: Any) -> Optional[Response]:
+        return cast(Optional[Response], self._timeouter(super().head, url, *args, **kwargs))
+
+    def __str__(self) -> str:
+        return "~Session~"
+
+    def __repr__(self) -> str:
+        return "~Session~"
+
+
+class PreMediaContainer:
+    url: str
+    _name: Optional[str]
+    time: Optional[int]
+    size: Optional[int]
+    course: Course
+    media_type: MediaType
+    is_cached: bool
+    parent_path: Path
+
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
+        relative_location = (relative_location or "").strip("/")
         if config.make_subdirs is False:
             relative_location = ""
-
-        if relative_location:
-            if database_helper.get_checksum_from_url(url) is None:
-                os.makedirs(course.path(sanitize_name(relative_location)), exist_ok=True)
-
-        is_video = "mod/videoservice/file.php" in url
-        if is_video:
-            relative_location = os.path.join(relative_location, "Videos")
 
         if url.endswith("?forcedownload=1"):
             url = url[:-len("?forcedownload=1")]
 
-        location = course.path(sanitize_name(relative_location))
-
-        if "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url:
-            logger.message("""Assertion failed: "webservice/pluginfile.php" not in url and "mod/videoservice/file.php" not in url""")
-            pass
-
-        return cls(name, url, download_url, location, last_modified, course.course_id, MediaType.document, size)
-
-    @property
-    def path(self) -> str:
-        return os.path.join(self.location, sanitize_name(self._name))
-
-    def dump(self) -> None:
-        database_helper.add_pre_container(self)
+        self.url = url
+        self._name = name
+        self.time = time
+        self.size = size
+        self.course = course
+        self.media_type = media_type
+        self.is_cached = not (database_helper.know_url(url) is True)
+        self.parent_path = course.path(sanitize_name(relative_location, True))
+        self.parent_path.mkdir(exist_ok=True)
 
     def __str__(self) -> str:
-        return sanitize_name(self._name)
+        return f"{self._name}: {self.course}"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+@dataclass
+class MediaContainer:
+    _name: str
+    url: str
+    download_url: str
+    path: Path
+    time: int
+    course: Course
+    media_type: MediaType
+    size: int
+    checksum: Optional[str] = None
+    current_size: Optional[int] = None
+    _stop: bool = False
+    _links: List[MediaContainer] = field(default_factory=list)
+
+    @classmethod
+    def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
+        """
+        The `bool` return value indicates if the container should be downloaded.
+        """
+        info = database_helper.know_url(url)
+        if isinstance(info, bool):
+            return info
+
+        # TODO: Version compatibility: This might not always work.
+        container = cls(*info)
+        container.media_type = MediaType(container.media_type)
+        container.path = Path(container.path)
+
+        course_id: int = container.course  # type: ignore
+        container.course = RequestHelper.course_id_mapping[course_id]
+
+        if is_testing:
+            if container.media_type == MediaType.corrupted:
+                assert container.size == 0
+            else:
+                assert container.size != 0 and container.size != -1
+
+        return container
+
+    @classmethod
+    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus] = None) -> Optional[MediaContainer]:
+        con: Optional[Response] = None
+        try:
+            if is_testing and container.url in testing_bad_urls:
+                return None
+
+            maybe_container = MediaContainer.from_dump(container.url)
+            if isinstance(maybe_container, MediaContainer):
+                return maybe_container
+
+            elif maybe_container is False:
+                return None
+
+            # If there was not enough information to determine name, size and time for the container, get it.
+            download_url = None
+            if "tu-berlin.hosted.exlibrisgroup.com" in container.url:
+                pass
+
+            elif "https://drive.google.com/" in container.url:
+                drive_id = parse_google_drive_url(container.url)
+                if drive_id is None:
+                    return None
+
+                temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
+
+                try:
+                    con = session.get_(temp_url, stream=True)
+                    if con is None:
+                        raise ValueError
+                except Exception:
+                    return None
+
+                if "Content-Disposition" in con.headers:
+                    # This is the file
+                    download_url = temp_url
+                else:
+                    _url = get_url_from_gdrive_confirmation(con.text)
+                    if _url is None:
+                        return None
+                    download_url = _url
+
+                con.close()
+
+            elif "tubcloud.tu-berlin.de" in container.url:
+                if container.url.endswith("/download"):
+                    download_url = container.url
+                else:
+                    download_url = container.url + "/download"
+
+            con = session.get_(download_url or container.url, params={"token": session.token}, stream=True)
+            if con is None:
+                database_helper.add_bad_url(container.url)
+                return None
+
+            media_type = container.media_type
+            if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+                media_type = MediaType.corrupted
+
+            if container._name is not None and container.time is not None and container.size is not None:
+                return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name, False)),
+                           container.time, container.course, media_type, container.size if media_type != MediaType.corrupted else 0).dump()
+
+            if container._name is not None:
+                name = container._name
+            else:
+                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
+                    name = maybe_names[0]
+                else:
+                    name = os.path.basename(container.url)
+
+            if media_type == MediaType.corrupted:
+                size = 0
+            elif container.size is not None:
+                size = container.size
+            else:
+                if "Content-Length" not in con.headers:
+                    size = -1
+                    media_type = MediaType.corrupted
+                else:
+                    size = int(con.headers["Content-Length"])
+
+            if container.time is not None:
+                time = container.time
+            elif "Last-Modified" in con.headers:
+                time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
+            else:
+                time = int(datetime.now().timestamp())
+
+            if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+                media_type = MediaType.corrupted
+
+            if is_testing:
+                if media_type == MediaType.corrupted:
+                    assert size == 0
+                else:
+                    assert size != 0 and size != -1
+
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size).dump()
+
+        finally:
+            container.is_cached = True
+            if con is not None:
+                con.close()
+
+            if status is not None and status.status == StatusOptions.building_cache:
+                status.done()
+
+    @property
+    def should_download(self) -> bool:
+        if self.media_type == MediaType.corrupted:
+            return False
+
+        if not self.path.exists():
+            return True
+
+        if not (self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum)):
+            return True
+
+        maybe_container = MediaContainer.from_dump(self.url)
+        if isinstance(maybe_container, bool):
+            return maybe_container
+
+        if self.size == self.path.stat().st_size:
+            return False
+
+        if maybe_container.checksum is None:
+            return True
+
+        return calculate_local_checksum(self.path) == maybe_container.checksum
+
+    def dump(self) -> MediaContainer:
+        database_helper.add_pre_container(self)
+        if not self.path.exists():
+            self.path.open("w").close()
+
+        return self
+
+    def __str__(self) -> str:
+        if config.absolute_path_filename:
+            return str(self.path)
+
+        return sanitize_name(self._name, False)
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -255,7 +360,108 @@ class PreMediaContainer:
         return self.url.__hash__()
 
     def __eq__(self, other: Any) -> bool:
-        return self.__class__ == other.__class__ and all(getattr(self, item) == getattr(other, item) for item in self.__dict__)
+        if self.__class__ != other.__class__:
+            return False
+
+        acc = True
+        for attr in self.__dict__:
+            if attr in {"current_size", "_links"}:
+                continue
+
+            self_val = getattr(self, attr)
+            other_val = getattr(other, attr)
+
+            acc &= self_val == other_val and type(self_val) == type(other_val)
+
+        return acc
+
+    def __gt__(self, other: MediaContainer) -> bool:
+        return int.__gt__(self.size, other.size)
+
+    def stop(self) -> None:
+        self._stop = True
+
+    def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
+        if self._stop or self.media_type == MediaType.corrupted:
+            return
+
+        if self.current_size is not None:
+            # assert self.current_size == self.size  # TODO
+            return
+
+        self.current_size = 0
+
+        if not self.should_download:
+            self.current_size = self.size
+            return
+
+        if is_stream:
+            throttler.start_stream(self.path)
+
+        download = session.get_(self.download_url, params={"token": session.token}, stream=True)
+
+        if download is None or not download.ok:
+            self.current_size = self.size
+            return
+
+        # We copy in chunks so the download rate can be limited. This could also be done with `shutil.copyfileobj(…)`
+        with self.path.open("wb") as f:
+            while True:
+                token = throttler.get(self.path)
+
+                i = 0
+                while i < num_tries_download:
+                    try:
+                        new = download.raw.read(token.num_bytes, decode_content=True)
+                        break
+
+                    except Exception:
+                        i += 1
+                else:
+                    self.media_type = MediaType.corrupted
+                    self.size = 0
+                    self.current_size = None
+                    database_helper.add_bad_url(self.url)
+                    break
+
+                if not new:
+                    # No file left
+                    break
+
+                f.write(new)
+                self.current_size += len(new)
+
+        if self.media_type == MediaType.corrupted:
+            with self.path.open("wb"):
+                # Reopen the file such that previous content is ignored.
+                pass
+
+        if is_stream:
+            throttler.end_stream()
+
+        download.close()
+
+        # Only register the file after successfully downloading it.
+        if self.media_type != MediaType.corrupted:
+            if is_testing:
+                assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
+
+        self.checksum = calculate_local_checksum(self.path)
+        self.dump()
+
+        # Resolve hard links
+        for link in self._links:
+            if is_testing:
+                assert link.size == self.size
+                assert link._links == []
+
+            link.current_size = self.current_size
+            link.media_type = self.media_type
+            link.checksum = self.checksum
+
+            link.path.unlink(missing_ok=True)
+            os.link(self.path, link.path)
+            link.dump()
 
 
 @dataclass
@@ -276,7 +482,7 @@ class Course:
         else:
             name = config.renamed_courses.get(id, "") or _name
 
-        obj = cls(sanitize_name(old_name), _name, sanitize_name(name), id)
+        obj = cls(sanitize_name(old_name, True), _name, sanitize_name(name, True), id)
         obj.make_directories()
 
         return obj
@@ -285,9 +491,9 @@ class Course:
         for item in MediaType.list_dirs():
             os.makedirs(self.path(item), exist_ok=True)
 
-    def download_videos(self, s: SessionWithKey) -> None:
+    def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
         if config.download_videos is False:
-            return
+            return []
 
         url = "https://isis.tu-berlin.de/lib/ajax/service.php"
         # Thank you isia-tub for this data <3
@@ -299,18 +505,18 @@ class Course:
 
         videos_res = s.get_(url, params={"sesskey": s.key}, json=video_data)
         if videos_res is None:
-            return
+            return []
 
         videos_json = videos_res.json()[0]
 
         if videos_json["error"]:
-            return
+            return []
 
         videos_json = videos_json["data"]["videos"]
         video_urls = [item["url"] for item in videos_json]
         video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
 
-        external_links.update({ExternalLink(item, self, MediaType.video, name) for item, name in zip(video_urls, video_names)})
+        return [PreMediaContainer(url, self, MediaType.video, name) for url, name in zip(video_urls, video_names)]
 
     def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
@@ -323,61 +529,53 @@ class Course:
         for week in content:
             module: Dict[str, Any]
             for module in week["modules"]:
+                # Check if the description contains url's to be followed
                 if "description" in module:
                     links = url_finder.findall(module["description"])
                     for link in links:
-                        if link in ignored_urls or link in bad_urls:
-                            continue
-
                         parse = urlparse(link)
                         if parse.scheme and parse.netloc and config.follow_links:
-                            external_links.add(ExternalLink(link, self, MediaType.extern, None))
+                            all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
 
                 if "url" not in module:
                     continue
 
                 url: str = module["url"]
-
-                if url in ignored_urls or url in bad_urls:
-                    continue
-
-                ignore = isis_ignored.match(url)
+                ignore = isis_ignore.match(url)
 
                 if ignore is not None:
                     # Blacklist hit
                     continue
 
+                # TODO: Check if any assertions fail
                 if re.match(".*mod/(?:folder|resource)/.*", url) is None:
                     # Probably the black/white- list didn't match.
-                    logger.message(f"""Assertion failed: re.match(".*mod/(?:folder|resource)/.*", url) is None\n\nCurrent url: {url}""")
-                    pass
+                    logger.assert_fail(f"""re.match(".*mod/(?:folder|resource)/.*", url) is None\n\nCurrent url: {url}""")
 
                 if "contents" not in module:
                     # Probably the black/white- list didn't match.
-                    logger.message(f"""Assertion failed: "contents" not in file\n\nCurrent url: {url}""")
+                    logger.assert_fail(f'"contents not in file\n\nCurrent url: {url}')
                     continue
 
                 prev_len = len(all_content)
                 if "contents" in module:
                     for file in module["contents"]:
                         if config.follow_links and "type" in file and file["type"] == "url":
-                            external_links.add(ExternalLink(file["fileurl"], self, MediaType.extern, None))
-                        elif file["fileurl"] in bad_urls:
-                            pass
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
-                            all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], self, file["timemodified"], file["filepath"], file["filesize"]))
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
 
                 if len(all_content) == prev_len:
-
-                    if url not in known_bad_isis_urls:
-                        logger.message("""Assertion failed: url not in known_bad_urls""")
-                        pass
+                    if url not in {
+                        "https://isis.tu-berlin.de/mod/folder/view.php?id=1145174",
+                    }:
+                        logger.assert_fail(f"url ({url}) not in known_bad_urls")
 
         return all_content
 
-    def path(self, *args: str) -> str:
+    def path(self, *args: str) -> Path:
         # Custom path function that prepends the args with the course name.
-        return str(path(self.name, *args))
+        return path(sanitize_name(self.name, True), *args)
 
     @property
     def ok(self) -> bool:
@@ -425,8 +623,8 @@ class RequestHelper:
     session: SessionWithKey
     courses: List[Course]
     _courses: List[Course]
-    course_id_mapping: Dict[int, Course]
     _meta_info: Dict[str, str]
+    course_id_mapping: Dict[int, Course] = {}
     _instance: Optional[RequestHelper] = None
     _instance_init: bool = False
 
@@ -442,13 +640,9 @@ class RequestHelper:
 
         if session is None:
             print(f"I had a problem getting the user {self.user}. You have probably entered the wrong credentials.\nBailing out…")
-            exit(1)
+            os._exit(1)
 
         self.session = session
-        self._courses = []
-        self.courses = []
-        self.course_id_mapping = {}
-
         self._meta_info = cast(Dict[str, str], self.post_REST("core_webservice_get_site_info"))
         self.get_courses()
 
@@ -461,13 +655,13 @@ class RequestHelper:
         return RequestHelper._instance
 
     def get_courses(self) -> None:
-        res = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self.userid}))
+        courses = cast(List[Dict[str, str]], self.post_REST("core_enrol_get_users_courses", {"userid": self._meta_info["userid"]}))
         self.courses = []
         self._courses = []
 
-        for item in res:
-            course = Course.from_dict(item)
-            self.course_id_mapping.update({course.course_id: course})
+        for _course in courses:
+            course = Course.from_dict(_course)
+            RequestHelper.course_id_mapping.update({course.course_id: course})
 
             self._courses.append(course)
             if course.ok:
@@ -475,6 +669,10 @@ class RequestHelper:
 
         self._courses = sorted(self._courses)
         self.courses = sorted(self.courses)
+
+    def make_course_paths(self) -> None:
+        for course in self.courses:
+            course.make_directories()
 
     def post_REST(self, function: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         data = data or {}
@@ -496,95 +694,51 @@ class RequestHelper:
 
         return response.json()
 
-    def make_course_paths(self) -> None:
-        for course in self.courses:
-            if not os.path.exists(course.path()):
-                os.makedirs(course.path(), exist_ok=True)
-            course.make_directories()
-
-    def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[PreMediaContainer]:
+    def download_content(self, status: Optional[RequestHelperStatus] = None) -> Dict[MediaType, List[MediaContainer]]:
         """
-        Attention: This method does *not* take into account file conflicts.
-        You will have to resolve them again by calling `check_for_conflicts_in_files(containers)`
+        The main download routine. You always call this one.
         """
-        global num_uncached_external_links
+        # TODO: Faster
         exception_lock = Lock()
 
         if status is not None:
             status.set_status(StatusOptions.getting_content)
-
-        # The number of threads that are going to spawn
-        if status is not None:
-            status.set_total(len(self.courses) + 1)
-
-        def download_documents(course: Course) -> List[PreMediaContainer]:
-            try:
-                course.download_videos(self.session)
-                ret = course.download_documents(self)
-                if status is not None:
-                    status.done()
-
-                return ret
-
-            except Exception:
-                with exception_lock:
-                    generate_error_message()
-                    return []
-
-        def download_mod_assign(ret: List[PreMediaContainer]) -> None:
-            try:
-                ret.extend(self.download_mod_assign())
-                if status is not None:
-                    status.done()
-
-            except Exception:
-                with exception_lock:
-                    generate_error_message()
+            status.set_total(len(self.courses))
 
         if enable_multithread:
-            mod_assign: List[PreMediaContainer] = []
-            mod_assign_thread = Thread(target=download_mod_assign, args=(mod_assign,))
-            mod_assign_thread.start()
-
             with ThreadPoolExecutor(len(self.courses)) as ex:
-                _documents = list(ex.map(download_documents, self.courses))
-
-            mod_assign_thread.join()
-
+                _pre_containers = list(ex.map(self._download_course, self.courses, repeat(exception_lock), repeat(status)))
         else:
-            mod_assign = self.download_mod_assign()
-            _documents = [course.download_documents(self) for course in self.courses]
+            _pre_containers = [self._download_course(course, exception_lock, status) for course in self.courses]
 
-        documents = [item for row in _documents for item in row]
+        pre_containers = [item for row in _pre_containers for item in row]
+        pre_containers.extend(self._download_mod_assign())
+        random.seed(0)
+        random.shuffle(pre_containers)
 
-        # Figure out how many urls to get
-        bad_urls = database_helper.get_bad_urls()
-        for item in external_links:
-            if item[0] not in bad_urls and database_helper.get_pre_container_by_url(item[0]) is None:
-                num_uncached_external_links += 1
+        if status is not None:
+            status.set_total(len(pre_containers))
+            status.set_build_cache_files(pre_containers)
 
-        if external_links:
-            if status is not None:
-                status.set_status(StatusOptions.getting_extern)
-                status.set_total(len(external_links))
+            if sum(1 for pre_container in pre_containers if not pre_container.is_cached):
+                status.set_status(StatusOptions.building_cache)
 
-        extern = self.download_extern(status)
+        # Now build the MediaContainers
+        if enable_multithread:
+            with ThreadPoolExecutor(extern_discover_num_threads) as ex:
+                _containers = list(ex.map(MediaContainer.from_pre_container, pre_containers, repeat(self.session), repeat(status)))
+        else:
+            _containers = [MediaContainer.from_pre_container(pre_container, self.session, status) for pre_container in pre_containers]
 
-        videos = []
-        for thing in extern:
-            if thing.media_type == MediaType.video:
-                videos.append(thing)
-            else:
-                documents.append(thing)
+        containers = check_for_conflicts_in_files([item for item in _containers if item is not None])
+        mapping: Dict[MediaType, List[MediaContainer]] = {typ: [] for typ in MediaType}
 
-        # Download the newest files first
-        def sort(lst: List[PreMediaContainer]) -> List[PreMediaContainer]:
-            return sorted(lst, key=lambda x: x.time, reverse=True)
+        for container in containers:
+            mapping[container.media_type].append(container)
 
-        all_files = sort(documents + mod_assign) + sort(videos)
-        return all_files
+        return {typ: sorted(item, key=lambda x: x.time, reverse=True) for typ, item in mapping.items()}
 
-    def download_mod_assign(self) -> List[PreMediaContainer]:
+    def _download_mod_assign(self) -> List[PreMediaContainer]:
         all_content = []
         _assignments = self.post_REST('mod_assign_get_assignments')
         if _assignments is None:
@@ -594,58 +748,64 @@ class RequestHelper:
 
         allowed_ids = {item.course_id for item in self.courses}
         for _course in assignments["courses"]:
-            course = next((item for item in self.courses if item.course_id == _course["id"]), None)
-            if course is None:
-                logger.message("Assertion failed: course is None")
-                continue
-
             if _course["id"] in allowed_ids:
                 for assignment in _course["assignments"]:
                     for file in assignment["introattachments"]:
                         file["filepath"] = assignment["name"]
-                        all_content.append(PreMediaContainer.document_from_api(file["filename"], file["fileurl"], file["fileurl"], course, file["timemodified"], file["filepath"], file["filesize"]))
+                        all_content.append(PreMediaContainer(file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                                             file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
 
         return all_content
 
-    def download_extern(self, status: Optional[RequestHelperStatus]) -> List[PreMediaContainer]:
-        all_content = []
+    def _download_course(self, course: Course, exception_lock: Lock, status: Optional[RequestHelperStatus] = None) -> List[PreMediaContainer]:
+        try:
+            return course.download_videos(self.session) + course.download_documents(self)
 
-        def add_extern_link(extern: Tuple[str, Course, MediaType, Optional[str]]) -> None:
-            container = PreMediaContainer.from_extern_link(extern[0], extern[1], self.session, extern[2], extern[3])
-            if container is not None:
-                all_content.append(container)
+        except Exception as ex:
+            with exception_lock:
+                generate_error_message(ex)
 
-            if status is not None and status.status == StatusOptions.getting_extern:
+        finally:
+            if status is not None:
                 status.done()
 
-        if external_links:
-            if enable_multithread:
-                with ThreadPoolExecutor(extern_discover_num_threads) as ex:
-                    list(ex.map(add_extern_link, external_links))
-            else:
-                for link in external_links:
-                    add_extern_link(link)
 
-        return all_content
+def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
+    final_list: List[MediaContainer] = []
+    new_files: List[MediaContainer] = []
 
-    @property
-    def userid(self) -> str:
-        return self._meta_info["userid"]
+    for file in files:
+        if file.media_type == MediaType.corrupted:
+            final_list.append(file)
+        else:
+            new_files.append(file)
 
+    files = new_files
 
-# TODO: Resolve conflicts by hard links
-def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMediaContainer]:
-    content: List[PreMediaContainer] = []
+    hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
+
+    for file in {file.path: file for file in files}.values():
+        hard_link_conflicts[f"{file.course.course_id} {file.size}"].append(file)
+
+    new_files = []
+    for conflict in hard_link_conflicts.values():
+        if len(conflict) != 1:
+            conflict.sort(key=lambda x: x.time)
+            conflict[0]._links.extend(conflict[1:])
+
+        final_list.append(conflict[0])
+
+    files = new_files
+
     conflicts = defaultdict(list)
+    for file in files:
+        conflicts[file.path].append(file)
 
-    for item in set(files):
-        conflicts[item.path].append(item)
-
-    for conflict in conflicts.values():
+    for typ, conflict in conflicts.items():
         conflict.sort(key=lambda x: x.time)
 
         if len(conflict) == 1 or all(item.size == conflict[0].size for item in conflict):
-            content.append(conflict[0])
+            final_list.append(conflict[0])
 
         elif len(set(item.size for item in conflict)) == len(conflict):
             if is_testing:
@@ -654,48 +814,74 @@ def check_for_conflicts_in_files(files: List[PreMediaContainer]) -> List[PreMedi
             for i, item in enumerate(conflict):
                 basename, ext = os.path.splitext(item._name)
                 item._name = basename + f".{i}" + ext
-                content.append(item)
+                final_list.append(item)
 
         else:
-            logger.message(f"Assertion failed: conflict: {[item.__dict__ for item in conflict]}")
+            logger.assert_fail(f"conflict: {[item.__dict__ for item in conflict]}")
             continue
 
-    return content
+    return final_list
+
+
+class Downloader(Thread):
+    q: Queue[MediaContainer]
+    thread_id: int
+    status: DownloadStatus
+    throttler: DownloadThrottler
+    session: SessionWithKey
+
+    _lock = Lock()
+
+    def __init__(self, q: Queue[MediaContainer], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
+        self.q = q
+        self.thread_id = thread_id
+        self.status = status
+        self.throttler = throttler
+        self.session = session
+
+        super().__init__(daemon=True)
+        self.start()
+
+    def run(self) -> None:
+        while True:
+            file = self.q.get()
+            self.status.add_container(self.thread_id, file)
+            try:
+                file.download(self.throttler, self.session)
+                self.status.done(self.thread_id, file)
+
+            except Exception as ex:
+                with self._lock:
+                    generate_error_message(ex)
 
 
 class CourseDownloader:
+    containers: Dict[MediaType, List[MediaContainer]] = {}
+
     def start(self) -> None:
         with RequestHelperStatus() as status:
             helper = RequestHelper(get_credentials(), status)
-            pre_containers = helper.download_content(status)
-            check_for_conflicts_in_files(pre_containers)
-            media_containers = self.make_files(pre_containers, helper)
+            containers = helper.download_content(status)
 
-            # Make all files so that they can be streamed
-            for container in media_containers:
-                if not os.path.exists(container.location):
-                    open(container.location, "w").close()
-
-            global downloading_files
-            downloading_files = media_containers
+        CourseDownloader.containers = containers
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
-        with DownloadStatus(media_containers, args.num_threads, throttler) as status:
-            Thread(target=self.stream_files, args=(media_containers, throttler, status), daemon=True).start()
+        with DownloadStatus(containers, args.max_num_threads, throttler) as status:
+            Thread(target=self.stream_files, args=(containers, throttler, status, helper.session), daemon=True).start()
             if not args.stream:
-                downloader = Thread(target=self.download_files, args=(media_containers, throttler, status))
+                downloader = Thread(target=self.download_files, args=(containers, throttler, helper.session, status))
                 downloader.start()
 
             # Log the metadata
             conf = config.to_dict()
             del conf["password"]
             logger.post({
-                "num_g_files": len(pre_containers),
-                "num_c_files": len(media_containers),
+                "num_g_files": len(containers),
+                "num_c_files": len(containers),
 
-                "total_g_bytes": sum((item.size for item in pre_containers)),
-                "total_c_bytes": sum((item.size for item in media_containers)),
+                "total_g_bytes": sum((item.size for row in containers.values() for item in row)),
+                "total_c_bytes": sum((item.size for row in containers.values() for item in row)),
 
                 "course_ids": sorted([course.course_id for course in helper._courses]),
 
@@ -708,60 +894,49 @@ class CourseDownloader:
 
             downloader.join()
 
-    def make_files(self, files: List[PreMediaContainer], helper: RequestHelper) -> List[MediaContainer]:
-        new_files = [MediaContainer.from_pre_container(file, helper.session) for file in files]
-        filtered_files = [item for item in new_files if item is not None]
-
-        return filtered_files
-
-    def stream_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+    def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus, session: SessionWithKey) -> None:
         if is_windows:
             return
 
-        if sys.version_info >= (3, 10):
-            # TODO: Figure out how to support python3.10
-            return
+        import pyinotify
 
-        else:
-            import pyinotify
+        class EventHandler(pyinotify.ProcessEvent):  # type: ignore[misc]
+            def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, session: SessionWithKey, **kwargs: Any):
+                self.session = session
+                self.throttler = throttler
+                self.files: Dict[Path, MediaContainer] = {file.path: file for file in files}
 
-            class EventHandler(pyinotify.ProcessEvent):  # type: ignore
-                def __init__(self, files: List[MediaContainer], throttler: DownloadThrottler, **kwargs: Any):
-                    self.files: Dict[str, MediaContainer] = {file.location: file for file in files}
-                    self.throttler = throttler
-                    super().__init__(**kwargs)
+                super().__init__(**kwargs)
 
-                # TODO: Also watch for close events and end the stream
-                def process_IN_OPEN(self, event: pyinotify.Event) -> None:
-                    if event.dir:
-                        return
+            def process_IN_OPEN(self, event: pyinotify.Event) -> None:
+                if event.dir:
+                    return
 
-                    file = self.files.get(event.pathname, None)
-                    if file is not None and file.curr_size is not None:
-                        return
+                file = self.files.get(event.pathname, None)
+                if file is not None and file.current_size is not None:
+                    return
 
-                    if file is None:
-                        return
+                if file is None:
+                    return
 
-                    if file.curr_size is not None:
-                        return
+                if file.current_size is not None:
+                    return
 
-                    status.add_streaming(file)
-                    file.download(self.throttler, True)
-                    status.done_streaming()
+                status.add_streaming(file)
+                file.download(self.throttler, self.session, True)
+                status.done_streaming()
 
-            wm = pyinotify.WatchManager()
-            notifier = pyinotify.Notifier(wm, EventHandler(files, throttler))
-            wm.add_watch(path(), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
+        wm = pyinotify.WatchManager()
+        notifier = pyinotify.Notifier(wm, EventHandler([item for row in files.values() for item in row], throttler, session))
+        wm.add_watch(str(path()), pyinotify.ALL_EVENTS, rec=True, auto_add=True)
 
-            notifier.loop()
+        notifier.loop()
 
-    def download_files(self, files: List[MediaContainer], throttler: DownloadThrottler, status: DownloadStatus) -> None:
+    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
         def download(file: MediaContainer) -> None:
-            assert status is not None
             if enable_multithread:
                 thread_id = int(current_thread().name.split("T_")[-1])
             else:
@@ -769,35 +944,70 @@ class CourseDownloader:
 
             status.add_container(thread_id, file)
             try:
-                file.download(throttler)
-            except Exception:
-                with exception_lock:
-                    generate_error_message()
+                file.download(throttler, session)
+                status.done(thread_id, file)
 
-            status.done(thread_id, file)
+            except Exception as ex:
+                with exception_lock:
+                    generate_error_message(ex)
+
+        first_files: List[MediaContainer] = []
+        second_files: List[MediaContainer] = []
+
+        for _files in files.values():
+            for file in _files:
+                if not file.should_download:
+                    first_files.append(file)
+                else:
+                    second_files.append(file)
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
-                list(ex.map(download, files))
+            with ThreadPoolExecutor(args.max_num_threads, thread_name_prefix="T") as ex:
+                list(ex.map(download, first_files + second_files))
         else:
-            for file in files:
+            for file in first_files + second_files:
                 download(file)
+
+        # TODO
+        # already_done_files: List[MediaContainer] = []
+        # fast_downloads: List[MediaContainer] = []
+        # videos: List[MediaContainer] = []
+        #
+        # for _files in files.values():
+        #     for file in _files:
+        #         if not file.should_download:
+        #             already_done_files.append(file)
+        #         elif file.media_type == MediaType.video:
+        #             videos.append(file)
+        #         else:
+        #             fast_downloads.append(file)
+        #
+        # if enable_multithread:
+        #     queues: List[Queue[MediaContainer]] = [Queue() for _ in range(args.max_num_threads)]
+        #     threads = [Downloader(q, i, status, throttler, session) for i, q in enumerate(queues)]
+        #
+        # else:
+        #     queues = [Queue()]
+        #     threads = [Downloader(queues[0], 0, status, throttler, session)]
+        #
+        # # for file in already_done_files + fast_downloads:
+        # # TODO
+        #
+        # pass
 
     @staticmethod
     @on_kill(2)
     def shutdown_running_downloads(*_: Any) -> None:
-        if downloading_files is None:
+        if not CourseDownloader.containers:
             return
 
         if args.stream:
             return
 
-        for item in downloading_files:
-            item.stop()
+        for row in CourseDownloader.containers.values():
+            for item in row:
+                item.stop()
 
         # Now wait for the downloads to finish
-        while not all(item.done for item in downloading_files):
-            time.sleep(0.25)
-
-
-downloading_files: Optional[List[MediaContainer]] = None
+        while any(item.current_size is not None and item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
+            time.sleep(status_time)

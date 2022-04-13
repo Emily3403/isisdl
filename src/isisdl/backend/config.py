@@ -6,16 +6,13 @@ from typing import List, Optional, Union, Set, Dict, Any
 from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
-from isisdl.backend.downloads import SessionWithKey
-from isisdl.backend.request_helper import RequestHelper
-from isisdl.backend.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer
-from isisdl.settings import is_online, error_text
-from isisdl.settings import is_windows, timer_file_location, working_dir_location, is_static
+from isisdl.backend.request_helper import RequestHelper, SessionWithKey
+from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, path
+from isisdl.settings import is_online, error_text, database_file_location
+from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
 
 was_in_configuration = False
 
-
-# TODO: Add a prompt for absolute location of downloads or only names
 
 def stored_prompt(prev: Any, allowed: Set[str]) -> None:
     if prev is None:
@@ -145,10 +142,21 @@ For example:
 --- Note ---
 The character{'s' if is_windows else ''} `{forbidden_chars}` {'are' if is_windows else 'is'} always replaced (not supported on a filesystem level).
 
-When changing this option every file will be re-downloaded.
+Changing this option after initial configuration is not supported (yet).
 ------------
 """)
+    if config.user("filename_replacing") is not None:
+        print(f"{error_text} Changing this option after initial configuration is not supported (yet).\nIf you want, you can delete `{path(database_file_location)}`, "
+              f"and re-configure me.\n\nPlease press enter to continue.\n")
+        input()
+        return
+
     bool_prompt("filename_replacing")
+
+    # Version 1.4:
+    #   Don't store the path in the database but rather re-build it every time
+    #   Migrate the old filenames to the new ones
+    #   Invalidate caches
 
 
 def throttler_prompt() -> None:
@@ -250,14 +258,14 @@ If you do have systemd installed, please submit a bug-report at
 https://github.com/Emily3403/isisdl/issues
 
 Press enter to continue.""")
-        logger.message("Systemd not installed")
+        logger.assert_fail("Systemd not installed")
         input()
         return
 
     print(f"""
 --- Note ---
 The configuration file for the timer is located at
-`{timer_file_location}`,
+`{systemd_timer_file_location}`,
 if you want to tune the time manually
 ------------
 """)
@@ -470,7 +478,6 @@ def blacklist_prompt() -> None:
     RequestHelper(user).get_courses()
 
 
-# TODO: Pytest this... maybe
 def rename_courses_prompt() -> None:
     clear()
     print("""Do you want to rename any of your courses?
@@ -643,12 +650,10 @@ def full_filename_prompt() -> None:
 
 For example:
 
-`/home/emily/isisdl/.pdf`
-or
-`.pdf`
+`/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf`
+vs
+`Week 8-1.pdf`
 """)
-    # TODO: Example
-
     bool_prompt("absolute_path_filename")
 
 

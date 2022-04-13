@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import math
 import os
-import random
 import re
 import signal
 import subprocess
@@ -11,17 +10,17 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from statistics import variance, stdev, mean
 from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
 
 from isisdl.backend.crypt import get_credentials
-from isisdl.backend.downloads import MediaType
-from isisdl.backend.request_helper import RequestHelper, PreMediaContainer
+from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import print_log_messages, RequestHelperStatus
-from isisdl.backend.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
     compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time, error_text
+from isisdl.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper, MediaType
 
 
 def check_ffmpeg_exists() -> None:
@@ -46,7 +45,7 @@ def vstream_from_probe(probe: Optional[Dict[str, Any]]) -> Optional[Dict[str, st
     return next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
 
 
-def metadata_hash_from_file(file: str) -> Optional[str]:
+def metadata_hash_from_file(file: Path) -> Optional[str]:
     prev_metadata = vstream_from_probe(do_ffprobe(file))
 
     if prev_metadata is None:
@@ -65,7 +64,7 @@ def format_seconds(seconds: float) -> str:
     return "%02i:%02i:%02i" % (hours, minutes, seconds)
 
 
-def make_temp_filename(file: PreMediaContainer) -> str:
+def make_temp_filename(file: MediaContainer) -> str:
     head, tail = os.path.split(file.path)
     return os.path.join(head, ".tmp_" + tail)
 
@@ -136,10 +135,10 @@ def covariance(x: List[int], y: List[float]) -> float:
 
 # TODO: Migrate this to Status
 class CompressStatus(Thread):
-    files: List[PreMediaContainer]
+    files: List[MediaContainer]
     helper: RequestHelper
 
-    cur_file: Optional[PreMediaContainer]
+    cur_file: Optional[MediaContainer]
     cur_file_probe: Optional[Dict[str, Any]]
     ffmpeg: Optional[subprocess.Popen[str]]
     start_time_for_video: Optional[float]
@@ -154,7 +153,7 @@ class CompressStatus(Thread):
     last_text_len: int
     last_file_size_stat: int
 
-    def __init__(self, files: List[PreMediaContainer], helper: RequestHelper) -> None:
+    def __init__(self, files: List[MediaContainer], helper: RequestHelper) -> None:
         self.files = files
         self.helper = helper
         self.lock = Lock()
@@ -176,7 +175,7 @@ class CompressStatus(Thread):
         for file in files:
             self.total_prev_size += file.size
 
-            actual_file_size = os.stat(file.path).st_size
+            actual_file_size = file.path.stat().st_size
             self.total_now_size += actual_file_size
 
             if database_helper.make_inefficient_file_name(file) in self.inefficient_videos:
@@ -231,7 +230,7 @@ class CompressStatus(Thread):
 
             self.total_files_done += 1
 
-    def start_thing(self, file: PreMediaContainer, ffmpeg: subprocess.Popen[str]) -> None:
+    def start_thing(self, file: MediaContainer, ffmpeg: subprocess.Popen[str]) -> None:
         with self.lock:
             self.cur_file = file
             self.cur_file_probe = do_ffprobe(file.path)
@@ -297,7 +296,7 @@ class CompressStatus(Thread):
 
                                 cur_file = self.cur_file
                                 total_frames = int(video_stream['nb_frames'])
-                                prev_size = os.stat(cur_file.path).st_size
+                                prev_size = cur_file.path.stat().st_size
                                 try:
                                     current_size = os.stat(make_temp_filename(cur_file)).st_size
                                 except OSError:
@@ -384,11 +383,11 @@ class CompressStatus(Thread):
                     if self._running:
                         self.last_text_len = print_log_messages(log_strings, self.last_text_len)
 
-        except Exception:
-            generate_error_message()
+        except Exception as ex:
+            generate_error_message(ex)
 
     def generate_final_message(self) -> None:
-        print("TODO: Generate the final message is currently out of order.")
+        print("TODO: Generating the final message is currently out of order.")
         exit(1)
 
         course_name_mapping = {course.course_id: course.name for course in self.helper.courses}  # type: ignore
@@ -399,26 +398,26 @@ class CompressStatus(Thread):
             "size_skipped": 0,
             "num_processed": 0,
             "num_skipped": 0,
-        } for course in self.helper.courses if any((file.course_id == course.course_id for file in self.files))}
+        } for course in self.helper.courses if any((file.course.course_id == course.course_id for file in self.files))}
 
         # TODO: Fix this
         # inefficient = database_helper.get_inefficient_videos()
 
         for file in self.files:
-            curr_size = os.stat(file.path).st_size
+            curr_size = file.path.stat().st_size
 
             # if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
             #     continue
 
-            infos[file.course_id]["total_size"] += file.size
+            infos[file.course.course_id]["total_size"] += file.size
 
             if file.size != curr_size:
-                infos[file.course_id]["size_compressed"] += curr_size
-                infos[file.course_id]["num_processed"] += 1
+                infos[file.course.course_id]["size_compressed"] += curr_size
+                infos[file.course.course_id]["num_processed"] += 1
 
             else:
-                infos[file.course_id]["size_skipped"] += curr_size
-                infos[file.course_id]["num_skipped"] += 1
+                infos[file.course.course_id]["size_skipped"] += curr_size
+                infos[file.course.course_id]["num_skipped"] += 1
 
         max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
         max_course_name_len = max(len(str(course)) for course in self.helper.courses)
@@ -444,7 +443,7 @@ class CompressStatus(Thread):
         print_log_messages(log_strings, 0)
 
 
-def compress(files: List[PreMediaContainer]) -> None:
+def compress(files: List[MediaContainer]) -> None:
     assert compress_status is not None
 
     try:
@@ -472,7 +471,7 @@ def compress(files: List[PreMediaContainer]) -> None:
 
             ffmpeg = popen([
                 "ffmpeg",
-                "-i", file.path,
+                "-i", str(file.path),
                 "-y", "-loglevel", "warning", "-stats",
                 "-movflags", "use_metadata_tags", "-metadata", f"previous_size=\"{file.size}\"",
                 *ffmpeg_args,
@@ -487,7 +486,7 @@ def compress(files: List[PreMediaContainer]) -> None:
             compress_status.done_thing(ret_code == 0)
 
             if ret_code == 0:
-                os.replace(new_file_name, file.path)
+                file.path.replace(new_file_name)
 
             else:
                 try:
@@ -498,8 +497,8 @@ def compress(files: List[PreMediaContainer]) -> None:
         stop_encoding = False
         compress_status.generate_final_message()
 
-    except Exception:
-        generate_error_message()
+    except Exception as ex:
+        generate_error_message(ex)
 
 
 def main() -> None:
@@ -517,26 +516,24 @@ def main() -> None:
     user = get_credentials()
     with RequestHelperStatus() as status:
         helper = RequestHelper(user, status)
-        _content = helper.download_content(status)
+        content = [item for item in helper.download_content(status)[MediaType.video] if item.path.stat().st_size == item.size]
 
     print("\n\nProcessing ...\n")
 
-    _content = list(filter(lambda x: x.media_type == MediaType.video and os.path.exists(x.path), _content))
-
     if enable_multithread:
         with ThreadPoolExecutor(os.cpu_count()) as ex:
-            _ffprobes = list(ex.map(lambda x: do_ffprobe(x.path), _content))
+            _ffprobes = list(ex.map(lambda x: do_ffprobe(x.path), content))
     else:
-        _ffprobes = [do_ffprobe(item.path) for item in _content]
+        _ffprobes = [do_ffprobe(item.path) for item in content]
 
     ffprobes = filter(lambda x: x is not None, _ffprobes)
-    content_and_score: List[Tuple[PreMediaContainer, int]] = []
+    content_and_score: List[Tuple[MediaContainer, int]] = []
     # TODO: Get rid of this.
     to_inefficient = database_helper.get_inefficient_videos()
     already_h265 = []
     inefficient_videos = []
 
-    for con, ff in zip(_content, ffprobes):
+    for con, ff in zip(content, ffprobes):
         if database_helper.make_inefficient_file_name(con) in to_inefficient:
             inefficient_videos.append(con)
             continue
@@ -556,8 +553,6 @@ def main() -> None:
         content_and_score.append((con, int(vid_probe["bit_rate"])))
 
     content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=True)]
-    random.shuffle(content)
-
     compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
 

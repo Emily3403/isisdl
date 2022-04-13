@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import enum
 import json
 import os
 import platform
@@ -16,13 +17,14 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from queue import PriorityQueue, Queue
+from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, TYPE_CHECKING, cast
+from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -35,22 +37,19 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_base_skip, checksum_num_bytes, \
-    example_config_file_location, config_dir_location, database_file_location, status_time, extern_discover_num_threads, \
-    status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, enable_lock, \
-    error_directory_location, systemd_dir_location, master_password, is_testing, timer_file_location, service_file_location, export_config_file_location, isisdl_executable, is_static, \
-    enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name
+from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
+    extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
+    enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
+    isisdl_executable, is_static, enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
 from isisdl.version import __version__
-
-if TYPE_CHECKING:
-    from isisdl.backend.request_helper import PreMediaContainer, RequestHelper
 
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
 
-    parser.add_argument("-t", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="{num}")
+    parser.add_argument("-t", "--max-num-threads", help="The maximum number of threads to spawn (for downloading files)\n ", type=int, default=6, metavar="{num}")
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="{num}")
 
     operations = parser.add_mutually_exclusive_group()
@@ -64,6 +63,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
+    operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")  # TODO: Test this
 
     if is_testing:
         return parser.parse_known_args()[0]
@@ -89,12 +89,12 @@ class Config:
     download_videos: bool
     filename_replacing: bool
     timer_enable: bool
-    throttle_rate: int
-    throttle_rate_autorun: int
+    throttle_rate: Optional[int]
+    throttle_rate_autorun: Optional[int]
     update_policy: Optional[str]
     telemetry_policy: bool
     database_version: int
-    absolute_path_filename: bool  # TODO
+    absolute_path_filename: bool
 
     auto_subscribed_courses: Optional[List[int]]
 
@@ -129,9 +129,10 @@ class Config:
     _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Extra backup to maintain for tests
     _in_backup: bool = False
 
-    def __init__(self) -> None:
+    def __init__(self, _prev_config: Optional[Dict[str, Any]] = None) -> None:
         config_file_data = parse_config_file()
         stored_config = database_helper.get_config()
+        prev_config = _prev_config or {}
 
         # Filter out keys for settings
         for k, v in list(config_file_data.items()):
@@ -152,8 +153,11 @@ class Config:
                 assert isinstance(item["renamed_courses"], dict)
                 item["renamed_courses"] = {int(k): v for k, v in item["renamed_courses"].items()}
 
+        assert all(k in self.__slots__ for k in prev_config)
+
         Config.state.update(Config.default_config)
         Config.state.update(stored_config)
+        Config.state.update(prev_config)
         Config.state.update(config_file_data)
 
         # TODO: Verify types
@@ -173,13 +177,14 @@ class Config:
         return Config.default_config[attr]
 
     @staticmethod
-    def user(attr: str) -> Any:
-        return Config.state[attr]
+    def user(attr: str) -> Optional[Any]:
+        if attr not in Config._stored:
+            return None
+
+        return Config._stored[attr]
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
-        ret = {name: getattr(self, name) for name in self.__slots__}
-        ret["username"] = User.sanitize_name(ret["username"])
-        return ret
+        return {name: getattr(self, name) for name in self.__slots__}
 
     def start_backup(self) -> None:
         Config._backup = self.to_dict()
@@ -368,14 +373,15 @@ Please confirm that this is okay. [y/n]""")
     while database_helper.get_database_version() < config.default("database_version"):
         eval(f"migrate_{database_helper.get_database_version()}_to_{database_helper.get_database_version() + 1}()")
 
+    # TODO: Implement hot reload
+
     os.unlink(path(database_file_location))
     database_helper.__init__()  # type: ignore
-    # TODO: This doesn't work. Why?
-    config = Config()
-    print("\nSuccessfully migrated. I will now guide you through the configuration.\nPlease press enter to continue.\n")
-    input()
 
-    from isisdl.bin.config import config_wizard, init_wizard
+    config = Config(config.to_dict())
+    print("\nSuccessfully migrated. All of your previous settings have been saved.\nI will now guide you through the new configuration process.")
+
+    from isisdl.backend.config import config_wizard, init_wizard
     from isisdl.backend import sync_database
 
     init_wizard()
@@ -456,25 +462,9 @@ def run_cmd_with_error(args: List[str]) -> None:
         input()
 
 
-def do_online_ffprobe(file: PreMediaContainer, helper: RequestHelper) -> Optional[Dict[str, Any]]:
-    # TODO: This doesn't work
-    stream = helper.session.get_(file.download_url, stream=True)
-    if stream is None:
-        return None
-
-    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", "-"]
-
-    p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = p.communicate()
-    if p.returncode != 0:
-        return None
-
-    return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
-
-
-def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
+def do_ffprobe(file: Path) -> Optional[Dict[str, Any]]:
     # This function is copied and adapted from ffmpeg-python: https://github.com/kkroening/ffmpeg-python
-    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", filename]
+    args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", str(file)]
 
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
@@ -484,8 +474,8 @@ def do_ffprobe(filename: str) -> Optional[Dict[str, Any]]:
     return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
 
 
-def is_h265(filename: str) -> Optional[bool]:
-    probe = do_ffprobe(filename)
+def is_h265(file: Path) -> Optional[bool]:
+    probe = do_ffprobe(file)
     if probe is None:
         return None
 
@@ -494,7 +484,7 @@ def is_h265(filename: str) -> Optional[bool]:
         return None
 
     if "codec_name" not in video_stream:
-        logger.message("""Assertion failed: "codec_name" not in video_stream""")
+        logger.assert_fail('"codec_name" not in video_stream')
         return None
 
     return bool(video_stream["codec_name"] == "hevc")
@@ -559,39 +549,39 @@ def install_latest_version() -> None:
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
 
-    if config.update_policy.startswith("notify"):
+    if config.update_policy.startswith("notify") and not args.update:
         return
+    elif config.update_policy.startswith("install"):
+        print("According to your update policy I will auto-install it.\n")
 
-    print("According to your update policy I will auto-install it.\n")
     if config.update_policy == "install_pip":
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
+    elif config.update_policy == "install_github" and is_static is False:
+        ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
+
     # TODO: test if this will work
-    elif config.update_policy == "install_github":
-        if is_static:
-            with TemporaryDirectory() as tmp:
-                assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
-                correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
-                for asset in assets:
-                    if asset["name"] == correct_name:
-                        break
+    elif config.update_policy == "install_github" and is_static:
+        with TemporaryDirectory() as tmp:
+            assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
+            correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
+            for asset in assets:
+                if asset["name"] == correct_name:
+                    break
 
-                else:
-                    print(f"{error_text} I cannot find the release for your platform.")
-                    exit(1)
+            else:
+                print(f"{error_text} I cannot find the release for your platform.")
+                exit(1)
 
-                new_file = requests.get(asset["browser_download_url"], stream=True)
-                new_isisdl = os.path.join(tmp, correct_name)
-                with open(new_isisdl, "wb") as f:
-                    shutil.copyfileobj(new_file.raw, f)
+            new_file = requests.get(asset["browser_download_url"], stream=True)
+            new_isisdl = os.path.join(tmp, correct_name)
+            with open(new_isisdl, "wb") as f:
+                shutil.copyfileobj(new_file.raw, f)
 
-                st = os.stat(new_isisdl)
-                os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
-                os.replace(isisdl_executable, new_isisdl)
-                ret = 0
-
-        else:
-            ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
+            st = os.stat(new_isisdl)
+            os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
+            os.replace(isisdl_executable, new_isisdl)
+            ret = 0
 
     else:
         assert False
@@ -604,27 +594,27 @@ def install_latest_version() -> None:
         exit(ret)
 
 
-def path(*args: str) -> str:
-    return os.path.join(working_dir_location, *args)
+def path(*args: str) -> Path:
+    return Path(working_dir_location, *args)
 
 
 def remove_systemd_timer() -> None:
-    if not os.path.exists(timer_file_location):
+    if not os.path.exists(systemd_timer_file_location):
         return
 
     run_cmd_with_error(["systemctl", "--user", "disable", "--now", "isisdl.timer"])
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
-    if os.path.exists(timer_file_location):
-        os.remove(timer_file_location)
+    if os.path.exists(systemd_timer_file_location):
+        os.remove(systemd_timer_file_location)
 
-    if os.path.exists(service_file_location):
-        os.remove(service_file_location)
+    if os.path.exists(systemd_service_file_location):
+        os.remove(systemd_service_file_location)
 
 
 def install_systemd_timer() -> None:
-    import isisdl.bin.autorun
-    with open(service_file_location, "w") as f:
+    import isisdl.autorun
+    with open(systemd_service_file_location, "w") as f:
         f.write(f"""# isisdl autorun service
 # This file was autogenerated by `isisdl --init`.
 
@@ -634,13 +624,13 @@ Wants=isisdl.timer
 
 [Service]
 Type=oneshot
-ExecStart={isisdl_executable} {isisdl.bin.autorun.__file__}
+ExecStart={isisdl_executable} {isisdl.autorun.__file__}
 
 [Install]
 WantedBy=multi-user.target
 """)
 
-    with open(timer_file_location, "w") as f:
+    with open(systemd_timer_file_location, "w") as f:
         f.write("""# isisdl autorun timer
 # This file was autogenerated by the `isisdl-config` utility.
 
@@ -661,12 +651,10 @@ WantedBy=timers.target
 
 
 # TODO: Detect file system in `path()` and adapt unhandled chars
-def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
+def sanitize_name(name: str, is_dir: bool) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
-
-    replace_filenames = replace_filenames or config.filename_replacing
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
@@ -675,15 +663,6 @@ def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
 
     # Now start to add chars that don't fit.
     char_string = ""
-
-    if replace_filenames is False:
-        if is_windows:
-            for char in "<>:\"/\\|?*":
-                name = name.replace(char, "")
-
-            return name
-        else:
-            return name.replace("/", "")
 
     # Now replace any remaining funny symbols with a `?`
     name = name.encode("ascii", errors="replace").decode()
@@ -696,27 +675,34 @@ def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
     str_list = list(name)
     final = []
 
-    whitespaces = set(string.whitespace + "_-")
-    i = 0
-    next_upper = False
-    while i < len(str_list):
-        char = str_list[i]
+    if config.filename_replacing:
+        whitespaces = set(string.whitespace + "_-")
+        i = 0
+        next_upper = False
+        while i < len(str_list):
+            char = str_list[i]
 
-        if char == "\0":
-            pass
-        elif char in whitespaces:
-            next_upper = True
+            if char == "\0":
+                pass
+            elif char in whitespaces:
+                next_upper = True
 
-        else:
-            if next_upper:
-                final.append(char.upper())
-                next_upper = False
             else:
-                final.append(char)
+                if next_upper:
+                    final.append(char.upper())
+                    next_upper = False
+                else:
+                    final.append(char)
 
-        i += 1
+            i += 1
+    else:
+        final = str_list
 
-    return "".join(final)
+    # Folder names cannot end with a period in Windows ...
+    while replace_dot_at_end_of_dir_name and is_dir and final and (final[-1] == "." or final[-1] == " "):
+        final.pop()
+
+    return "".join(item for item in final if item not in forbidden_chars)
 
 
 def get_input(allowed: Set[str]) -> str:
@@ -783,7 +769,7 @@ class OnKill:
 
         OnKill._already_killed = True
         OnKill.do_funcs()
-        os._exit(sig)
+        os._exit(0)
 
     @staticmethod
     def do_funcs() -> None:
@@ -831,12 +817,13 @@ def acquire_file_lock_or_exit() -> None:
         if is_autorun:
             os._exit(1)
 
-        print("\nIf you want, I can also delete it for you.\nDo you want me to do that? [y/n]")
+        print("\nIf you want, I can also delete it for you: [y/n]")
         choice = get_input({"y", "n"})
         if choice == "y":
             os.remove(path(lock_file_location))
             acquire_file_lock()
         else:
+            print("Exiting ...")
             os._exit(1)
 
 
@@ -883,21 +870,22 @@ class User:
 
 
 def calculate_local_checksum(filename: Path) -> str:
-    sha = checksum_algorithm()
+    alg = checksum_algorithm()
 
-    sha.update(str(os.path.getsize(filename)).encode())
+    alg.update(str(os.path.getsize(filename)).encode())
     with open(filename, "rb") as f:
         i = 1
         while True:
-            f.seek(checksum_base_skip ** i, 1)
+            f.seek(3 ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
+
             if not data:
                 break
 
-            sha.update(data)
+            alg.update(data)
             i += 1
 
-    return sha.hexdigest()
+    return alg.hexdigest()
 
 
 def subscribe_to_all_courses() -> None:
@@ -1003,6 +991,7 @@ class DataLogger(Thread):
         }
         self.messages: Queue[Union[str, Dict[str, Any]]] = Queue()
         super().__init__(daemon=True)
+        self.start()
 
     def run(self) -> None:
         while True:
@@ -1017,6 +1006,9 @@ class DataLogger(Thread):
         deliver["message"] = msg
         self.messages.put(deliver)
 
+    def assert_fail(self, msg: str) -> None:
+        self.message(f"Assertion failed: {msg}")
+
     def post(self, msg: Dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:
             return
@@ -1028,6 +1020,134 @@ class DataLogger(Thread):
 
     def set_username(self, name: str) -> None:
         self.generic_msg["username"] = User.sanitize_name(name)
+
+
+# Represents a granted token. A download may only download as much as defined in num_bytes.
+@dataclass
+class Token:
+    num_bytes: int = download_chunk_size
+
+
+# TODO: When streaming a file the download rate will not be limited.
+class DownloadThrottler(Thread):
+    """
+    This class acts in a way that the download speed is capped at a certain maximum speed.
+    It does so by handing out tokens, which are limited.
+    With every token you may download a number of bytes.
+    """
+    download_queue: Queue[Token]
+    used_tokens: Queue[Token]
+    download_rate: int
+    refresh_rate: float
+
+    token = Token()
+    timestamps: List[float] = []
+    _streaming_loc: Optional[Path] = None
+
+    def __init__(self) -> None:
+        self.download_queue, self.used_tokens = Queue(), Queue()
+        self.download_rate = args.download_rate or config.throttle_rate or -1
+        self.refresh_rate = token_queue_refresh_rate
+
+        # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
+        # Check if that will be the case and adapt it accordingly.
+        if self.download_rate != -1:
+            while self.max_tokens() < args.max_num_threads:
+                self.refresh_rate *= 2
+
+        for _ in range(self.max_tokens()):
+            self.download_queue.put(Token())
+
+        super().__init__(daemon=True)
+        self.start()
+
+    def run(self) -> None:
+        while True:
+            start = time.perf_counter()
+
+            # Clear old timestamps
+            while self.timestamps:
+                if self.timestamps[0] < start - token_queue_download_refresh_rate:
+                    self.timestamps.pop(0)
+                else:
+                    break
+
+            # If a download limit is imposed hand out new tokens
+            if self.download_rate != -1 and self._streaming_loc is None:
+                try:
+                    for _ in range(self.max_tokens()):
+                        self.download_queue.put(self.used_tokens.get(block=False))
+
+                except (Full, Empty):
+                    pass
+
+            # Finally, compute how much time we've spent doing this stuff and sleep the remainder.
+            time.sleep(max(self.refresh_rate - (time.perf_counter() - start), 0))
+
+    @property
+    def bandwidth_used(self) -> float:
+        """
+        Returns the bandwidth used in bytes / second
+        """
+        return float(len(self.timestamps) * download_chunk_size / token_queue_download_refresh_rate)
+
+    def get(self, location: Path) -> Token:
+        try:
+            if self.download_rate == -1 or location == self._streaming_loc:
+                return self.token
+
+            token = self.download_queue.get()
+            self.used_tokens.put(token)
+
+            return token
+
+        finally:
+            # Only append it at exit
+            self.timestamps.append(time.perf_counter())
+
+    def start_stream(self, location: Path) -> None:
+        self._streaming_loc = location
+
+    def end_stream(self) -> None:
+        self._streaming_loc = None
+
+    def max_tokens(self) -> int:
+        if self.download_rate == -1 or self.download_rate:
+            return 1
+
+        return int((self.download_rate * 1024 ** 2) // download_chunk_size * self.refresh_rate) or 1
+
+
+class MediaType(enum.Enum):
+    document = 1
+    extern = 2
+    video = 3
+    corrupted = 4
+
+    @property
+    def dir_name(self) -> str:
+        if self == MediaType.video:
+            return "Videos"
+        if self == MediaType.extern:
+            return "Extern"
+
+        return ""
+
+    def __str__(self) -> str:
+        if self == MediaType.video:
+            return "video"
+        elif self == MediaType.document:
+            return "document"
+        elif self == MediaType.extern:
+            return "external link"
+        elif self == MediaType.corrupted:
+            return "corrupted file"
+
+        assert False
+
+    @staticmethod
+    def list_dirs() -> Iterable[str]:
+        return "Videos", "Extern"
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503
@@ -1072,7 +1192,10 @@ class HumanBytes:
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 
 
-def generate_error_message() -> None:
+def generate_error_message(ex: Exception) -> NoReturn:
+    if is_testing:
+        raise ex
+
     print("\nI have encountered the following Exception. I'm sorry this happened 😔\n")
     print(traceback.format_exc())
 
@@ -1102,4 +1225,3 @@ config = Config()
 created_lock_file = False
 
 logger = DataLogger()
-logger.start()
