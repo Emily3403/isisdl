@@ -310,7 +310,7 @@ global_vars = globals()
 testing_download_sizes = {
     1: 1_000_000_000,  # Video
     2: 2_500_000_000,  # Documents
-    3: 0,  # Extern
+    3: 1_000_000_000,  # Extern
     4: 0,  # Corrupted
 }
 
@@ -329,13 +329,16 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
     "ext2": linux_forbidden_chars,
     "ext3": linux_forbidden_chars,
     "ext4": linux_forbidden_chars,
+    "btrfs": linux_forbidden_chars,
+
     "exfat": {chr(item) for item in range(0, 0x1f + 1)} | linux_forbidden_chars,
+
     "fat32": windows_forbidden_chars,
     "vfat": windows_forbidden_chars,
     "ntfs": windows_forbidden_chars,
+
     "hfs": set(),
     "hfsplus": set(),
-    "btrfs": linux_forbidden_chars,
 }
 
 if _path in _mount_partitions:

@@ -170,7 +170,7 @@ class DatabaseHelper:
         with self.lock:
             res = self.cur.execute("SELECT * FROM fileinfo").fetchall()
 
-        return {item[2]: item for item in res}
+        return {item[1]: item for item in res}
 
     def get_checksums(self) -> Set[str]:
         with self.lock:

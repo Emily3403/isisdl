@@ -183,6 +183,7 @@ class MediaContainer:
     current_size: Optional[int] = None
     _stop: bool = False
     _links: List[MediaContainer] = field(default_factory=list)
+    _done: bool = False
 
     @classmethod
     def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
@@ -319,7 +320,7 @@ class MediaContainer:
 
     @property
     def should_download(self) -> bool:
-        if self.media_type == MediaType.corrupted:
+        if self._done or self.media_type == MediaType.corrupted:
             return False
 
         if not self.path.exists():
@@ -365,7 +366,7 @@ class MediaContainer:
 
         acc = True
         for attr in self.__dict__:
-            if attr in {"current_size", "_links"}:
+            if attr in {"current_size", "_links", "_done"}:
                 continue
 
             self_val = getattr(self, attr)
@@ -383,16 +384,19 @@ class MediaContainer:
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
         if self._stop or self.media_type == MediaType.corrupted:
+            self._done = True
             return
 
         if self.current_size is not None:
             # assert self.current_size == self.size  # TODO
+            # assert self._done is True
             return
 
         self.current_size = 0
 
         if not self.should_download:
             self.current_size = self.size
+            self._done = True
             return
 
         if is_stream:
@@ -402,6 +406,7 @@ class MediaContainer:
 
         if download is None or not download.ok:
             self.current_size = self.size
+            self._done = True
             return
 
         # We copy in chunks so the download rate can be limited. This could also be done with `shutil.copyfileobj(…)`
@@ -462,6 +467,9 @@ class MediaContainer:
             link.path.unlink(missing_ok=True)
             os.link(self.path, link.path)
             link.dump()
+            link._done = True
+
+        self._done = True
 
 
 @dataclass
@@ -865,6 +873,27 @@ class CourseDownloader:
 
         CourseDownloader.containers = containers
 
+        # Log the metadata
+        conf = config.to_dict()
+        del conf["password"]
+        logger.post({
+            "num_g_files": len(containers),
+            "num_c_files": len(containers),
+
+            "total_g_bytes": sum((item.size for row in containers.values() for item in row)),
+            "total_c_bytes": sum((item.size for row in containers.values() for item in row)),
+
+            "course_ids": sorted([course.course_id for course in helper._courses]),
+
+            "config": conf,
+        })
+
+        if not any(item.should_download for row in containers.values() for item in row):
+            while logger.messages.qsize():
+                time.sleep(status_time)
+
+            return
+
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
         with DownloadStatus(containers, args.max_num_threads, throttler) as status:
@@ -872,21 +901,6 @@ class CourseDownloader:
             if not args.stream:
                 downloader = Thread(target=self.download_files, args=(containers, throttler, helper.session, status))
                 downloader.start()
-
-            # Log the metadata
-            conf = config.to_dict()
-            del conf["password"]
-            logger.post({
-                "num_g_files": len(containers),
-                "num_c_files": len(containers),
-
-                "total_g_bytes": sum((item.size for row in containers.values() for item in row)),
-                "total_c_bytes": sum((item.size for row in containers.values() for item in row)),
-
-                "course_ids": sorted([course.course_id for course in helper._courses]),
-
-                "config": conf,
-            })
 
             if args.stream:
                 while True:
@@ -1009,5 +1023,5 @@ class CourseDownloader:
                 item.stop()
 
         # Now wait for the downloads to finish
-        while any(item.current_size is not None and item.current_size != item.size for row in CourseDownloader.containers.values() for item in row):
+        while not all(item._done for row in CourseDownloader.containers.values() for item in row):
             time.sleep(status_time)

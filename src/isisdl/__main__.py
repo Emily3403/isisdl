@@ -104,6 +104,7 @@ def main() -> None:
 #   Use mp4 metadata to recognize files
 #   When using --config the password seams to be reset
 #   Whitelisting doesn't work?
+#   When rediscovering files there are 400 found even though there is nothing?
 
 
 # Feature discussion:
