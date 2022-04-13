@@ -6,15 +6,19 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
 from linecache import getline
-from typing import Any, DefaultDict, Set
+from pathlib import Path
+from typing import Any, DefaultDict, Set, Dict
 
+import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
-from yaml import safe_load, YAMLError
+from psutil._common import sdiskpart
+from yaml import safe_load, YAMLError, MarkedYAMLError
 
 import isisdl.autorun
 
@@ -59,8 +63,16 @@ has_ffmpeg = shutil.which("ffmpeg") is not None
 # Check if being automatically run
 is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
-# TODO: Add a setting for forcing characters to be ext4 / ntfs
+# Forbidden chars lookup-able by `is_windows`.
+# Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
+windows_forbidden_chars: Set[str] = {"\\", "/", "?", "*", ":", "|", "\"", "<", ">", "\0"}
+linux_forbidden_chars: Set[str] = {"\0", "/"}
+
+forbidden_chars: Set[str] = windows_forbidden_chars if is_windows else linux_forbidden_chars
+
+# Yes, this is a windows thing... (or if you mount with `-o windows_names`)
+replace_dot_at_end_of_dir_name = is_windows
 
 # -/- Options for this executable ---
 
@@ -72,6 +84,9 @@ checksum_algorithm = sha256
 
 # The number of bytes sampled per iteration to compute a checksum
 checksum_num_bytes = 1024 * 500
+
+# If the file size is not equal, but it is in this percentage the checksum will be computed in order to
+perc_diff_for_checksum = 0.1
 
 # -/- Checksum options ---
 
@@ -201,39 +216,38 @@ def parse_config_file() -> DefaultDict[str, Any]:
 
             if not isinstance(_dat, dict):
                 raise YAMLError("Wrong type: is not a mapping")
+
             return defaultdict(lambda: None, _dat)
 
     except OSError:
         pass
 
+    # TODO: Test this
     # Exception handling inspired by https://stackoverflow.com/a/30407093
-    except YAMLError as ex:
+    except MarkedYAMLError as ex:
         # Unfortunately mypy doesn't support this well...
-        if (
-                hasattr(ex, "problem_mark")
-                and hasattr(ex, "context")
-                and hasattr(ex, "problem")
-                and hasattr(ex, "context_mark")
-        ):
-            assert hasattr(ex, "problem_mark")
-            if ex.context is None:  # type: ignore
-                where = str(ex.problem_mark)[4:]  # type: ignore
-                offending_line = getline(config_file_location, ex.problem_mark.line).strip("\n")  # type: ignore
-            else:
-                where = str(ex.context_mark)[4:]  # type: ignore
-                offending_line = getline(config_file_location, ex.context_mark.line).strip("\n")  # type: ignore
-
-            print(f"Malformed config file: {where.strip()}\n")
-            if ex.context is not None:  # type: ignore
-                print(f"Error: {ex.problem} {ex.context}")  # type: ignore
-
-            print(f'Offending line: "{offending_line}"\n')
+        if ex.context is None and ex.problem_mark is not None:
+            where = str(ex.problem_mark)[4:]
+            offending_line = getline(config_file_location, ex.problem_mark.line).strip("\n")
+        elif ex.context_mark is not None:
+            where = str(ex.context_mark)[4:]
+            offending_line = getline(config_file_location, ex.context_mark.line).strip("\n")
         else:
-            print(f"{error_text} the config file contains an error / is malformed.")
-            print(f"The file is located at `{config_file_location}`\n")
-            print(f"Reason: {ex}\n")
+            where = "?"
+            offending_line = "?"
+
+        print(f"Malformed config file: {where.strip()}\n")
+        if ex.context is not None:
+            print(f"Error: {ex.problem} {ex.context}")
+
+        print(f'Offending line: "{offending_line}"\n')
 
         print("I will be ignoring the specified configuration.\n")
+
+    except YAMLError as ex:
+        print(f"{error_text} the config file contains an error / is malformed.")
+        print(f"The file is located at `{config_file_location}`\n")
+        print(f"Reason: {ex}\n")
 
     return defaultdict(lambda: None)
 
@@ -262,9 +276,9 @@ def check_online() -> bool:
 is_online = check_online()
 
 # Check if the user is executing the library for the first time → .state.db should be missing
-is_first_time = not os.path.exists(
-    os.path.join(working_dir_location, database_file_location)
-)
+is_first_time = not os.path.exists(os.path.join(working_dir_location, database_file_location))
+
+# --- Test options ---
 
 # Yes, changing behaviour when testing is evil. But I'm doing so in order to protect my `~/isisdl_downloads` directory.
 is_testing = "pytest" in sys.modules
@@ -300,4 +314,42 @@ testing_download_sizes = {
     4: 0,  # Corrupted
 }
 
-# </ Test Options >
+# -/- Test Options ---
+
+# Filesystems also have limitations on their filenames.
+# Reference: https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
+
+_mount_partitions: Dict[str, sdiskpart] = {part.mountpoint: part for part in psutil.disk_partitions()}
+_working_path = Path(working_dir_location)
+while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.parent != _working_path:
+    _working_path = _working_path.parent
+
+_fs_forbidden_chars: Dict[str, Set[str]] = {
+    "ext": linux_forbidden_chars,
+    "ext2": linux_forbidden_chars,
+    "ext3": linux_forbidden_chars,
+    "ext4": linux_forbidden_chars,
+    "exfat": {chr(item) for item in range(0, 0x1f + 1)} | linux_forbidden_chars,
+    "fat32": windows_forbidden_chars,
+    "vfat": windows_forbidden_chars,
+    "ntfs": windows_forbidden_chars,
+    "hfs": set(),
+    "hfsplus": set(),
+    "btrfs": linux_forbidden_chars,
+}
+
+if _path in _mount_partitions:
+    if "windows_names" in _mount_partitions[_path].opts:
+        forbidden_chars.update(windows_forbidden_chars)
+
+    # Linux uses Filesystem in userspace and reports "fuseblk".
+    if _mount_partitions[_path].fstype == "fuseblk":
+        fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
+        pass
+    else:
+        fstype = _mount_partitions[_path].fstype
+
+    if fstype in _fs_forbidden_chars:
+        forbidden_chars.update(_fs_forbidden_chars[fstype])
+        if _fs_forbidden_chars[fstype] == windows_forbidden_chars:
+            replace_dot_at_end_of_dir_name = True

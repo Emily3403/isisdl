@@ -37,7 +37,7 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -49,7 +49,7 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
 
-    parser.add_argument("-t", "--num-threads", help="The number of threads which download the files\n ", type=int, default=3, metavar="{num}")
+    parser.add_argument("-t", "--max-num-threads", help="The maximum number of threads to spawn (for downloading files)\n ", type=int, default=6, metavar="{num}")
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="{num}")
 
     operations = parser.add_mutually_exclusive_group()
@@ -63,6 +63,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
+    operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")  # TODO: Test this
 
     if is_testing:
         return parser.parse_known_args()[0]
@@ -529,7 +530,6 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 
 def install_latest_version() -> None:
-    # TODO: Thread this
     if is_first_time:
         return
 
@@ -549,39 +549,39 @@ def install_latest_version() -> None:
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
 
-    if config.update_policy.startswith("notify"):
+    if config.update_policy.startswith("notify") and not args.update:
         return
+    elif config.update_policy.startswith("install"):
+        print("According to your update policy I will auto-install it.\n")
 
-    print("According to your update policy I will auto-install it.\n")
     if config.update_policy == "install_pip":
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
+    elif config.update_policy == "install_github" and is_static is False:
+        ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
+
     # TODO: test if this will work
-    elif config.update_policy == "install_github":
-        if is_static:
-            with TemporaryDirectory() as tmp:
-                assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
-                correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
-                for asset in assets:
-                    if asset["name"] == correct_name:
-                        break
+    elif config.update_policy == "install_github" and is_static:
+        with TemporaryDirectory() as tmp:
+            assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
+            correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
+            for asset in assets:
+                if asset["name"] == correct_name:
+                    break
 
-                else:
-                    print(f"{error_text} I cannot find the release for your platform.")
-                    exit(1)
+            else:
+                print(f"{error_text} I cannot find the release for your platform.")
+                exit(1)
 
-                new_file = requests.get(asset["browser_download_url"], stream=True)
-                new_isisdl = os.path.join(tmp, correct_name)
-                with open(new_isisdl, "wb") as f:
-                    shutil.copyfileobj(new_file.raw, f)
+            new_file = requests.get(asset["browser_download_url"], stream=True)
+            new_isisdl = os.path.join(tmp, correct_name)
+            with open(new_isisdl, "wb") as f:
+                shutil.copyfileobj(new_file.raw, f)
 
-                st = os.stat(new_isisdl)
-                os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
-                os.replace(isisdl_executable, new_isisdl)
-                ret = 0
-
-        else:
-            ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
+            st = os.stat(new_isisdl)
+            os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
+            os.replace(isisdl_executable, new_isisdl)
+            ret = 0
 
     else:
         assert False
@@ -651,12 +651,10 @@ WantedBy=timers.target
 
 
 # TODO: Detect file system in `path()` and adapt unhandled chars
-def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
+def sanitize_name(name: str, is_dir: bool) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
     name = unquote(name)
-
-    replace_filenames = replace_filenames or config.filename_replacing
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
@@ -665,15 +663,6 @@ def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
 
     # Now start to add chars that don't fit.
     char_string = ""
-
-    if replace_filenames is False:
-        if is_windows:
-            for char in "<>:\"/\\|?*":
-                name = name.replace(char, "")
-
-            return name
-        else:
-            return name.replace("/", "")
 
     # Now replace any remaining funny symbols with a `?`
     name = name.encode("ascii", errors="replace").decode()
@@ -686,27 +675,34 @@ def sanitize_name(name: str, replace_filenames: Optional[bool] = None) -> str:
     str_list = list(name)
     final = []
 
-    whitespaces = set(string.whitespace + "_-")
-    i = 0
-    next_upper = False
-    while i < len(str_list):
-        char = str_list[i]
+    if config.filename_replacing:
+        whitespaces = set(string.whitespace + "_-")
+        i = 0
+        next_upper = False
+        while i < len(str_list):
+            char = str_list[i]
 
-        if char == "\0":
-            pass
-        elif char in whitespaces:
-            next_upper = True
+            if char == "\0":
+                pass
+            elif char in whitespaces:
+                next_upper = True
 
-        else:
-            if next_upper:
-                final.append(char.upper())
-                next_upper = False
             else:
-                final.append(char)
+                if next_upper:
+                    final.append(char.upper())
+                    next_upper = False
+                else:
+                    final.append(char)
 
-        i += 1
+            i += 1
+    else:
+        final = str_list
 
-    return "".join(final)
+    # Folder names cannot end with a period in Windows ...
+    while replace_dot_at_end_of_dir_name and is_dir and final and (final[-1] == "." or final[-1] == " "):
+        final.pop()
+
+    return "".join(item for item in final if item not in forbidden_chars)
 
 
 def get_input(allowed: Set[str]) -> str:
@@ -874,15 +870,15 @@ class User:
 
 
 def calculate_local_checksum(filename: Path) -> str:
-    # TODO: Better checksum algorithm
     alg = checksum_algorithm()
 
     alg.update(str(os.path.getsize(filename)).encode())
     with open(filename, "rb") as f:
         i = 1
         while True:
-            # f.seek(3 ** i, 1)  # This enables O(log(n)) time.
+            f.seek(3 ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
+
 
             if not data:
                 break
@@ -1057,7 +1053,7 @@ class DownloadThrottler(Thread):
         # Maybe the token_queue_refresh_rate is too small and there will be no tokens.
         # Check if that will be the case and adapt it accordingly.
         if self.download_rate != -1:
-            while self.max_tokens() < args.num_threads:
+            while self.max_tokens() < args.max_num_threads:
                 self.refresh_rate *= 2
 
         for _ in range(self.max_tokens()):

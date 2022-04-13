@@ -13,6 +13,10 @@ from distlib.version import LegacyVersion
 
 from isisdl.server.server_settings import server_path, log_dir_location, log_type, log_dir_version, graph_dir_location
 
+# TODO:
+#   Users over time → moving average window / first time registered.
+#   Different OS versions
+
 
 @dataclass
 class DataV1:

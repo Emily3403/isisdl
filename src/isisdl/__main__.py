@@ -102,18 +102,8 @@ def main() -> None:
 
 # TODO:
 #   Use mp4 metadata to recognize files
-#   Subscribe to *all* courses
 #   When using --config the password seams to be reset
 #   Whitelisting doesn't work?
-
-# TODO:
-#   How to speed things up
-#       Check online → check latest version
-#       Check latest version → threads
-#       When discovering have 64 threads that do the lifting + 32 max for every hostname
-#       Maybe make download_videos own thread again
-
-#       → More threads!
 
 
 # Feature discussion:

@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum
 from isisdl.settings import enable_multithread, extern_discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType
@@ -159,7 +159,7 @@ class PreMediaContainer:
         self.course = course
         self.media_type = media_type
         self.is_cached = not (database_helper.know_url(url) is True)
-        self.parent_path = course.path(sanitize_name(relative_location))
+        self.parent_path = course.path(sanitize_name(relative_location, True))
         self.parent_path.mkdir(exist_ok=True)
 
     def __str__(self) -> str:
@@ -200,6 +200,12 @@ class MediaContainer:
 
         course_id: int = container.course  # type: ignore
         container.course = RequestHelper.course_id_mapping[course_id]
+
+        if is_testing:
+            if container.media_type == MediaType.corrupted:
+                assert container.size == 0
+            else:
+                assert container.size != 0 and container.size != -1
 
         return container
 
@@ -263,7 +269,7 @@ class MediaContainer:
                 media_type = MediaType.corrupted
 
             if container._name is not None and container.time is not None and container.size is not None:
-                return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name)),
+                return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name, False)),
                            container.time, container.course, media_type, container.size if media_type != MediaType.corrupted else 0).dump()
 
             if container._name is not None:
@@ -295,7 +301,13 @@ class MediaContainer:
             if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
                 media_type = MediaType.corrupted
 
-            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name)), time, container.course, media_type, size).dump()
+            if is_testing:
+                if media_type == MediaType.corrupted:
+                    assert size == 0
+                else:
+                    assert size != 0 and size != -1
+
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size).dump()
 
         finally:
             container.is_cached = True
@@ -308,26 +320,25 @@ class MediaContainer:
     @property
     def should_download(self) -> bool:
         if self.media_type == MediaType.corrupted:
-            if is_testing:
-                assert self.size == 0
-
             return False
 
         if not self.path.exists():
             return True
 
-        if is_testing:
-            assert self.size != 0
-            assert self.size != -1
-
-        if self.path.stat().st_size != self.size:
+        if not (self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum)):
             return True
 
         maybe_container = MediaContainer.from_dump(self.url)
         if isinstance(maybe_container, bool):
             return maybe_container
 
-        return maybe_container.checksum is None
+        if self.size == self.path.stat().st_size:
+            return False
+
+        if maybe_container.checksum is None:
+            return True
+
+        return calculate_local_checksum(self.path) == maybe_container.checksum
 
     def dump(self) -> MediaContainer:
         database_helper.add_pre_container(self)
@@ -340,7 +351,7 @@ class MediaContainer:
         if config.absolute_path_filename:
             return str(self.path)
 
-        return sanitize_name(self._name)
+        return sanitize_name(self._name, False)
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -431,16 +442,18 @@ class MediaContainer:
         download.close()
 
         # Only register the file after successfully downloading it.
-        if self.size != 0 and self.size != -1:
-            assert self.path.stat().st_size == self.size == self.current_size
+        if self.media_type != MediaType.corrupted:
+            if is_testing:
+                assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
 
         self.checksum = calculate_local_checksum(self.path)
         self.dump()
 
         # Resolve hard links
         for link in self._links:
-            assert link.size == self.size
-            assert link._links == []
+            if is_testing:
+                assert link.size == self.size
+                assert link._links == []
 
             link.current_size = self.current_size
             link.media_type = self.media_type
@@ -469,7 +482,7 @@ class Course:
         else:
             name = config.renamed_courses.get(id, "") or _name
 
-        obj = cls(sanitize_name(old_name), _name, sanitize_name(name), id)
+        obj = cls(sanitize_name(old_name, True), _name, sanitize_name(name, True), id)
         obj.make_directories()
 
         return obj
@@ -562,7 +575,7 @@ class Course:
 
     def path(self, *args: str) -> Path:
         # Custom path function that prepends the args with the course name.
-        return path(self.name, *args)
+        return path(sanitize_name(self.name, True), *args)
 
     @property
     def ok(self) -> bool:
@@ -699,7 +712,7 @@ class RequestHelper:
             _pre_containers = [self._download_course(course, exception_lock, status) for course in self.courses]
 
         pre_containers = [item for row in _pre_containers for item in row]
-        # pre_containers.extend(self._download_mod_assign())
+        pre_containers.extend(self._download_mod_assign())
         random.seed(0)
         random.shuffle(pre_containers)
 
@@ -810,6 +823,38 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     return final_list
 
 
+class Downloader(Thread):
+    q: Queue[MediaContainer]
+    thread_id: int
+    status: DownloadStatus
+    throttler: DownloadThrottler
+    session: SessionWithKey
+
+    _lock = Lock()
+
+    def __init__(self, q: Queue[MediaContainer], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
+        self.q = q
+        self.thread_id = thread_id
+        self.status = status
+        self.throttler = throttler
+        self.session = session
+
+        super().__init__(daemon=True)
+        self.start()
+
+    def run(self) -> None:
+        while True:
+            file = self.q.get()
+            self.status.add_container(self.thread_id, file)
+            try:
+                file.download(self.throttler, self.session)
+                self.status.done(self.thread_id, file)
+
+            except Exception as ex:
+                with self._lock:
+                    generate_error_message(ex)
+
+
 class CourseDownloader:
     containers: Dict[MediaType, List[MediaContainer]] = {}
 
@@ -822,7 +867,7 @@ class CourseDownloader:
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
-        with DownloadStatus(containers, args.num_threads, throttler) as status:
+        with DownloadStatus(containers, args.max_num_threads, throttler) as status:
             Thread(target=self.stream_files, args=(containers, throttler, status, helper.session), daemon=True).start()
             if not args.stream:
                 downloader = Thread(target=self.download_files, args=(containers, throttler, helper.session, status))
@@ -917,11 +962,38 @@ class CourseDownloader:
                     second_files.append(file)
 
         if enable_multithread:
-            with ThreadPoolExecutor(args.num_threads, thread_name_prefix="T") as ex:
+            with ThreadPoolExecutor(args.max_num_threads, thread_name_prefix="T") as ex:
                 list(ex.map(download, first_files + second_files))
         else:
             for file in first_files + second_files:
                 download(file)
+
+        # TODO
+        # already_done_files: List[MediaContainer] = []
+        # fast_downloads: List[MediaContainer] = []
+        # videos: List[MediaContainer] = []
+        #
+        # for _files in files.values():
+        #     for file in _files:
+        #         if not file.should_download:
+        #             already_done_files.append(file)
+        #         elif file.media_type == MediaType.video:
+        #             videos.append(file)
+        #         else:
+        #             fast_downloads.append(file)
+        #
+        # if enable_multithread:
+        #     queues: List[Queue[MediaContainer]] = [Queue() for _ in range(args.max_num_threads)]
+        #     threads = [Downloader(q, i, status, throttler, session) for i, q in enumerate(queues)]
+        #
+        # else:
+        #     queues = [Queue()]
+        #     threads = [Downloader(queues[0], 0, status, throttler, session)]
+        #
+        # # for file in already_done_files + fast_downloads:
+        # # TODO
+        #
+        # pass
 
     @staticmethod
     @on_kill(2)

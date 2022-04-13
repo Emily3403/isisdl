@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from threading import Thread, Lock
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution, is_testing
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 
 if TYPE_CHECKING:
@@ -108,7 +108,8 @@ class Status(Thread):
     def done(self, *args: Any, **kwargs: Any) -> None:
         if self.count is not None:
             self.count += 1
-            assert self.total is None or self.count <= self.total
+            if is_testing:
+                assert self.total is None or self.count <= self.total
 
 
 class DownloadStatus(Status):
