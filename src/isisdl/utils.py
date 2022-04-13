@@ -879,7 +879,6 @@ def calculate_local_checksum(filename: Path) -> str:
             f.seek(3 ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
 
-
             if not data:
                 break
 
