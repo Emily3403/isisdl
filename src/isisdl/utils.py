@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
+from itertools import repeat
 from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
@@ -37,7 +38,7 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, subscribe_num_courses_to_subscribe_to, force_filesystem
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -96,7 +97,7 @@ class Config:
     database_version: int
     absolute_path_filename: bool
 
-    auto_subscribed_courses: Optional[List[int]]
+    auto_subscribed_courses: Optional[List[Tuple[int, int]]]  # course_id, course_module_id
 
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
@@ -119,14 +120,14 @@ class Config:
         "absolute_path_filename": False,
         "database_version": 2,
 
-        "auto_subscribed_courses": None
+        "auto_subscribed_courses": None,
     }
 
     __slots__ = tuple(default_config)
 
     state: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # The state to consider after defaults, config files etc.
-    _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Values the user has actively stored in the config wizard (no config file)
-    _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # Extra backup to maintain for tests
+    _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Values the user has actively stored in the config wizard (no config file)
+    _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Extra backup to maintain for tests
     _in_backup: bool = False
 
     def __init__(self, _prev_config: Optional[Dict[str, Any]] = None) -> None:
@@ -155,12 +156,18 @@ class Config:
 
         assert all(k in self.__slots__ for k in prev_config)
 
-        Config.state.update(Config.default_config)
-        Config.state.update(stored_config)
-        Config.state.update(prev_config)
-        Config.state.update(config_file_data)
+        self.state.update(Config.default_config)
+        self.state.update(stored_config)
+        self.state.update(prev_config)
+        self.state.update(config_file_data)
 
-        # TODO: Verify types
+        self._stored.update(stored_config)
+        self.state["database_version"] = database_helper.get_database_version()
+
+        if "database_version" not in self._stored:
+            self._stored["database_version"] = self.default("database_version")
+
+        self.verify_state_types()
 
         for name in self.__slots__:
             super().__setattr__(name, Config.state[name])
@@ -172,16 +179,40 @@ class Config:
             Config._stored[key] = value
             database_helper.set_config(self._stored)
 
+    def verify_state_types(self) -> None:
+        # Unfortunately we can't use the type annotations since they provide very little interface to python.
+        def fail(attr: str, typ: Any, may_be_none: bool = False) -> None:
+            if self.state[attr] is None and may_be_none:
+                return
+
+            if type(self.state[attr]) is not typ:
+                print(f"{error_text} Expected type {typ} for attribute {repr(attr)}. Got {type(self.state[attr])}.\nBailing out!")
+                os._exit(1)
+
+        fail("password_encrypted", bool, True)
+        fail("username", str, True)
+        fail("password", str, True)
+        fail("whitelist", list, True)
+        fail("blacklist", list, True)
+        fail("renamed_courses", dict, True)
+        fail("make_subdirs", bool)
+        fail("follow_links", bool)
+        fail("download_videos", bool)
+        fail("timer_enable", bool)
+        fail("throttle_rate", int, True)
+        fail("throttle_rate_autorun", int, True)
+        fail("update_policy", str, True)
+        fail("telemetry_policy", bool)
+        fail("database_version", int)
+        fail("absolute_path_filename", bool)
+
     @staticmethod
     def default(attr: str) -> Any:
         return Config.default_config[attr]
 
     @staticmethod
     def user(attr: str) -> Optional[Any]:
-        if attr not in Config._stored:
-            return None
-
-        return Config._stored[attr]
+        return Config._stored.get(attr, None)
 
     def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
         return {name: getattr(self, name) for name in self.__slots__}
@@ -206,11 +237,10 @@ def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
     return str(st)
 
 
-# TODO: Maybe include more settings?
 def generate_config_str(
         working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
         throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
-        status_progress_bar_resolution: int, download_progress_bar_resolution: int
+        status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: Optional[str], make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
 ) -> str:
     return f"""---
 
@@ -255,6 +285,21 @@ whitelist: {'null' if whitelist is None else whitelist}
 blacklist: {'null' if blacklist is None else blacklist}
 
 
+# Should subdirectories be created?
+# Possible values {{"true", "false"}}
+make_subdirs: {encode_yaml(make_subdirs)}
+
+
+# Should external links be followed?
+# Possible values {{"true", "false"}}
+follow_links: {encode_yaml(follow_links)}
+
+
+# Should the displayed name be absolute or just the name?
+# Possible values {{"true", "false"}}
+absolute_path_filename: {encode_yaml(absolute_path_filename)}
+
+
 # The global throttle rate. Will take precedence over throttle_rate_autorun.
 # Possible values {{"null", any integer}}
 throttle_rate: {encode_yaml(throttle_rate)}
@@ -272,6 +317,13 @@ update_policy: {encode_yaml(update_policy)}
 # Should telemetry data be collected?
 # Possible values {{"true", "false"}}
 telemetry_policy: {encode_yaml(telemetry_policy)}
+
+
+
+
+# Force a filesystem
+# Possible values {{null, ext, ext2, ext3, ext4, btrfs, exfat, fat32, vfat, ntfs, hfs, hfsplus}}
+force_filesystem: {force_filesystem}
 
 
 
@@ -296,14 +348,16 @@ def generate_default_config_str() -> str:
     return generate_config_str(
         working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
         Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"), Config.default("telemetry_policy"), status_time,
-        extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution
+        extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, force_filesystem, Config.default("make_subdirs"), Config.default("follow_links"),
+        Config.default("absolute_path_filename")
     )
 
 
 def generate_current_config_str() -> str:
     return generate_config_str(
         working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist, config.throttle_rate,
-        config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution
+        config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution,
+        force_filesystem, config.make_subdirs, config.follow_links, config.absolute_path_filename
     )
 
 
@@ -650,7 +704,6 @@ WantedBy=timers.target
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
 
-# TODO: Detect file system in `path()` and adapt unhandled chars
 def sanitize_name(name: str, is_dir: bool) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
@@ -702,7 +755,10 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     while replace_dot_at_end_of_dir_name and is_dir and final and (final[-1] == "." or final[-1] == " "):
         final.pop()
 
-    return "".join(item for item in final if item not in forbidden_chars)
+    final_str = "".join(item for item in final if item not in forbidden_chars)
+
+    # All supported filesystems have a limit of 255 bytes for the filename. Enforce it.
+    return final_str.encode()[:255].decode()
 
 
 def get_input(allowed: Set[str]) -> str:
@@ -876,7 +932,7 @@ def calculate_local_checksum(filename: Path) -> str:
     with open(filename, "rb") as f:
         i = 1
         while True:
-            f.seek(3 ** i, 1)  # This enables O(log(n)) time.
+            # f.seek(3 ** i, 1)  # This enables O(log(n)) time.
             data = f.read(checksum_num_bytes)
 
             if not data:
@@ -891,31 +947,41 @@ def calculate_local_checksum(filename: Path) -> str:
 def subscribe_to_all_courses() -> None:
     from isisdl.backend.request_helper import RequestHelper
     from isisdl.backend.crypt import get_credentials
+    from isisdl.backend.status import Status
 
     helper = RequestHelper(get_credentials())
 
-    def enrol_course(id: int) -> Optional[int]:
+    print("Retrieving course information... (This might take a while)")
+    possible_courses = helper.post_REST("core_course_search_courses", {"criterianame": "tagid", "criteriavalue": ""}, use_timeout=False)
+    if possible_courses is None:
+        print("Retrieving all courses failed...")
+        return
+
+    def enrol_course(id: int, status: Status) -> Optional[Tuple[int, int]]:
         first = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
-        second = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
-        if first is None or second is None:
+        if first is None or "exception" in first:
+            status.done()
             return None
 
-        if "exception" in second:
-            if second["errorcode"] in {"canntenrol", "coursehidden", "invalidrecord"}:
-                return None
-            else:
-                assert False
+        # Enrol a second time to get the course_module_id
+        second = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
+        if second is None:
+            status.done()
+            return None
 
-        if first["status"]:
-            return int(second["warnings"][0]["itemid"])
+        status.done()
+        return id, int(second["warnings"][0]["itemid"])
 
-        return int(second["warnings"][0]["itemid"])
+    _ids = [item["id"] for item in possible_courses["courses"]][:subscribe_num_courses_to_subscribe_to]
+    prev_ids = {item[0] for item in (config.auto_subscribed_courses or [])}
+    _ids = [item for item in _ids if item not in prev_ids]
 
-    if enable_multithread:
-        with ThreadPoolExecutor(subscribe_num_threads) as ex:
-            ids = list(ex.map(enrol_course, range(23995, 24100)))
-    else:
-        ids = [enrol_course(i) for i in range(10)]
+    with Status("Subscribing to courses", len(range(0, 30000))) as status:
+        if enable_multithread:
+            with ThreadPoolExecutor(subscribe_num_threads) as ex:
+                ids = list(ex.map(enrol_course, range(0, 30000), repeat(status)))
+        else:
+            ids = [enrol_course(i, status) for i in _ids]
 
     new_ids = [item for item in ids if item is not None]
     if config.auto_subscribed_courses is None:
@@ -923,40 +989,54 @@ def subscribe_to_all_courses() -> None:
     else:
         config.auto_subscribed_courses.extend(new_ids)
 
-    print(f"Subscribed to {len(new_ids)} courses.")
+    print(f"Subscribed to {len(new_ids)} new courses.")
 
-    with open(path(subscribed_courses_file_location), "w"):
-        print("")
+    with open(path(subscribed_courses_file_location), "w") as f:
+        json.dump(config.auto_subscribed_courses, f)
 
 
 def unsubscribe_from_courses() -> None:
     if config.auto_subscribed_courses is None:
-        print("There are no courses I have subscribed to.")
-        return
+        print("I could not find the courses I have subscribeed to in the database.")
+        if path(subscribed_courses_file_location).exists():
+            print("I have found the an export of the courses I have subscribed to.\n\nDo you want me to use that instead? [y/n]\n")
+            choice = get_input({"y", "n"})
+            if choice == "n":
+                return
+
+            with path(subscribed_courses_file_location).open() as f:
+                auto_subscribed_courses = json.load(f)
+
+    else:
+        auto_subscribed_courses = config.auto_subscribed_courses
 
     from isisdl.backend.request_helper import RequestHelper
     from isisdl.backend.crypt import get_credentials
+    from isisdl.backend.status import Status, RequestHelperStatus
 
     s = time.perf_counter()
-    helper = RequestHelper(get_credentials())
+    with RequestHelperStatus() as status:
+        helper = RequestHelper(get_credentials(), status)
 
     # I would like to do the subscription with the API method `enrol_self_enrol_user`, but it doesn't give enough information
-    def unsubscribe_course(id: int) -> bool:
-        res = helper.session.post_("https://isis.tu-berlin.de/enrol/self/unenrolself.php", data={"enrolid": id, "confirm": 1, "sesskey": helper.session.key}, allow_redirects=False)
-        if res is None:
-            return False
-        return bool(res.ok)
+    def unsubscribe_course(id: Tuple[int, int], status: Status) -> bool:
+        res = helper.session.post_("https://isis.tu-berlin.de/enrol/self/unenrolself.php", data={"enrolid": id[1], "confirm": 1, "sesskey": helper.session.key}, allow_redirects=False)
+        status.done()
 
-    if enable_multithread:
-        with ThreadPoolExecutor(subscribe_num_threads) as ex:
-            list(ex.map(unsubscribe_course, config.auto_subscribed_courses))
+        return res is None
 
-    else:
-        for item in config.auto_subscribed_courses:
-            unsubscribe_course(item)
+    with Status("Unsubscribing from courses", len(auto_subscribed_courses)) as status:
+        if enable_multithread:
+            with ThreadPoolExecutor(subscribe_num_threads) as ex:
+                fails = list(ex.map(unsubscribe_course, auto_subscribed_courses, repeat(status)))
 
-    print(f"Successfully unsubscribed from {len(config.auto_subscribed_courses)} courses.")
-    config.auto_subscribed_courses = None
+        else:
+            fails = [unsubscribe_course(item, status) for item in auto_subscribed_courses]
+
+    # TODO: How can I test this?
+    now_courses = [item for fail, item in zip(fails, auto_subscribed_courses) if fail]
+    print(f"Successfully unsubscribed from {len(auto_subscribed_courses) - len(now_courses)} courses.")
+    config.auto_subscribed_courses = now_courses or None
     print(f"Took {time.perf_counter() - s:.3f}s")
 
 
@@ -1007,7 +1087,9 @@ class DataLogger(Thread):
         self.messages.put(deliver)
 
     def assert_fail(self, msg: str) -> None:
-        self.message(f"Assertion failed: {msg}")
+        # TODO
+        # self.message(f"Assertion failed: {msg}")
+        pass
 
     def post(self, msg: Dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:

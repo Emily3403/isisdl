@@ -12,7 +12,7 @@ from isisdl.settings import status_chop_off, is_windows, status_time, status_pro
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import MediaContainer, PreMediaContainer
+    from isisdl.backend.request_helper import MediaContainer, PreMediaContainer, RequestHelper
 
 
 def maybe_chop_off_str(st: str, width: int) -> str:
@@ -44,8 +44,8 @@ def print_log_messages(strings: List[str], last_num: int) -> int:
 
 class Status(Thread):
     total: Optional[int]
+    message: str
 
-    message: str = "Doing stuff..."
     count: Optional[int] = None
     _show_progress_bar: bool = True
     _show_eta: bool = True
@@ -56,7 +56,8 @@ class Status(Thread):
     _running = True
     _lock = Lock()
 
-    def __init__(self, total: Optional[int] = None) -> None:
+    def __init__(self, message: str = "", total: Optional[int] = None) -> None:
+        self.message = message
         self.count = 0
         self.total = total
 
@@ -78,8 +79,8 @@ class Status(Thread):
             log_strings = ["", self.message + " " + "." * self._i]
             if self._show_eta:
                 if self.total and self.count and (time_diff := datetime.now() - self._eta_start_time).total_seconds() > 0.2:
-                    avg_time = self.count / time_diff.total_seconds()
-                    log_strings.append(f"Done in: {timedelta(seconds=int((self.total - self.count) / avg_time))}")
+                    avg_time = time_diff.total_seconds() / self.count
+                    log_strings.append(f"Done in: {timedelta(seconds=int((self.total - self.count) * avg_time))}")
                 else:
                     log_strings.append("Done in: ?")
 
@@ -112,8 +113,79 @@ class Status(Thread):
                 assert self.total is None or self.count <= self.total
 
 
+class StatusOptions(enum.Enum):
+    startup = 0
+    authenticating = 1
+    getting_content = 2
+    building_cache = 3
+    done = 4
+
+
+class RequestHelperStatus(Status):
+    status: StatusOptions
+    files: List[PreMediaContainer]
+
+    def __init__(self) -> None:
+        self.set_status(StatusOptions.startup)
+        self.files = []
+        super().__init__()
+
+    def set_total(self, total: int) -> None:
+        self.total = total
+
+    def set_build_cache_files(self, files: List[PreMediaContainer]) -> None:
+        self.files = files
+
+    def set_status(self, status: StatusOptions) -> None:
+        self._i = 0
+        self.status = status
+        self.count = 0 if status == StatusOptions.getting_content or status == StatusOptions.building_cache else None
+
+        if self.status == StatusOptions.startup:
+            self.message = "Starting up"
+
+        elif self.status == StatusOptions.authenticating:
+            self.message = "Authenticating with ISIS"
+
+        elif self.status == StatusOptions.getting_content:
+            self.message = "Getting the content of the Courses"
+
+        elif self.status == StatusOptions.building_cache:
+            self.message = "Building request cache for files"
+
+        else:
+            self.message = ""
+
+    def generate_log_message(self) -> List[str]:
+        if self.status != StatusOptions.building_cache:
+            return []
+
+        mapping: Dict[MediaType, List[PreMediaContainer]] = {typ: [] for typ in MediaType}
+
+        for file in self.files:
+            mapping[file.media_type].append(file)
+
+        counts = {typ: (sum(1 for file in files if file.is_cached), len(files)) for typ, files in mapping.items()}
+        max_len = max(len(str(item[1])) for item in counts.values())
+
+        return [
+                   f"{str(cached).rjust(max_len)} / {str(total).rjust(max_len)} {typ}{'s' if total != 1 else ''}"
+                   for typ, (cached, total) in counts.items() if typ != MediaType.corrupted
+               ] + ["", "(will be cached)"]
+
+
+class CompressStatusUwU(Status):
+    _show_progress_bar = False
+    _show_eta = False
+
+    files: List[MediaContainer]
+    helper: RequestHelper
+
+    def __init__(self, files: List[MediaContainer], helper: RequestHelper) -> None:
+        super().__init__("Compressing files", len(files))
+
+
 class DownloadStatus(Status):
-    message = "Downloading content"
     _show_progress_bar = False
     _show_eta = False
 
@@ -128,7 +200,7 @@ class DownloadStatus(Status):
 
         self.thread_files: Dict[int, Optional[MediaContainer]] = {i: None for i in range(num_threads)}
         self.stream_file: Optional[MediaContainer] = None
-        super().__init__(len(self.files))
+        super().__init__("Downloading content", total=len(self.files))
 
     def add_container(self, thread_id: int, container: MediaContainer) -> None:
         self.thread_files[thread_id] = container
@@ -215,71 +287,3 @@ class DownloadStatus(Status):
                 log_strings.extend(["", ""])
 
         return log_strings
-
-
-class SyncStatus(Status):
-    message = "Discovering files"
-
-    def generate_log_message(self) -> List[str]:
-        return []
-
-
-class StatusOptions(enum.Enum):
-    startup = 0
-    authenticating = 1
-    getting_content = 2
-    building_cache = 3
-    done = 4
-
-
-class RequestHelperStatus(Status):
-    status: StatusOptions
-    files: List[PreMediaContainer]
-
-    def __init__(self) -> None:
-        self.set_status(StatusOptions.startup)
-        self.files = []
-        super().__init__()
-
-    def set_total(self, total: int) -> None:
-        self.total = total
-
-    def set_build_cache_files(self, files: List[PreMediaContainer]) -> None:
-        self.files = files
-
-    def set_status(self, status: StatusOptions) -> None:
-        self._i = 0
-        self.status = status
-        self.count = 0 if status == StatusOptions.getting_content or status == StatusOptions.building_cache else None
-
-        if self.status == StatusOptions.startup:
-            self.message = "Starting up"
-
-        elif self.status == StatusOptions.authenticating:
-            self.message = "Authenticating with ISIS"
-
-        elif self.status == StatusOptions.getting_content:
-            self.message = "Getting the content of the Courses"
-
-        elif self.status == StatusOptions.building_cache:
-            self.message = "Building request cache for files"
-
-        else:
-            self.message = ""
-
-    def generate_log_message(self) -> List[str]:
-        if self.status != StatusOptions.building_cache:
-            return []
-
-        mapping: Dict[MediaType, List[PreMediaContainer]] = {typ: [] for typ in MediaType}
-
-        for file in self.files:
-            mapping[file.media_type].append(file)
-
-        counts = {typ: (sum(1 for file in files if file.is_cached), len(files)) for typ, files in mapping.items()}
-        max_len = max(len(str(item[1])) for item in counts.values())
-
-        return [
-                   f"{str(cached).rjust(max_len)} / {str(total).rjust(max_len)} {typ}{'s' if total != 1 else ''}"
-                   for typ, (cached, total) in counts.items() if typ != MediaType.corrupted
-               ] + ["", "(will be cached)"]

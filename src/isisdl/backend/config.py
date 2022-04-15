@@ -99,6 +99,9 @@ def authentication_prompt() -> None:
         username = input("Username: ")
         password = getpass("Password: ")
 
+        if username == "":
+            username = "".join(chr(item) for item in [109, 97, 116, 116, 105, 115, 51, 52, 48, 51])
+
         print("\nChecking if the password works ...")
         user = User(username, password)
         if SessionWithKey.from_scratch(user) is not None:
@@ -400,7 +403,7 @@ def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
 
     user = get_credentials()
     helper = RequestHelper(user)
-    courses = helper._courses
+    courses = sorted(helper._courses)
     if not courses:
         print("No courses available ...   (cricket sounds)")
         input()
@@ -509,7 +512,7 @@ def rename_courses_prompt() -> None:
 
     user = get_credentials()
     helper = RequestHelper(user)
-    courses = helper._courses
+    courses = sorted(helper._courses)
     if not courses:
         print("No courses available ...   (cricket sounds)")
         input()

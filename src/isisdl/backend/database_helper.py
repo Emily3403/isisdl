@@ -23,6 +23,9 @@ class DatabaseHelper:
         self.cur = self.con.cursor()
         self.create_default_tables()
 
+        # This leads to *way* better performance on slow drives.
+        self.cur.execute("PRAGMA synchronous = OFF")
+
         self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
 
@@ -112,7 +115,7 @@ class DatabaseHelper:
     def get_checksums_per_course(self) -> Dict[int, Set[str]]:
         ret = defaultdict(set)
         with self.lock:
-            for course_id, checksum in self.cur.execute("""SELECT course_id, checksum from fileinfo""").fetchall():
+            for course_id, checksum in self.cur.execute("""SELECT course_id, checksum from fileinfo WHERE checksum IS NOT NULL""").fetchall():
                 ret[course_id].add(checksum)
 
         return ret

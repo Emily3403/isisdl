@@ -184,7 +184,7 @@ def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestH
     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
 
     whitelist_prompt()
-    assert config.whitelist == indexes
+    assert set(config.whitelist) == set(indexes)
 
     config.restore_backup()
     request_helper.get_courses()

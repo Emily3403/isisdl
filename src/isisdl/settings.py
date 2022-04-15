@@ -13,7 +13,7 @@ from hashlib import sha256
 from http.client import HTTPSConnection
 from linecache import getline
 from pathlib import Path
-from typing import Any, DefaultDict, Set, Dict
+from typing import Any, DefaultDict, Set, Dict, Optional
 
 import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
@@ -38,8 +38,8 @@ lock_file_location = ".lock"
 enable_lock = True
 
 # Options for the `--subscribe` feature
-subscribed_courses_file_location = "subscribed_courses.json"  # TODO
-subscribe_courses_range = (24005, 24010)  # TODO
+subscribed_courses_file_location = "subscribed_courses.json"
+subscribe_num_courses_to_subscribe_to = -1
 subscribe_num_threads = 32
 
 # Settings for errors
@@ -71,7 +71,7 @@ linux_forbidden_chars: Set[str] = {"\0", "/"}
 
 forbidden_chars: Set[str] = windows_forbidden_chars if is_windows else linux_forbidden_chars
 
-# Yes, this is a windows thing... (or if you mount with `-o windows_names`)
+# Yes, this is a windows thing...
 replace_dot_at_end_of_dir_name = is_windows
 
 # -/- Options for this executable ---
@@ -134,11 +134,14 @@ for i in range(num_tries_download):
     download_timeout + download_timeout_multiplier ** (0.5 * i)
 """
 num_tries_download = 4
-download_timeout = 6
+download_timeout = 10
 download_timeout_multiplier = 2
 
 # If a download fails (`except Exception`) will wait ↓ and retry.
 download_static_sleep_time = 3
+
+# Moving average percent for the bandwidth calculation
+bandwidth_mavg_perc = 0.2
 
 # -/- Download options ---
 
@@ -160,7 +163,7 @@ throttler_low_prio_sleep_time = 0.1
 # Options for the ffmpeg executable
 ffmpeg_args = ["-crf", "28", "-c:v", "libx265", "-c:a", "copy", "-preset", "superfast"]
 
-# TODO: Document this
+# These are constants for stopping the compression, if the score is too low.
 compress_duration_for_to_low_efficiency = 0.5
 compress_minimum_stdev = 0.5
 compress_score_mavg_size = 5
@@ -202,7 +205,7 @@ testing_bad_urls: Set[str] = {
 isis_ignore = re.compile(
     ".*mod/(?:"
     "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
-    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book"
+    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice"
     ")/.*"
 )
 
@@ -324,6 +327,8 @@ _working_path = Path(working_dir_location)
 while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.parent != _working_path:
     _working_path = _working_path.parent
 
+force_filesystem: Optional[str] = None
+
 _fs_forbidden_chars: Dict[str, Set[str]] = {
     "ext": linux_forbidden_chars,
     "ext2": linux_forbidden_chars,
@@ -346,7 +351,13 @@ if _path in _mount_partitions:
         forbidden_chars.update(windows_forbidden_chars)
 
     # Linux uses Filesystem in userspace and reports "fuseblk".
-    if _mount_partitions[_path].fstype == "fuseblk":
+    if force_filesystem is not None:
+        if force_filesystem not in _fs_forbidden_chars:
+            print(f"{error_text} you have forced a filesystem, but it is not in the expected:\n\n" + "\n".join(repr(item) for item in _fs_forbidden_chars))
+            os._exit(1)
+
+        fstype = force_filesystem
+    elif _mount_partitions[_path].fstype == "fuseblk":
         fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
         pass
     else:

@@ -14,22 +14,27 @@ from typing import List, Tuple, Optional, Dict, DefaultDict, Set, Union
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
-from isisdl.backend.status import SyncStatus, RequestHelperStatus
+from isisdl.backend.status import RequestHelperStatus, Status
 from isisdl.settings import database_file_location, lock_file_location, enable_multithread
 from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType
 
+_checksum_cache: Dict[Path, str] = {}
 
-# TODO: Check how long this takes
+
 def delete_missing_files_from_database(helper: RequestHelper) -> None:
     checksums = database_helper.get_checksums_per_course()
 
-    for course in helper.courses:
+    for course in helper._courses:
         if course.course_id not in checksums:
             continue
 
         for file in course.path().rglob("*"):
             if file.is_file():
-                checksum = calculate_local_checksum(file)
+                try:
+                    checksum = _checksum_cache[file]
+                except KeyError:
+                    checksum = calculate_local_checksum(file)
+
                 try:
                     checksums[course.course_id].remove(checksum)
                 except KeyError:
@@ -51,7 +56,7 @@ class FileStatus(enum.Enum):
 
 
 def restore_file(
-        file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[SyncStatus] = None
+        file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[Status] = None
 ) -> Tuple[Optional[FileStatus], Union[Path, MediaContainer]]:
     try:
         if file in {
@@ -65,11 +70,17 @@ def restore_file(
         if os.path.isdir(file):
             return None, file
 
-        if calculate_local_checksum(file) in checksums:
+        checksum = calculate_local_checksum(file)
+        _checksum_cache[file] = checksum
+
+        if checksum in checksums:
             return FileStatus.unchanged, file
 
         # Adapt the size if the attribute is existent
         file_size = file.stat().st_size
+        if file_size == 0:
+            return None, file
+
         if (probe := do_ffprobe(file)) is not None:
             try:
                 file_size = probe['format']['tags']["previous_size"]
@@ -85,7 +96,7 @@ def restore_file(
         possible = filename_mapping.get(file, None)
         if possible is not None and possible.size == file_size:
             possible.path = file
-            possible.checksum = calculate_local_checksum(file)
+            possible.checksum = checksum
 
             return FileStatus.to_dump, possible
 
@@ -105,7 +116,7 @@ def restore_file(
 
         if possible is not None and possible.size == file_size:
             possible.path = file
-            possible.checksum = calculate_local_checksum(file)
+            possible.checksum = checksum
 
             return FileStatus.to_dump, possible
 
@@ -116,7 +127,7 @@ def restore_file(
             status.done()
 
 
-def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], helper: RequestHelper, status: Optional[SyncStatus] = None) -> None:
+def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], helper: RequestHelper, status: Optional[Status] = None) -> None:
     content = [item for row in list(item for item in _content.values()) for item in row]
     filename_mapping = {file.path: file for file in content}
     checksums = database_helper.get_checksums()
@@ -185,7 +196,7 @@ def main() -> None:
         helper = RequestHelper(user, status)
         content = helper.download_content(status)
 
-    with SyncStatus(len(list(Path(path()).rglob("*")))) as status:
+    with Status("Discovering files", len(list(Path(path()).rglob("*")))) as status:
         restore_database_state(content, helper, status)
 
-    # delete_missing_files_from_database(helper)
+    delete_missing_files_from_database(helper)

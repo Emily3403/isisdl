@@ -72,14 +72,14 @@ Please press enter to continue.
         print("""Attention:
 This option will lead to you subscribing to *every* publicly available ISIS course.
 
-Subscribing will be quite fast < 1min, but unsubscribing takes a long time.
+Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
 This behaviour is due to the fact that the API to unsubscribe from courses
 is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
 
 Please press enter to continue.
 """)
 
-        input()
+        # input()
         subscribe_to_all_courses()
         exit(0)
 
@@ -101,16 +101,21 @@ def main() -> None:
 
 
 # TODO:
-#   Use mp4 metadata to recognize files
-#   When using --config the password seams to be reset
 #   Whitelisting doesn't work?
-#   When rediscovering files there are 400 found even though there is nothing?
+#   When building request cache start prev files are in progress bar
 
 
 # Feature discussion:
 #   Windows autorun
 #   Download of corrupted files
 #   Streaming files: Is it worth it?
+
+
+# Main TODOS:
+#   Dynamic calc
+#   Faster download_content
+#   subscribe
+#   compress
 
 if __name__ == "__main__":
     main()
