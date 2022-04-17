@@ -7,6 +7,7 @@ import enum
 import json
 import os
 import platform
+import random
 import re
 import shutil
 import signal
@@ -25,7 +26,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn
+from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -38,14 +39,19 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, subscribe_num_courses_to_subscribe_to, force_filesystem
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
-    extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
+    discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
     isisdl_executable, is_static, enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
 from isisdl.version import __version__
 
+if TYPE_CHECKING:
+    from isisdl.backend.status import Status
+    from isisdl.backend.request_helper import RequestHelper
 
+
+# TODO: Add argument to re-evaluate wrongly corrupted files
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
@@ -97,7 +103,7 @@ class Config:
     database_version: int
     absolute_path_filename: bool
 
-    auto_subscribed_courses: Optional[List[Tuple[int, int]]]  # course_id, course_module_id
+    auto_subscribed_courses: Optional[List[int]]
 
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
@@ -348,7 +354,7 @@ def generate_default_config_str() -> str:
     return generate_config_str(
         working_dir_location, database_file_location, master_password, Config.default("filename_replacing"), Config.default("download_videos"), Config.default("whitelist"),
         Config.default("blacklist"), Config.default("throttle_rate"), Config.default("throttle_rate_autorun"), Config.default("update_policy"), Config.default("telemetry_policy"), status_time,
-        extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, force_filesystem, Config.default("make_subdirs"), Config.default("follow_links"),
+        discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, force_filesystem, Config.default("make_subdirs"), Config.default("follow_links"),
         Config.default("absolute_path_filename")
     )
 
@@ -356,7 +362,7 @@ def generate_default_config_str() -> str:
 def generate_current_config_str() -> str:
     return generate_config_str(
         working_dir_location, database_file_location, master_password, config.filename_replacing, config.download_videos, config.whitelist, config.blacklist, config.throttle_rate,
-        config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, extern_discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution,
+        config.throttle_rate_autorun, config.update_policy, config.telemetry_policy, status_time, discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution,
         force_filesystem, config.make_subdirs, config.follow_links, config.absolute_path_filename
     )
 
@@ -949,55 +955,70 @@ def subscribe_to_all_courses() -> None:
     from isisdl.backend.crypt import get_credentials
     from isisdl.backend.status import Status
 
+    print("How many courses do you want to subscribe to? (-1 for all)\n(Subscribing may fail, about 1/4 of the courses work.)\n\n")
+    while True:
+        try:
+            choice = int(input())
+            break
+
+        except ValueError as exc:
+            print(f"{error_text} Parsing the integer failed.\nReason: {exc}")
+
     helper = RequestHelper(get_credentials())
+    possible = list(range(0, 30000))
+    random.shuffle(possible)
 
-    print("Retrieving course information... (This might take a while)")
-    possible_courses = helper.post_REST("core_course_search_courses", {"criterianame": "tagid", "criteriavalue": ""}, use_timeout=False)
-    if possible_courses is None:
-        print("Retrieving all courses failed...")
-        return
+    possible = possible[:choice]
 
-    def enrol_course(id: int, status: Status) -> Optional[Tuple[int, int]]:
-        first = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
-        if first is None or "exception" in first:
-            status.done()
-            return None
-
-        # Enrol a second time to get the course_module_id
-        second = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
-        if second is None:
-            status.done()
-            return None
-
+    def enrol_course(id: int, status: Status) -> Optional[int]:
+        res = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
         status.done()
-        return id, int(second["warnings"][0]["itemid"])
+        if res is None or "status" not in res or res["status"] is False:
+            return None
 
-    _ids = [item["id"] for item in possible_courses["courses"]][:subscribe_num_courses_to_subscribe_to]
-    prev_ids = {item[0] for item in (config.auto_subscribed_courses or [])}
-    _ids = [item for item in _ids if item not in prev_ids]
+        return id
 
-    with Status("Subscribing to courses", len(range(0, 30000))) as status:
+    with Status("Subscribing to courses", len(possible)) as status:
         if enable_multithread:
             with ThreadPoolExecutor(subscribe_num_threads) as ex:
-                ids = list(ex.map(enrol_course, range(0, 30000), repeat(status)))
+                ids = list(ex.map(enrol_course, possible, repeat(status)))
         else:
-            ids = [enrol_course(i, status) for i in _ids]
+            ids = [enrol_course(i, status) for i in possible]
 
-    new_ids = [item for item in ids if item is not None]
+    _new_ids = [item for item in ids if item is not None]
+
+    try:
+        with open(path(subscribed_courses_file_location)) as f:
+            prev_ids = json.load(f)
+    except OSError:
+        prev_ids = []
+
+    new_ids = list({id for id in _new_ids + prev_ids})
+
     if config.auto_subscribed_courses is None:
         config.auto_subscribed_courses = new_ids
     else:
         config.auto_subscribed_courses.extend(new_ids)
 
-    print(f"Subscribed to {len(new_ids)} new courses.")
-
     with open(path(subscribed_courses_file_location), "w") as f:
         json.dump(config.auto_subscribed_courses, f)
+
+    print(f"Subscribed to {len(_new_ids)} new courses.\n\nI have also written this information to `{path(subscribed_courses_file_location)}`.\n"
+          f"Make sure to backup this file. If the database is deleted and you don't have this file,\nyou will not be able to unsubscribe from the courses.")
+
+
+def check_can_unsub_from_course(course_id: int, status: Status, helper: RequestHelper) -> Optional[Tuple[int, bool]]:
+    res = helper.session.get_("https://isis.tu-berlin.de/course/view.php", params={"id": course_id})
+    if res is None:
+        return None
+
+    status.done()
+    return course_id, "https://isis.tu-berlin.de/enrol/self/unenrolself.php" in res.text
 
 
 def unsubscribe_from_courses() -> None:
     if config.auto_subscribed_courses is None:
-        print("I could not find the courses I have subscribeed to in the database.")
+        print("I could not find the courses I have subscribed to in the database.")
         if path(subscribed_courses_file_location).exists():
             print("I have found the an export of the courses I have subscribed to.\n\nDo you want me to use that instead? [y/n]\n")
             choice = get_input({"y", "n"})
@@ -1014,13 +1035,35 @@ def unsubscribe_from_courses() -> None:
     from isisdl.backend.crypt import get_credentials
     from isisdl.backend.status import Status, RequestHelperStatus
 
-    s = time.perf_counter()
     with RequestHelperStatus() as status:
         helper = RequestHelper(get_credentials(), status)
 
+    # Filter the courses
+    prev_courses = set([item.course_id for item in helper.courses])
+    auto_subscribed_courses = [item for item in auto_subscribed_courses if item in prev_courses]
+
+    # dont_unsub = {26113, 27905, 24337, 23461, 28218, 24382, 24000, 26566, 26956, 19030, 23793}
+    # with Status("Checking for unsub", len(prev_courses)) as status:
+    #     with ThreadPoolExecutor(64) as ex:
+    #         res = list(ex.map(check_can_unsub_from_course, prev_courses, repeat(status), repeat(helper)))
+    #
+    # print(f"Can't unsub from {sum(1 for item in res if item is not None and item[1] is False)}:\n{{\n    " + ", ".join(str(item[0]) for item in res if item is not None and item[1] is False) + "\n}")
+    # print(f"Can unsub {sum(1 for item in res if item is not None and item[1] and item[0] not in dont_unsub)}")
+
     # I would like to do the subscription with the API method `enrol_self_enrol_user`, but it doesn't give enough information
-    def unsubscribe_course(id: Tuple[int, int], status: Status) -> bool:
-        res = helper.session.post_("https://isis.tu-berlin.de/enrol/self/unenrolself.php", data={"enrolid": id[1], "confirm": 1, "sesskey": helper.session.key}, allow_redirects=False)
+    def unsubscribe_course(course_id: int, status: Status) -> bool:
+        _possible_ids = helper.post_REST("enrol_self_enrol_user", {"courseid": course_id})
+        if _possible_ids is None or "warnings" not in _possible_ids:
+            return False
+
+        possible_ids: List[Dict[str, Any]] = _possible_ids["warnings"]
+
+        res = None
+        for id in possible_ids:
+            if id["warningcode"] != "1":
+                continue
+
+            res = helper.session.post_("https://isis.tu-berlin.de/enrol/self/unenrolself.php", data={"enrolid": id["itemid"], "confirm": 1, "sesskey": helper.session.key}, allow_redirects=False)
         status.done()
 
         return res is None
@@ -1033,11 +1076,11 @@ def unsubscribe_from_courses() -> None:
         else:
             fails = [unsubscribe_course(item, status) for item in auto_subscribed_courses]
 
-    # TODO: How can I test this?
     now_courses = [item for fail, item in zip(fails, auto_subscribed_courses) if fail]
     print(f"Successfully unsubscribed from {len(auto_subscribed_courses) - len(now_courses)} courses.")
+    if now_courses:
+        print("There are still courses left. Please restart me!")
     config.auto_subscribed_courses = now_courses or None
-    print(f"Took {time.perf_counter() - s:.3f}s")
 
 
 class DataLogger(Thread):
@@ -1087,9 +1130,7 @@ class DataLogger(Thread):
         self.messages.put(deliver)
 
     def assert_fail(self, msg: str) -> None:
-        # TODO
-        # self.message(f"Assertion failed: {msg}")
-        pass
+        self.message(f"Assertion failed: {msg}")
 
     def post(self, msg: Dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:

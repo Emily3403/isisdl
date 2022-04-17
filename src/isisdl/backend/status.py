@@ -89,7 +89,7 @@ class Status(Thread):
             log_strings.append("")
 
             if self._show_progress_bar and self.count is not None and self.total is not None:
-                perc_done = int(self.count / self.total * status_progress_bar_resolution)
+                perc_done = int(self.count / (self.total or 1) * status_progress_bar_resolution)
                 log_strings.append(f"[{'█' * perc_done}{' ' * (status_progress_bar_resolution - perc_done)}]")
 
             log_strings.append("")
@@ -108,6 +108,9 @@ class Status(Thread):
 
     def done(self, *args: Any, **kwargs: Any) -> None:
         if self.count is not None:
+            if self.count == 0:
+                self._eta_start_time = datetime.now()
+
             self.count += 1
             if is_testing:
                 assert self.total is None or self.count <= self.total

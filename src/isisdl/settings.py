@@ -42,6 +42,12 @@ subscribed_courses_file_location = "subscribed_courses.json"
 subscribe_num_courses_to_subscribe_to = -1
 subscribe_num_threads = 32
 
+# Courses that are locked. You probably don't want to subscribe to them since you can't unsub.
+course_ids_cant_unsub_from = {
+    25729, 25730, 25731, 25732, 24075, 24587, 24078, 23566, 24979, 11284, 28306, 26006, 27926, 26007, 26654, 26655, 23840, 28197, 24236, 21054, 27585, 28607, 21055, 25925,
+    25924, 3793, 19671, 25578, 21610, 24813, 26736, 25458, 21875
+}
+
 # Settings for errors
 error_directory_location = ".errors"
 error_text = "\033[1;91mError:\033[0m"
@@ -86,7 +92,7 @@ checksum_algorithm = sha256
 checksum_num_bytes = 1024 * 500
 
 # If the file size is not equal, but it is in this percentage the checksum will be computed in order to
-perc_diff_for_checksum = 0.1
+perc_diff_for_checksum = 0.5
 
 # -/- Checksum options ---
 
@@ -125,8 +131,8 @@ status_time = 0.2 if not is_windows else 0.75
 # Chunks of this size are read and saved to file.
 download_chunk_size = 2 ** 16
 
-# Number of threads to discover sizes for urls.
-extern_discover_num_threads = 32
+# Number of threads to discover download urls.
+discover_num_threads = 32
 
 # Will fail a download if ISIS is not responding in
 """
@@ -203,10 +209,18 @@ testing_bad_urls: Set[str] = {
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
-    ".*mod/(?:"
+    ".*isis.tu-berlin.de/mod/(?:"
     "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
-    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice"
+    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
+    "|organizer|registration|journal|workshop|survey"
     ")/.*"
+)
+
+extern_ignore = re.compile(
+    ".*(?:"
+    "tu-berlin.zoom.us|moseskonto.tu-berlin.de|befragung.tu-berlin.de|tu-berlin.webex.com|git.tu-berlin.de|tubmeeting.tu-berlin.de"
+    "|wikipedia.org|github.com|gitlab.tubit.tu-berlin.de|kahoot.it|www.python.org|www.anaconda.com|miro.com"
+    ").*"
 )
 
 

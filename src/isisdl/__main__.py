@@ -90,6 +90,7 @@ Please press enter to continue.
     else:
         # Main routine
         CourseDownloader().start()
+        CourseDownloader.shutdown_running_downloads()
         print("Done! Have a nice day ^.^")
 
 
@@ -102,7 +103,6 @@ def main() -> None:
 
 # TODO:
 #   Whitelisting doesn't work?
-#   When building request cache start prev files are in progress bar
 
 
 # Feature discussion:
