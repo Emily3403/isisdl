@@ -11,14 +11,13 @@ import sys
 from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
-from linecache import getline
 from pathlib import Path
 from typing import Any, DefaultDict, Set, Dict, Optional
 
 import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
 from psutil._common import sdiskpart
-from yaml import safe_load, YAMLError, MarkedYAMLError
+from yaml import safe_load, YAMLError
 
 import isisdl.autorun
 
@@ -232,41 +231,21 @@ def parse_config_file() -> DefaultDict[str, Any]:
                 return defaultdict(lambda: None)
 
             if not isinstance(_dat, dict):
-                raise YAMLError("Wrong type: is not a mapping")
+                raise YAMLError("Wrong type of data: no a mapping of values provided")
 
             return defaultdict(lambda: None, _dat)
 
     except OSError:
         pass
 
-    # TODO: Test this
     # Exception handling inspired by https://stackoverflow.com/a/30407093
-    except MarkedYAMLError as ex:
-        # Unfortunately mypy doesn't support this well...
-        if ex.context is None and ex.problem_mark is not None:
-            where = str(ex.problem_mark)[4:]
-            offending_line = getline(config_file_location, ex.problem_mark.line).strip("\n")
-        elif ex.context_mark is not None:
-            where = str(ex.context_mark)[4:]
-            offending_line = getline(config_file_location, ex.context_mark.line).strip("\n")
-        else:
-            where = "?"
-            offending_line = "?"
-
-        print(f"Malformed config file: {where.strip()}\n")
-        if ex.context is not None:
-            print(f"Error: {ex.problem} {ex.context}")
-
-        print(f'Offending line: "{offending_line}"\n')
-
-        print("I will be ignoring the specified configuration.\n")
-
     except YAMLError as ex:
-        print(f"{error_text} the config file contains an error / is malformed.")
-        print(f"The file is located at `{config_file_location}`\n")
+        print(f"{error_text} the config file is malformed.")
+        print(f"The file is located at `{config_file_location}`\n\n")
+
         print(f"Reason: {ex}\n")
 
-    return defaultdict(lambda: None)
+    os._exit(1)
 
 
 if not is_windows:

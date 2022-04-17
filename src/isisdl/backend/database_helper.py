@@ -101,7 +101,7 @@ class DatabaseHelper:
             """, tup)
             self.con.commit()
 
-        self._url_container_mapping[file.url] = tup
+        self._url_container_mapping[f"{file.url} {file.course.course_id}"] = tup
 
     def add_pre_containers(self, files: List[MediaContainer]) -> None:
         with self.lock:
@@ -173,7 +173,7 @@ class DatabaseHelper:
         with self.lock:
             res = self.cur.execute("SELECT * FROM fileinfo").fetchall()
 
-        return {item[1]: item for item in res}
+        return {f"{item[1]} {item[5]}": item for item in res}
 
     def get_checksums(self) -> Set[str]:
         with self.lock:
@@ -181,11 +181,11 @@ class DatabaseHelper:
 
         return set(map(lambda x: str(x[0]), res))
 
-    def know_url(self, url: str) -> Union[bool, Iterable[Any]]:
+    def know_url(self, url: str, course_id: int) -> Union[bool, Iterable[Any]]:
         if url in self._bad_urls:
             return False
 
-        info = self._url_container_mapping.get(url, None)
+        info = self._url_container_mapping.get(f"{url} {course_id}", None)
         if info is None:
             return True
 
@@ -230,6 +230,10 @@ class DatabaseHelper:
     @staticmethod
     def make_inefficient_file_name(file: MediaContainer) -> str:
         return f"{file.course.course_id} {file._name}"
+
+    def filetable_exists(self) -> bool:
+        with self.lock:
+            return bool(self.cur.execute("SELECT * FROM fileinfo").fetchone())
 
     def delete_inefficient_videos(self) -> None:
         with self.lock:

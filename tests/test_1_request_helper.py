@@ -98,7 +98,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
             assert container.path.stat().st_size == container.size
             assert container.checksum == calculate_local_checksum(container.path)
 
-            dump_container = MediaContainer.from_dump(container.url)
+            dump_container = MediaContainer.from_dump(container.url, container.course)
             assert isinstance(dump_container, MediaContainer)
             assert container == dump_container
 

@@ -150,13 +150,15 @@ class Config:
         global_vars, default_keys = settings.global_vars, Config.default_config.keys()
         for k in list(config_file_data.keys()) + list(stored_config.keys()):
             if k not in global_vars and k not in default_keys:
-                print(f"{error_text} config file has unrecognized key: {repr(k)}.\n\nBailing out!")
+                print(f"{error_text} the config file is malformed.")
+                print(f"The file is located at `{config_file_location}`\n\n")
+                print(f"Reason: Unrecognized key: {repr(k)}\n")
                 os._exit(1)
 
         # Json only allows for keys to be strings (https://stackoverflow.com/a/8758771)
         # Set the keys manually back to ints, so we can work with them.
         for item in [config_file_data, stored_config]:
-            if item["renamed_courses"] is not None:
+            if "renamed_courses" in item and item["renamed_courses"] is not None:
                 assert isinstance(item["renamed_courses"], dict)
                 item["renamed_courses"] = {int(k): v for k, v in item["renamed_courses"].items()}
 
@@ -192,7 +194,8 @@ class Config:
                 return
 
             if type(self.state[attr]) is not typ:
-                print(f"{error_text} Expected type {typ} for attribute {repr(attr)}. Got {type(self.state[attr])}.\nBailing out!")
+                print(f"{error_text} the config file is malformed.\n"
+                      f"Reason: Expected type {typ} for key {repr(attr)}. Got {type(self.state[attr])}.\nBailing out!")
                 os._exit(1)
 
         fail("password_encrypted", bool, True)
@@ -1042,7 +1045,7 @@ def unsubscribe_from_courses() -> None:
     prev_courses = set([item.course_id for item in helper.courses])
     auto_subscribed_courses = [item for item in auto_subscribed_courses if item in prev_courses]
 
-    # dont_unsub = {26113, 27905, 24337, 23461, 28218, 24382, 24000, 26566, 26956, 19030, 23793}
+    # dont_unsub = {26113, 27905, 24337, 23461, 28218, 24382, 24000, 26566, 26956, 19030, 23793, 28069, 28694}
     # with Status("Checking for unsub", len(prev_courses)) as status:
     #     with ThreadPoolExecutor(64) as ex:
     #         res = list(ex.map(check_can_unsub_from_course, prev_courses, repeat(status), repeat(helper)))
@@ -1235,7 +1238,7 @@ class DownloadThrottler(Thread):
         self._streaming_loc = None
 
     def max_tokens(self) -> int:
-        if self.download_rate == -1 or self.download_rate:
+        if self.download_rate == -1 or self.download_rate is None:
             return 1
 
         return int((self.download_rate * 1024 ** 2) // download_chunk_size * self.refresh_rate) or 1

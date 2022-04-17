@@ -55,14 +55,17 @@ class FileStatus(enum.Enum):
     corrupted = 2
 
 
+not_considered_files = {
+    path(database_file_location),
+    path(lock_file_location),
+}
+
+
 def restore_file(
         file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[Status] = None
 ) -> Tuple[Optional[FileStatus], Union[Path, MediaContainer]]:
     try:
-        if file in {
-            path(database_file_location),
-            path(lock_file_location),
-        }:
+        if file in not_considered_files:
             return None, file
         if not os.path.exists(file):
             return None, file
@@ -190,6 +193,9 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
 
 
 def main() -> None:
+    if not database_helper.filetable_exists() and not any(file not in not_considered_files and file.is_file() for file in path().rglob("*")):
+        return
+
     user = get_credentials()
 
     with RequestHelperStatus() as status:

@@ -159,7 +159,7 @@ class PreMediaContainer:
         self.size = size
         self.course = course
         self.media_type = media_type
-        self.is_cached = not (database_helper.know_url(url) is True)
+        self.is_cached = not (database_helper.know_url(url, course.course_id) is True)
         self.parent_path = course.path(sanitize_name(relative_location, True))
         self.parent_path.mkdir(exist_ok=True)
 
@@ -191,11 +191,11 @@ class MediaContainer:
     _done: bool = False
 
     @classmethod
-    def from_dump(cls, url: str) -> Union[bool, MediaContainer]:
+    def from_dump(cls, url: str, course: Course) -> Union[bool, MediaContainer]:
         """
         The `bool` return value indicates if the container should be downloaded.
         """
-        info = database_helper.know_url(url)
+        info = database_helper.know_url(url, course.course_id)
         if isinstance(info, bool):
             return info
 
@@ -225,7 +225,7 @@ class MediaContainer:
             if is_testing and container.url in testing_bad_urls:
                 return None
 
-            maybe_container = MediaContainer.from_dump(container.url)
+            maybe_container = MediaContainer.from_dump(container.url, container.course)
             if isinstance(maybe_container, MediaContainer):
                 return maybe_container
 
@@ -372,7 +372,7 @@ class MediaContainer:
         if not (self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum)):
             return True
 
-        maybe_container = MediaContainer.from_dump(self.url)
+        maybe_container = MediaContainer.from_dump(self.url, self.course)
         if isinstance(maybe_container, bool):
             return maybe_container
 
@@ -467,9 +467,6 @@ class MediaContainer:
                     except Exception:
                         i += 1
                 else:
-                    self.media_type = MediaType.corrupted
-                    self.size = 0
-                    self.current_size = None
                     break
 
                 if not new:
@@ -540,8 +537,12 @@ class Course:
         return obj
 
     def make_directories(self) -> None:
-        for item in MediaType.list_dirs():
-            os.makedirs(self.path(item), exist_ok=True)
+        if self.ok:
+            os.makedirs(self.path(), exist_ok=True)
+
+            if config.make_subdirs:
+                for item in MediaType.list_dirs():
+                    os.makedirs(self.path(item), exist_ok=True)
 
     def download_videos(self, s: SessionWithKey) -> List[PreMediaContainer]:
         if config.download_videos is False:
@@ -775,12 +776,12 @@ class RequestHelper:
             _video_containers = iter([self._download_videos(course, exception_lock, status) for course in self.courses])
 
         pre_containers = [item for row in chain(_document_containers, _video_containers, _mod_assign) for item in row]
-        pre_containers = list({item.url: item for item in pre_containers}.values())
+        pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
 
-        if num_uncached := sum(not pre_container.is_cached for pre_container in pre_containers):
+        if num_uncached := sum(pre_container.is_cached for pre_container in pre_containers):
             if status is not None:
-                status.set_total(len([item for item in pre_containers if item.is_ready]))
+                status.set_total(len([item for item in pre_containers if not item.is_ready]))
                 status.count = num_uncached
                 status.set_build_cache_files(pre_containers)
                 status.set_status(StatusOptions.building_cache)

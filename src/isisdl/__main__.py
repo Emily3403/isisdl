@@ -101,10 +101,6 @@ def main() -> None:
         generate_error_message(ex)
 
 
-# TODO:
-#   Whitelisting doesn't work?
-
-
 # Feature discussion:
 #   Windows autorun
 #   Download of corrupted files
@@ -113,8 +109,6 @@ def main() -> None:
 
 # Main TODOS:
 #   Dynamic calc
-#   Faster download_content
-#   subscribe
 #   compress
 
 if __name__ == "__main__":

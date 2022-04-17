@@ -7,9 +7,9 @@ from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.request_helper import RequestHelper, SessionWithKey
-from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, path
-from isisdl.settings import is_online, error_text, database_file_location
+from isisdl.settings import is_online, error_text
 from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
+from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, database_helper
 
 was_in_configuration = False
 
@@ -148,17 +148,15 @@ The character{'s' if is_windows else ''} `{forbidden_chars}` {'are' if is_window
 Changing this option after initial configuration is not supported (yet).
 ------------
 """)
-    if config.user("filename_replacing") is not None:
-        print(f"{error_text} Changing this option after initial configuration is not supported (yet).\nIf you want, you can delete `{path(database_file_location)}`, "
-              f"and re-configure me.\n\nPlease press enter to continue.\n")
-        input()
-        return
 
+    prev_choice = config.filename_replacing
     bool_prompt("filename_replacing")
 
+    if prev_choice != config.filename_replacing:
+        database_helper.delete_file_table()
+
     # Version 1.4:
-    #   Don't store the path in the database but rather re-build it every time
-    #   Migrate the old filenames to the new ones
+    #   Auto-Migrate the old filenames to the new ones
     #   Invalidate caches
 
 
@@ -424,7 +422,7 @@ For example:
 """)
 
         for course in courses:
-            print(f"    [{course.course_id}]{' ' * (max_len - len(str(course.course_id)))}   {course._name}")
+            print(f"    [{course.course_id}]{' ' * (max_len - len(str(course.course_id)))}   {course}")
 
         if last_error:
             print(f"\n\n{error_text} {last_error}")
@@ -520,6 +518,7 @@ def rename_courses_prompt() -> None:
 
     last_error = ""
     mapping: Dict[int, str] = config.renamed_courses or {}
+    prev_mapping = mapping.copy()
     course_id_to_str = {course.course_id: course._name for course in courses}
     allowed_ids = {course.course_id for course in courses}
 
@@ -535,10 +534,10 @@ def rename_courses_prompt() -> None:
 
 Controls:
     input "q" to exit and save.
-    input "d {ID}" to delete a mapping.
-    input "{ID} {new_name}" to create a new mapping.
+    input "d {ID}" to delete a entry.
+    input "{ID} {new_name}" to create a new entry.
 
-When encountering {ID} replace it with the course ID you want to make changes to.
+When encountering {ID}, replace it with the course ID you want to make changes to.
 
 
 For example:
@@ -608,10 +607,13 @@ For example:
                 continue
 
             if parts[1] == "":
-                last_error = "The course name is empty. To untrack a course put it into the blacklist."
+                last_error = "The course name is empty. To untrack a course, put it into the blacklist."
                 continue
 
             mapping[num] = " ".join(parts[1:])
+
+    if mapping != prev_mapping:
+        database_helper.delete_file_table()
 
     config.renamed_courses = mapping
 
@@ -625,7 +627,11 @@ If enabled, things like assignments get their own directory containing all files
 Otherwise the files are stored along with all others in the root directory of the course.
 """)
 
+    prev_choice = config.make_subdirs
     bool_prompt("make_subdirs")
+
+    if prev_choice != config.make_subdirs:
+        database_helper.delete_file_table()
 
 
 def dont_download_videos_prompt() -> None:
@@ -668,7 +674,6 @@ def init_wizard() -> None:
     update_policy_prompt()
     filename_prompt()
     timer_prompt()
-    throttler_prompt()
     telemetry_data_prompt()
 
     was_in_configuration = False
@@ -679,6 +684,7 @@ def config_wizard() -> None:
     global was_in_configuration
     was_in_configuration = True
 
+    throttler_prompt()
     dont_download_videos_prompt()
     whitelist_prompt()
     blacklist_prompt()
