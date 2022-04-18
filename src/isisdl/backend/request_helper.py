@@ -199,7 +199,6 @@ class MediaContainer:
         if isinstance(info, bool):
             return info
 
-        # TODO: Version compatibility: This might not always work.
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
         container.path = Path(container.path)
@@ -259,6 +258,7 @@ class MediaContainer:
                 else:
                     _url = get_url_from_gdrive_confirmation(con.text)
                     if _url is None:
+                        database_helper.add_bad_url(container.url)
                         return None
                     download_url = _url
 
@@ -428,8 +428,6 @@ class MediaContainer:
             return
 
         if self.current_size is not None:
-            # assert self.current_size == self.size  # TODO
-            # assert self._done is True
             return
 
         self.current_size = 0
@@ -779,10 +777,10 @@ class RequestHelper:
         pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
 
-        if num_uncached := sum(pre_container.is_cached for pre_container in pre_containers):
+        if (num_cached := sum(pre_container.is_cached for pre_container in pre_containers)) != len(pre_containers):
             if status is not None:
                 status.set_total(len([item for item in pre_containers if not item.is_ready]))
-                status.count = num_uncached
+                status.count = num_cached
                 status.set_build_cache_files(pre_containers)
                 status.set_status(StatusOptions.building_cache)
                 status._eta_start_time = datetime.now()
@@ -807,7 +805,7 @@ class RequestHelper:
 
     def _download_mod_assign(self) -> List[PreMediaContainer]:
         all_content = []
-        _assignments = self.post_REST("mod_assign_get_assignments")
+        _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
         if _assignments is None:
             return []
 
@@ -971,8 +969,9 @@ class CourseDownloader:
     containers: Dict[MediaType, List[MediaContainer]] = {}
 
     def start(self) -> None:
+        user = get_credentials()
         with RequestHelperStatus() as status:
-            helper = RequestHelper(get_credentials(), status)
+            helper = RequestHelper(user, status)
             containers = helper.download_content(status)
 
             for container in [item for row in containers.values() for item in row]:

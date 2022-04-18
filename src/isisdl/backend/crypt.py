@@ -1,7 +1,7 @@
 import base64
 import getpass
 import os
-from typing import Optional
+from typing import Optional, List
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -58,12 +58,13 @@ def store_user(user: User, password: Optional[str] = None) -> None:
     config.password_encrypted = bool(password)
 
 
-def get_credentials() -> User:
+def get_credentials(alternative_master_passwords: Optional[List[str]] = None) -> User:
     """
     Prioritizes:
         Cached Password > Environment variable > Database > Input
     """
     global last_username
+    alternative_master_passwords = alternative_master_passwords or []
 
     def prompt_user() -> User:
         print("Please provide authentication for ISIS.")
@@ -81,8 +82,12 @@ def get_credentials() -> User:
     # Now try the database
     if config.username is not None and config.password is not None:
         if not config.password_encrypted:
-            decrypted = decryptor(master_password, config.password)
-            if decrypted is None:
+            for _password in [master_password] + alternative_master_passwords:
+                decrypted = decryptor(_password, config.password)
+                if decrypted is not None:
+                    break
+
+            else:
                 print(f"""
 {error_text} I could not decrypt the password even though it is set to be encrypted
 with the master password. This probably means that the master password

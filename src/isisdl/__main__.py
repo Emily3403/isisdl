@@ -54,6 +54,11 @@ Please press enter to continue.
         export_config()
         exit(0)
 
+    elif args.delete_bad_urls:
+        print("Deleting bad urls ...")
+        database_helper.delete_bad_urls()
+        exit(0)
+
     if not is_online:
         print("I cannot establish an internet connection.")
         exit(1)

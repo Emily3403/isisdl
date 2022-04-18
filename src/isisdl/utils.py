@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,7 +27,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING
+from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -51,7 +52,6 @@ if TYPE_CHECKING:
     from isisdl.backend.request_helper import RequestHelper
 
 
-# TODO: Add argument to re-evaluate wrongly corrupted files
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
@@ -71,6 +71,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
     operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")  # TODO: Test this
+    operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
 
     if is_testing:
         return parser.parse_known_args()[0]
@@ -405,9 +406,9 @@ def migrate_database() -> bool:
     print(f"""
 I have detected a breaking change in the database.
 In order to account for these changes, I will have to delete the database,
-maybe make a few changes to local files and rediscover all the files.
+make a few changes to local files and rediscover all the files.
 
-If something goes wrong simply delete the directory
+If something goes wrong, simply delete the directory
 `{path()}`
 and everything will get downloaded as usual.
 
@@ -420,37 +421,42 @@ Please confirm that this is okay. [y/n]""")
     from isisdl.backend.crypt import get_credentials
     from isisdl.backend.request_helper import RequestHelper
     global config
-    helper = RequestHelper(get_credentials())
+    helper = RequestHelper(get_credentials(["peanuts"]))
 
     def migrate_1_to_2() -> None:
-        downloaded_courses = os.listdir(path())
+        course_name_counts: DefaultDict[str, int] = defaultdict(int)
         for course in helper._courses:
+            course_name_counts[course.old_name] += 1
+
+        for _course, num in course_name_counts.items():
+            if num > 1:
+                try:
+                    shutil.rmtree(path(_course))
+                except OSError:
+                    pass
+
+        downloaded_courses = set(os.listdir(path()))
+        for course in helper._courses:
+            if course.name == course.old_name:
+                continue
+
             if course.old_name in downloaded_courses:
                 if os.path.exists(path(course.name)):
                     shutil.rmtree(path(course.name))
 
-                os.rename(path(course.old_name), path(course.name))
+                try:
+                    os.rename(path(course.old_name), path(course.name))
+                except OSError as ex:
+                    generate_error_message(ex)
 
         config.database_version = 2
 
     while database_helper.get_database_version() < config.default("database_version"):
         eval(f"migrate_{database_helper.get_database_version()}_to_{database_helper.get_database_version() + 1}()")
 
-    # TODO: Implement hot reload
-
     os.unlink(path(database_file_location))
-    database_helper.__init__()  # type: ignore
 
-    config = Config(config.to_dict())
-    print("\nSuccessfully migrated. All of your previous settings have been saved.\nI will now guide you through the new configuration process.")
-
-    from isisdl.backend.config import config_wizard, init_wizard
-    from isisdl.backend import sync_database
-
-    init_wizard()
-    config_wizard()
-
-    sync_database.main()
+    print("\nSuccessfully migrated.\nPlease restart me and I will guide you through the new configuration!")
 
     return True
 
@@ -729,9 +735,9 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     # Now replace any remaining funny symbols with a `?`
     name = name.encode("ascii", errors="replace").decode()
 
-    char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
-
-    name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
+    if config.filename_replacing:
+        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
+        name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
     # This is probably a suboptimal solution, but it works…
     str_list = list(name)

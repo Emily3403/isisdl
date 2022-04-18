@@ -16,7 +16,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import RequestHelperStatus, Status
 from isisdl.settings import database_file_location, lock_file_location, enable_multithread
-from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType
+from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType, HumanBytes
 
 _checksum_cache: Dict[Path, str] = {}
 
@@ -159,21 +159,38 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
         status.stop()
 
     num_recovered, num_unchanged, num_corrupted = 0, 0, 0
+    size_recovered, size_unchanged, size_corrupted = 0, 0, 0
     corrupted_files: Set[Path] = set()
     for item in files:
         if item[0] is None:
             pass
+
         elif item[0] == FileStatus.corrupted and isinstance(item[1], Path):
             num_corrupted += 1
+            size_corrupted += item[1].stat().st_size
             corrupted_files.add(item[1])
+
         elif item[0] == FileStatus.to_dump:
             num_recovered += 1
+            if isinstance(item[1], Path):
+                size_recovered += item[1].stat().st_size
+            else:
+                size_recovered += item[1].size
+
         elif item[0] == FileStatus.unchanged:
             num_unchanged += 1
+            if isinstance(item[1], Path):
+                size_unchanged += item[1].stat().st_size
+            else:
+                size_unchanged += item[1].size
+
         else:
             assert False
 
-    print(f"I have achieved the following:\n\nRecovered files: {num_recovered}\nUnchanged files: {num_unchanged}\nCorrupted files: {num_corrupted}")
+    print(f"I have achieved the following:\n\n"
+          f"Recovered files ({HumanBytes.format_pad(size_recovered)}): {num_recovered}\n"
+          f"Unchanged files ({HumanBytes.format_pad(size_unchanged)}): {num_unchanged}\n"
+          f"Corrupted files ({HumanBytes.format_pad(size_corrupted)}): {num_corrupted}")
 
     if num_corrupted == 0:
         return

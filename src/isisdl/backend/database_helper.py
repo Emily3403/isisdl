@@ -33,7 +33,7 @@ class DatabaseHelper:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
-                (name text, url text primary key unique, download_url text, location text, time int, course_id int, media_type int, size int, checksum text)
+                (name text, url text, download_url text, location text, time int, course_id int, media_type int, size int, checksum text, UNIQUE(url, course_id) ON CONFLICT REPLACE)
             """)
 
             self.cur.execute("""
@@ -255,3 +255,10 @@ class DatabaseHelper:
             """)
 
         self.create_default_tables()
+
+    def delete_bad_urls(self) -> None:
+        with self.lock:
+            self.cur.execute("""
+                DELETE FROM json_strings WHERE id = "bad_url_cache"
+            """)
+            self.con.commit()
