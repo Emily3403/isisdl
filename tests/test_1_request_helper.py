@@ -103,7 +103,7 @@ def test_normal_download(request_helper: RequestHelper, database_helper: Databas
             assert container == dump_container
 
         else:
-            assert container.size == 0 or container.size == -1  # TODO: Assert only 0 / -1
+            assert container.size == 0
             assert container.current_size is None
             assert container.url in bad_urls
             assert container.path.stat().st_size == 0

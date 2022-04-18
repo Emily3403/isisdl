@@ -506,7 +506,6 @@ def main() -> None:
     global compress_thread
     global total_time_for_compression
 
-    acquire_file_lock_or_exit()
     if is_first_time:
         print("\nAttention: Dont rename you video files please!")
         print("Press enter to continue ...\n")
@@ -569,6 +568,3 @@ compress_thread: Optional[Thread] = None
 #   Human readable for compression score
 #   Remote compression?
 #   Online ffprobe
-
-if __name__ == '__main__':
-    main()

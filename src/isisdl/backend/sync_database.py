@@ -46,7 +46,7 @@ def delete_missing_files_from_database(helper: RequestHelper) -> None:
             database_helper.delete_file_by_checksum(item)
             count += 1
 
-    print(f"Dropped {count} entries from the database to be re-downloaded.")
+    print(f"\nDropped {count} entries from the database to be re-downloaded.")
 
 
 class FileStatus(enum.Enum):
@@ -84,16 +84,16 @@ def restore_file(
         if file_size == 0:
             return None, file
 
-        if (probe := do_ffprobe(file)) is not None:
-            try:
-                file_size = probe['format']['tags']["previous_size"]
-            except KeyError:
-                pass
-
         # Video files should not be corrupted
         file_type = mimetypes.guess_type(file.name)[0]
-        if file_type is not None and file_type.startswith("video") and probe is None:
-            return FileStatus.corrupted, file
+        if file_type is not None and file_type.startswith("video"):
+            if (probe := do_ffprobe(file)) is None:
+                return FileStatus.corrupted, file
+            else:
+                try:
+                    file_size = probe['format']['tags']["previous_size"]
+                except KeyError:
+                    pass
 
         # First heuristic: File path
         possible = filename_mapping.get(file, None)
@@ -187,10 +187,11 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
         else:
             assert False
 
+    max_len = max(len(str(item)) for item in [num_recovered, num_unchanged, num_corrupted])
     print(f"I have achieved the following:\n\n"
-          f"Recovered files ({HumanBytes.format_pad(size_recovered)}): {num_recovered}\n"
-          f"Unchanged files ({HumanBytes.format_pad(size_unchanged)}): {num_unchanged}\n"
-          f"Corrupted files ({HumanBytes.format_pad(size_corrupted)}): {num_corrupted}")
+          f"Recovered files: {str(num_recovered).rjust(max_len)}, {HumanBytes.format_pad(size_recovered)}\n"
+          f"Unchanged files: {str(num_unchanged).rjust(max_len)}, {HumanBytes.format_pad(size_unchanged)}\n"
+          f"Corrupted files: {str(num_corrupted).rjust(max_len)}, {HumanBytes.format_pad(size_corrupted)}")
 
     if num_corrupted == 0:
         return

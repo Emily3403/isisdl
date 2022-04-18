@@ -4,7 +4,7 @@ import isisdl.compress as compress
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.settings import is_first_time
+from isisdl.settings import is_first_time, is_static, current_database_version, forbidden_chars, has_ffmpeg, fstype
 from isisdl.settings import is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
     config, migrate_database
@@ -36,7 +36,16 @@ Please press enter to continue.
         exit(0)
 
     elif args.version:
-        print(f"isisdl Version {__version__}")
+        print(f"""isisdl version {__version__}
+
+Build info:
+
+{is_static = }
+{current_database_version = }
+{has_ffmpeg = }
+{forbidden_chars = }
+{fstype = }
+""")
         exit(0)
 
     acquire_file_lock_or_exit()
@@ -65,7 +74,11 @@ Please press enter to continue.
 
     install_latest_version()
 
-    if args.sync:
+    if args.update:
+        print("No new update available. (Cricket sounds ...)")
+        exit(0)
+
+    elif args.sync:
         sync_database.main()
         exit(0)
 
