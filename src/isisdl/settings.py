@@ -246,7 +246,7 @@ def parse_config_file() -> DefaultDict[str, Any]:
         print(f"Reason: {ex}\n")
 
         os.unlink(config_file_location)
-        os._exit(1)
+        os._exit(69)
 
     return defaultdict(lambda: None)
 
