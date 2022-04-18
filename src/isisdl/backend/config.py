@@ -691,6 +691,7 @@ def config_wizard() -> None:
     rename_courses_prompt()
     make_subdirs_prompt()
     follow_external_links_prompt()
+    full_filename_prompt()
 
     was_in_configuration = False
     print("Thank you for your time - everything is saved!\n")

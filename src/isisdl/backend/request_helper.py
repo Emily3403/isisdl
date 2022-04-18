@@ -1037,7 +1037,7 @@ class CourseDownloader:
                 if event.dir:
                     return
 
-                file = self.files.get(event.pathname, None)
+                file = self.files.get(Path(event.pathname), None)
                 if file is not None and file.current_size is not None:
                     return
 

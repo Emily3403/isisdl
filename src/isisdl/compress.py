@@ -20,7 +20,7 @@ from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import print_log_messages, RequestHelperStatus
 from isisdl.settings import is_windows, has_ffmpeg, status_time, ffmpeg_args, enable_multithread, compress_duration_for_to_low_efficiency, compress_std_mavg_size, \
     compress_minimum_stdev, compress_minimum_score, compress_score_mavg_size, compress_insta_kill_score, compress_duration_for_insta_kill, is_first_time, error_text
-from isisdl.utils import on_kill, HumanBytes, do_ffprobe, acquire_file_lock_or_exit, generate_error_message, OnKill, database_helper, MediaType
+from isisdl.utils import on_kill, HumanBytes, do_ffprobe, generate_error_message, OnKill, database_helper, MediaType
 
 
 def check_ffmpeg_exists() -> None:
@@ -269,7 +269,7 @@ class CompressStatus(Thread):
                     f"Global efficiency: {calculate_efficiency(self.total_cur_size_of_compressed, self.total_prev_size_of_compressed) * 100:.2f}%",
                     "",
                     "Currently processing:",
-                    f"{self.cur_file._name}" if self.cur_file is not None else 'None',
+                    f"{self.cur_file}" if self.cur_file is not None else 'None',
                     "",
                 ]
 
@@ -387,10 +387,7 @@ class CompressStatus(Thread):
             generate_error_message(ex)
 
     def generate_final_message(self) -> None:
-        print("TODO: Generating the final message is currently out of order.")
-        exit(1)
-
-        course_name_mapping = {course.course_id: course.name for course in self.helper.courses}  # type: ignore
+        course_name_mapping = {course.course_id: course.name for course in self.helper.courses}
 
         infos = {course.course_id: {
             "total_size": 0,
@@ -400,14 +397,13 @@ class CompressStatus(Thread):
             "num_skipped": 0,
         } for course in self.helper.courses if any((file.course.course_id == course.course_id for file in self.files))}
 
-        # TODO: Fix this
-        # inefficient = database_helper.get_inefficient_videos()
+        inefficient = database_helper.get_inefficient_videos()
 
         for file in self.files:
             curr_size = file.path.stat().st_size
 
-            # if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
-            #     continue
+            if file.size == curr_size and database_helper.make_inefficient_file_name(file) not in inefficient:
+                continue
 
             infos[file.course.course_id]["total_size"] += file.size
 
@@ -507,7 +503,7 @@ def main() -> None:
     global total_time_for_compression
 
     if is_first_time:
-        print("\nAttention: Dont rename you video files please!")
+        print("\nAttention: Dont rename your video files please!")
         print("Press enter to continue ...\n")
         input()
 
@@ -515,7 +511,7 @@ def main() -> None:
     user = get_credentials()
     with RequestHelperStatus() as status:
         helper = RequestHelper(user, status)
-        content = [item for item in helper.download_content(status)[MediaType.video] if item.path.stat().st_size == item.size]
+        content = [item for item in helper.download_content(status)[MediaType.video] if item.path.exists() and item.path.stat().st_size == item.size]
 
     print("\n\nProcessing ...\n")
 
@@ -551,7 +547,7 @@ def main() -> None:
 
         content_and_score.append((con, int(vid_probe["bit_rate"])))
 
-    content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=True)]
+    content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=False)]
     compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
 

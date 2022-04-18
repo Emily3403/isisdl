@@ -97,7 +97,7 @@ is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
 Please press enter to continue.
 """)
 
-        # input()
+        input()
         subscribe_to_all_courses()
         exit(0)
 

@@ -79,9 +79,6 @@ def get_args() -> argparse.Namespace:
     try:
         return parser.parse_args()
     except SystemExit as ex:
-        if ex.code:
-            print(f"\n{error_text} parsing the args failed. Bailing out!")
-
         os._exit(ex.code)
 
 
@@ -331,14 +328,9 @@ update_policy: {encode_yaml(update_policy)}
 telemetry_policy: {encode_yaml(telemetry_policy)}
 
 
-
-
 # Force a filesystem
 # Possible values {{null, ext, ext2, ext3, ext4, btrfs, exfat, fat32, vfat, ntfs, hfs, hfsplus}}
 force_filesystem: {force_filesystem}
-
-
-
 
 
 # Number of threads to use when discovering video file sizes (ISIS does not offer an API).
@@ -346,7 +338,7 @@ force_filesystem: {force_filesystem}
 video_size_discover_num_threads: {video_size_discover_num_threads}
 
 
-# The resolution of the initial progress bar.
+# The resolution of any ordinary status has.
 # Possible values {{any integer > 0}}
 status_progress_bar_resolution: {status_progress_bar_resolution}
 
@@ -966,6 +958,8 @@ def subscribe_to_all_courses() -> None:
     from isisdl.backend.crypt import get_credentials
     from isisdl.backend.status import Status
 
+    # TODO: Precalculate a list of courses that can be subscribed to.
+
     print("How many courses do you want to subscribe to? (-1 for all)\n(Subscribing may fail, about 1/4 of the courses work.)\n\n")
     while True:
         try:
@@ -1009,7 +1003,7 @@ def subscribe_to_all_courses() -> None:
     if config.auto_subscribed_courses is None:
         config.auto_subscribed_courses = new_ids
     else:
-        config.auto_subscribed_courses.extend(new_ids)
+        config.auto_subscribed_courses = list(set(config.auto_subscribed_courses + new_ids))
 
     with open(path(subscribed_courses_file_location), "w") as f:
         json.dump(config.auto_subscribed_courses, f)
