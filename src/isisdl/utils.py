@@ -623,14 +623,14 @@ def install_latest_version() -> None:
     elif config.update_policy.startswith("install"):
         print("According to your update policy I will auto-install it.\n")
 
-    if config.update_policy == "install_pip":
+    if "pip" in config.update_policy:
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "isisdl"])
 
-    elif config.update_policy == "install_github" and is_static is False:
+    elif "github" in config.update_policy and is_static is False:
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
 
     # TODO: test if this will work
-    elif config.update_policy == "install_github" and is_static:
+    elif "github" in config.update_policy and is_static:
         with TemporaryDirectory() as tmp:
             assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
             correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"

@@ -245,7 +245,8 @@ def parse_config_file() -> DefaultDict[str, Any]:
 
         print(f"Reason: {ex}\n")
 
-    os._exit(1)
+    return defaultdict(lambda: None)
+    # os._exit(1)
 
 
 if not is_windows:
