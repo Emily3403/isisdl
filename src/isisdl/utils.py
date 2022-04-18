@@ -70,7 +70,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
-    operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")  # TODO: Test this
+    operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")
     operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
 
     if is_testing:

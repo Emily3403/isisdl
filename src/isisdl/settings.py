@@ -242,11 +242,9 @@ def parse_config_file() -> DefaultDict[str, Any]:
     except YAMLError as ex:
         print(f"{error_text} the config file is malformed.")
         print(f"The file is located at `{config_file_location}`\n\n")
-
         print(f"Reason: {ex}\n")
 
-        os.unlink(config_file_location)
-        os._exit(69)
+        os._exit(1)
 
     return defaultdict(lambda: None)
 
