@@ -56,7 +56,7 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads all content from your ISIS profile.""")
 
-    parser.add_argument("-t", "--max-num-threads", help="The maximum number of threads to spawn (for downloading files)\n ", type=int, default=6, metavar="{num}")
+    parser.add_argument("-t", "--max-num-threads", help="The maximum number of threads to spawn (for downloading files)\n ", type=int, default=3, metavar="{num}")
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="{num}")
 
     operations = parser.add_mutually_exclusive_group()
