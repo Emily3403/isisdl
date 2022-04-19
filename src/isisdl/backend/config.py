@@ -445,6 +445,9 @@ For example:
 
 
 def whitelist_prompt() -> None:
+    if config.blacklist is not None:
+        return
+
     lst = _list_prompt(True)
     if lst is True:
         return
@@ -463,6 +466,9 @@ def whitelist_prompt() -> None:
 
 
 def blacklist_prompt() -> None:
+    if config.whitelist is not None:
+        return
+
     lst = _list_prompt(False)
     if lst is True:
         return
