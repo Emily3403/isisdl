@@ -535,7 +535,9 @@ class Course:
         return obj
 
     def make_directories(self) -> None:
-        if self.ok:
+        from isisdl.backend.config import was_in_configuration
+
+        if was_in_configuration is False and self.ok:
             os.makedirs(self.path(), exist_ok=True)
 
             if config.make_subdirs:

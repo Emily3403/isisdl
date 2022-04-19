@@ -175,7 +175,8 @@ class Config:
         if "database_version" not in self._stored:
             self._stored["database_version"] = self.default("database_version")
 
-        self.verify_state_types()
+        if database_helper.get_database_version() == Config.default("database_version"):
+            self.verify_state_types()
 
         for name in self.__slots__:
             super().__setattr__(name, Config.state[name])
@@ -386,7 +387,7 @@ def startup() -> None:
 
         if not os.path.exists(config_file_location):
             with open(config_file_location, "w") as f:
-                f.write(f"# You probably want to start by copying {config_file_location} and adapting it.\n")
+                f.write(f"# You probably want to start by copying {example_config_file_location} and adapting it.\n")
 
 
 def clear() -> None:
