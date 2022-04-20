@@ -6,7 +6,7 @@ from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.settings import is_first_time, is_static, current_database_version, forbidden_chars, has_ffmpeg, fstype
 from isisdl.settings import is_online
-from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, subscribe_to_all_courses, unsubscribe_from_courses, install_latest_version, export_config, database_helper, \
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, \
     config, migrate_database
 from isisdl.version import __version__
 
@@ -87,23 +87,29 @@ Build info:
         exit(0)
 
     elif args.subscribe:
-        print("""Attention:
-This option will lead to you subscribing to *every* publicly available ISIS course.
-
-Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
-This behaviour is due to the fact that the API to unsubscribe from courses
-is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
-
-Please press enter to continue.
-""")
-
-        input()
-        subscribe_to_all_courses()
+        print("Due to legal reasons, this is currently not supported. :(")
         exit(0)
+
+#         print("""Attention:
+# This option will lead to you subscribing to *every* publicly available ISIS course.
+#
+# Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
+# This behaviour is due to the fact that the API to unsubscribe from courses
+# is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
+#
+# Please press enter to continue.
+# """)
+#
+#         input()
+#         subscribe_to_all_courses()
+#         exit(0)
 
     elif args.unsubscribe:
-        unsubscribe_from_courses()
+        print("Due to legal reasons, this is currently not supported. :(")
         exit(0)
+
+        # unsubscribe_from_courses()
+        # exit(0)
 
     else:
         # Main routine
