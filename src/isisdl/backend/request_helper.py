@@ -146,7 +146,7 @@ class PreMediaContainer:
     parent_path: Path
 
     def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
-        relative_location = (relative_location or "").strip("/")
+        relative_location = (relative_location or media_type.dir_name).strip("/")
         if config.make_subdirs is False:
             relative_location = ""
 

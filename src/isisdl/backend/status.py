@@ -252,7 +252,7 @@ class DownloadStatus(Status):
         downloaded_bytes = self.total_downloaded + sum(item.current_size for item in self.thread_files.values() if item is not None and item.current_size is not None)
 
         log_strings.append("")
-        log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {f'(limited to {self.throttler.download_rate} MiB)' if self.throttler.download_rate != -1 else ''}/s")
+        log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {f'(limited to {self.throttler.download_rate} MiB/s)' if self.throttler.download_rate != -1 else ''}")
 
         if args.stream:
             log_strings.append("")

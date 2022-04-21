@@ -131,6 +131,9 @@ def main() -> None:
 #   Streaming files: Is it worth it?
 
 
+# Suggestion for ISIS API:
+#   video server also sends the size
+
 # Main TODOS:
 #   Dynamic calc
 #   compress

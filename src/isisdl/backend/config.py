@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
 from getpass import getpass
+from pathlib import Path
 from typing import List, Optional, Union, Set, Dict, Any
 
 from colorama import Style
@@ -9,7 +10,7 @@ from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.request_helper import RequestHelper, SessionWithKey
 from isisdl.settings import is_online, error_text
 from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
-from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, database_helper
+from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, database_helper, sanitize_name
 
 was_in_configuration = False
 
@@ -654,20 +655,22 @@ a long time to download if you have a slow internet connection.
 def follow_external_links_prompt() -> None:
     # Later: Check if this is useful
     clear()
-    print("Do you want me to follow external links?")
+    print("""Do you want me to follow external links?
+
+The TU-Berlin is liable for Content posted on ISIS, but not for external websites.""")
 
     bool_prompt("follow_links")
 
 
 def full_filename_prompt() -> None:
     clear()
-    print("""Do you want to display file names in absolute paths?
+    print(f"""Do you want to display file names instead absolute paths?
 
 For example:
 
-`/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf`
+`{'/'.join(sanitize_name(item, False) for item in Path('/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf').parts)}`
 vs
-`Week 8-1.pdf`
+`{sanitize_name('Week 8-1.pdf', False)}`
 """)
     bool_prompt("absolute_path_filename")
 
@@ -679,6 +682,7 @@ def init_wizard() -> None:
     authentication_prompt()
     update_policy_prompt()
     filename_prompt()
+    full_filename_prompt()
     timer_prompt()
     telemetry_data_prompt()
 
@@ -697,7 +701,6 @@ def config_wizard() -> None:
     rename_courses_prompt()
     make_subdirs_prompt()
     follow_external_links_prompt()
-    full_filename_prompt()
 
     was_in_configuration = False
     print("Thank you for your time - everything is saved!\n")
