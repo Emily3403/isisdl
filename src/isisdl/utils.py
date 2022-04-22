@@ -129,7 +129,7 @@ class Config:
         "auto_subscribed_courses": None,
     }
 
-    __slots__ = tuple(default_config)
+    __slots__ = tuple(__annotations__)  # type: ignore
 
     state: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # The state to consider after defaults, config files etc.
     _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Values the user has actively stored in the config wizard (no config file)
@@ -189,6 +189,7 @@ class Config:
             database_helper.set_config(self._stored)
 
     def verify_state_types(self) -> None:
+        # TODO: Use Config.__annotations__
         # Unfortunately we can't use the type annotations since they provide very little interface to python.
         def fail(attr: str, typ: Any, may_be_none: bool = False) -> None:
             if self.state[attr] is None and may_be_none:
@@ -910,6 +911,11 @@ def remove_lock_file() -> None:
 
 
 class User:
+    username: str
+    password: str
+
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     def __init__(self, username: str, password: str):
         self.username = username
         self.password = password
@@ -1107,10 +1113,17 @@ class DataLogger(Thread):
 
     """
 
+    s: Session
+    messages: Queue[Union[str, Dict[str, Any]]]
+    generic_msg: Dict[str, Any]
+
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     def __init__(self) -> None:
         self.s = Session()
-        self.generic_msg: Dict[str, Any] = {
-            "username": User.sanitize_name(config.username),
+        self.messages = Queue()
+        self.generic_msg = {
+            "username": User.sanitize_name(config.username),  # TODO
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
@@ -1118,7 +1131,7 @@ class DataLogger(Thread):
             "time": int(time.time()),
             "is_first_time": is_first_time,
         }
-        self.messages: Queue[Union[str, Dict[str, Any]]] = Queue()
+
         super().__init__(daemon=True)
         self.start()
 
@@ -1152,7 +1165,6 @@ class DataLogger(Thread):
 
 
 # Represents a granted token. A download may only download as much as defined in num_bytes.
-@dataclass
 class Token:
     num_bytes: int = download_chunk_size
 
@@ -1172,6 +1184,8 @@ class DownloadThrottler(Thread):
     token = Token()
     timestamps: List[float] = []
     _streaming_loc: Optional[Path] = None
+
+    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self) -> None:
         self.download_queue, self.used_tokens = Queue(), Queue()

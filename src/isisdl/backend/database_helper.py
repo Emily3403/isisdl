@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
+from sqlite3 import Connection, Cursor
 from threading import Lock
 from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
 
@@ -13,9 +14,14 @@ if TYPE_CHECKING:
 
 
 class DatabaseHelper:
+    con: Connection
+    cur: Cursor
+
     lock = Lock()
     _bad_urls: Set[str] = set()
     _url_container_mapping: Dict[str, Iterable[Any]] = {}
+
+    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self) -> None:
         from isisdl.utils import path

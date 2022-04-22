@@ -34,8 +34,11 @@ from isisdl.utils import calculate_local_checksum
 class SessionWithKey(Session):
     key: str
     token: str
+
     _blocks: DefaultDict[str, Queue[None]] = defaultdict(Queue)
     _lock = Lock()
+
+    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self, key: str, token: str):
         super().__init__()
@@ -145,6 +148,8 @@ class PreMediaContainer:
     is_cached: bool
     parent_path: Path
 
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
         relative_location = (relative_location or media_type.dir_name).strip("/")
         if config.make_subdirs is False:
@@ -174,7 +179,6 @@ class PreMediaContainer:
         return self._name is not None and self.time is not None and self.size is not None
 
 
-@dataclass
 class MediaContainer:
     _name: str
     url: str
@@ -184,11 +188,29 @@ class MediaContainer:
     course: Course
     media_type: MediaType
     size: int
-    checksum: Optional[str] = None
-    current_size: Optional[int] = None
-    _stop: bool = False
-    _links: List[MediaContainer] = field(default_factory=list)
-    _done: bool = False
+    _links: List[MediaContainer]
+    checksum: Optional[str]
+    current_size: Optional[int]
+    _stop: bool
+    _done: bool
+
+    __slots__ = tuple(__annotations__)  # type: ignore
+
+    def __init__(self, _name: str, url: str, download_url: str, path: Path, time: int, course: Course, media_type: MediaType, size: int,
+                 checksum: Optional[str] = None, _links: Optional[List[MediaContainer]] = None) -> None:
+        self._name = _name
+        self.url = url
+        self.download_url = download_url
+        self.path = path
+        self.time = time
+        self.course = course
+        self.media_type = media_type
+        self.size = size
+        self.checksum = checksum
+        self.current_size = 0
+        self._stop = False
+        self._links = _links or []
+        self._done = False
 
     @classmethod
     def from_dump(cls, url: str, course: Course) -> Union[bool, MediaContainer]:
