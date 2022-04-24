@@ -17,11 +17,11 @@ class DatabaseHelper:
     con: Connection
     cur: Cursor
 
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     lock = Lock()
     _bad_urls: Set[str] = set()
     _url_container_mapping: Dict[str, Iterable[Any]] = {}
-
-    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self) -> None:
         from isisdl.utils import path

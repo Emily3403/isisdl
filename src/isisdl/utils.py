@@ -105,6 +105,8 @@ class Config:
 
     auto_subscribed_courses: Optional[List[int]]
 
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
         "username": None,
@@ -129,7 +131,6 @@ class Config:
         "auto_subscribed_courses": None,
     }
 
-    __slots__ = tuple(__annotations__)  # type: ignore
 
     state: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # The state to consider after defaults, config files etc.
     _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Values the user has actively stored in the config wizard (no config file)
@@ -1181,11 +1182,13 @@ class DownloadThrottler(Thread):
     download_rate: int
     refresh_rate: float
 
+    __slots__ = tuple(__annotations__)  # type: ignore
+
+
     token = Token()
     timestamps: List[float] = []
     _streaming_loc: Optional[Path] = None
 
-    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self) -> None:
         self.download_queue, self.used_tokens = Queue(), Queue()

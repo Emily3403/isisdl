@@ -657,7 +657,12 @@ def follow_external_links_prompt() -> None:
     clear()
     print("""Do you want me to follow external links?
 
-The TU-Berlin is liable for Content posted on ISIS, but not for external websites.""")
+--- Note ---
+The TU-Berlin is liable for Content posted on ISIS,
+but not for external websites.
+------------
+""")
+
 
     bool_prompt("follow_links")
 

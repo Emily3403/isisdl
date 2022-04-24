@@ -35,10 +35,10 @@ class SessionWithKey(Session):
     key: str
     token: str
 
-    _blocks: DefaultDict[str, Queue[None]] = defaultdict(Queue)
+    __slots__ = tuple(__annotations__)  # type: ignore
+
     _lock = Lock()
 
-    __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self, key: str, token: str):
         super().__init__()
@@ -207,7 +207,7 @@ class MediaContainer:
         self.media_type = media_type
         self.size = size
         self.checksum = checksum
-        self.current_size = 0
+        self.current_size = None
         self._stop = False
         self._links = _links or []
         self._done = False
@@ -427,7 +427,7 @@ class MediaContainer:
             return False
 
         acc = True
-        for attr in self.__dict__:
+        for attr in self.__slots__:
             if attr in {"current_size", "_links", "_done"}:
                 continue
 
@@ -887,6 +887,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
+    # TODO: More conflict: If two files have the same download url (across courses), hard link them.
     for conflict in hard_link_conflicts.values():
         if len(conflict) != 1:
             conflict.sort(key=lambda x: x.time)

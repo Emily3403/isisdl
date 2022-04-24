@@ -138,5 +138,11 @@ def main() -> None:
 #   Dynamic calc
 #   compress
 
+
+# No size implies:
+#   Harder time conflicts in files
+#   No download status file size
+#   No sync database
+
 if __name__ == "__main__":
     main()
