@@ -663,7 +663,6 @@ but not for external websites.
 ------------
 """)
 
-
     bool_prompt("follow_links")
 
 

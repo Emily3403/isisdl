@@ -7,7 +7,6 @@ import time
 from base64 import standard_b64decode
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from itertools import repeat, chain
@@ -38,7 +37,6 @@ class SessionWithKey(Session):
     __slots__ = tuple(__annotations__)  # type: ignore
 
     _lock = Lock()
-
 
     def __init__(self, key: str, token: str):
         super().__init__()
@@ -533,12 +531,19 @@ class MediaContainer:
         self._done = True
 
 
-@dataclass
 class Course:
     old_name: str
     _name: str
     name: str
     course_id: int
+
+    __slots__ = tuple(__annotations__)  # type: ignore
+
+    def __init__(self, old_name: str, _name: str, name: str, course_id: int) -> None:
+        self.old_name = old_name
+        self._name = _name
+        self.name = name
+        self.course_id = course_id
 
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:

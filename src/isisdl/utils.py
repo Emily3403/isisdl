@@ -19,7 +19,6 @@ import time
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from itertools import repeat
@@ -130,7 +129,6 @@ class Config:
 
         "auto_subscribed_courses": None,
     }
-
 
     state: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {k: None for k in default_config}  # The state to consider after defaults, config files etc.
     _stored: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Values the user has actively stored in the config wizard (no config file)
@@ -1184,11 +1182,9 @@ class DownloadThrottler(Thread):
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-
     token = Token()
     timestamps: List[float] = []
     _streaming_loc: Optional[Path] = None
-
 
     def __init__(self) -> None:
         self.download_queue, self.used_tokens = Queue(), Queue()
