@@ -920,7 +920,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
                 final_list.append(item)
 
         else:
-            logger.assert_fail(f"conflict: {[item.__dict__ for item in conflict]}")
+            logger.assert_fail(f"conflict: {[{getattr(item, x) for x in item.__slots__} for item in conflict]}")
             continue
 
     return final_list
