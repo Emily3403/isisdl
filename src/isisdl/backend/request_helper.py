@@ -437,7 +437,7 @@ class MediaContainer:
 
         acc = True
         for attr in self.__slots__:
-            if attr in {"current_size", "_links", "_done"}:
+            if attr in {"current_size", "_links", "_done", "_newly_downloaded", "_newly_discovered"}:
                 continue
 
             self_val = getattr(self, attr)
