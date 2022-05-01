@@ -1,14 +1,14 @@
 import base64
 import getpass
 import os
+import sys
 from typing import Optional, List
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from sys import exit
 
-from isisdl.utils import User, config, logger
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, error_text
+from isisdl.utils import User, config, logger
 
 last_password: Optional[str] = None
 last_username: Optional[str] = None
