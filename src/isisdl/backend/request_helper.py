@@ -932,12 +932,12 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
         elif len(set(item.size for item in conflict)) == len(conflict):
             # Only unique sizes
-            for i, item in enumerate(conflict):
-                basename, ext = os.path.splitext(item._name)
-                item._name = basename + f".{i}" + ext
-                item.path = file.path.parent.joinpath(sanitize_name(item._name, False))
-                item.dump()
-                final_list.append(item)
+            for i, file in enumerate(conflict):
+                basename, ext = os.path.splitext(file._name)
+                file._name = basename + f".{i}" + ext
+                file.path = file.path.parent.joinpath(sanitize_name(file._name, False))
+                file.dump()
+                final_list.append(file)
 
         else:
             logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
