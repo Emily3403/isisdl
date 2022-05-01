@@ -39,6 +39,7 @@ Please press enter to continue.
     elif args.version:
         print(f"""isisdl version {__version__}
 
+
 Build info:
 
 {is_static = }
