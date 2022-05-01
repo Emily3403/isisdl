@@ -1270,7 +1270,7 @@ def maybe_create_log_file() -> None:
             containers = [item for item in containers if item.media_type != MediaType.corrupted.value]  # type: ignore
 
             f.write(f"===== {datetime.now().strftime(datetime_str)} =====\n\n")
-            f.write(f"Detected that the log file does not exist.\nHere is what I currently have in the database:\n\n")
+            f.write("Detected that the log file does not exist.\nHere is what I currently have in the database:\n\n")
             f.write("\n".join(item.string_dump() for item in containers))
             f.write("\n\n")
 
