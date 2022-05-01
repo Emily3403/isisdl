@@ -2,9 +2,6 @@ del /q venv
 del /q *.build
 del /q *.dist
 
-py -m venv venv
-.\venv\Scripts\activate
-
 pip install -e ..
 pip install nuitka zstandard
 
