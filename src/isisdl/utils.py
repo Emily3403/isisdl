@@ -615,6 +615,8 @@ def install_latest_version() -> None:
         return
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
+    print("I got here")
+    print(config.update_policy)
 
     if config.update_policy.startswith("notify") and not args.update:
         return
@@ -629,9 +631,11 @@ def install_latest_version() -> None:
 
     # TODO: test if this will work
     elif "github" in config.update_policy and is_static:
+        print("wtf")
         with TemporaryDirectory() as tmp:
             assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]
             correct_name = "isisdl-windows.exe" if is_windows else "isisdl-linux.bin"
+            print("Got release")
             for asset in assets:
                 if asset["name"] == correct_name:
                     break
@@ -642,6 +646,7 @@ def install_latest_version() -> None:
 
             new_file = requests.get(asset["browser_download_url"], stream=True)
             new_isisdl = os.path.join(tmp, "tmp." + correct_name)
+            print(new_isisdl)
             with open(new_isisdl, "wb") as f:
                 shutil.copyfileobj(new_file.raw, f)
 
