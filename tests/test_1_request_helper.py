@@ -6,13 +6,13 @@ from typing import Any, List, Dict
 
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.backend.request_helper import RequestHelper, MediaContainer, CourseDownloader
-from isisdl.settings import testing_download_sizes, env_var_name_username, env_var_name_password, database_file_location, lock_file_location
+from isisdl.settings import testing_download_sizes, env_var_name_username, env_var_name_password, database_file_location, lock_file_location, log_file_location
 from isisdl.utils import User, config, calculate_local_checksum, MediaType, path, startup, database_helper
 
 
 def remove_old_files() -> None:
     for item in os.listdir(path()):
-        if item not in {database_file_location, database_file_location + "-journal", lock_file_location}:
+        if item not in {database_file_location, database_file_location + "-journal", lock_file_location, log_file_location}:
             shutil.rmtree(path(item))
 
     startup()
