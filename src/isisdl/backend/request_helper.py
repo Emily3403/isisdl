@@ -23,11 +23,12 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore
+    extern_ignore, log_file_location, datetime_str
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
-    DownloadThrottler, MediaType
+    DownloadThrottler, MediaType, HumanBytes
 from isisdl.utils import calculate_local_checksum
+from isisdl.version import __version__
 
 
 class SessionWithKey(Session):
@@ -191,11 +192,14 @@ class MediaContainer:
     current_size: Optional[int]
     _stop: bool
     _done: bool
+    _newly_downloaded: bool
+    _newly_discovered: bool
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self, _name: str, url: str, download_url: str, path: Path, time: int, course: Course, media_type: MediaType, size: int,
-                 checksum: Optional[str] = None, _links: Optional[List[MediaContainer]] = None) -> None:
+                 checksum: Optional[str] = None, _links: Optional[List[MediaContainer]] = None,
+                 _newly_downloaded: bool = False, _newly_discovered: bool = False) -> None:
         self._name = _name
         self.url = url
         self.download_url = download_url
@@ -209,6 +213,8 @@ class MediaContainer:
         self._stop = False
         self._links = _links or []
         self._done = False
+        self._newly_downloaded = _newly_downloaded
+        self._newly_discovered = _newly_discovered
 
     @classmethod
     def from_dump(cls, url: str, course: Course) -> Union[bool, MediaContainer]:
@@ -318,7 +324,7 @@ class MediaContainer:
             if container.is_ready:
                 assert container._name is not None and container.time is not None and container.size is not None
                 return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name, False)),
-                           container.time, container.course, container.media_type, container.size).dump()
+                           container.time, container.course, container.media_type, container.size, _newly_discovered=True).dump()
 
             con = session.get_(download_url or container.url, params={"token": session.token}, stream=True)
             if con is None:
@@ -367,7 +373,8 @@ class MediaContainer:
                 else:
                     assert size != 0 and size != -1
 
-            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size).dump()
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size,
+                       _newly_discovered=True).dump()
 
         finally:
             container.is_cached = True
@@ -408,6 +415,10 @@ class MediaContainer:
         database_helper.add_pre_container(self)
         return self
 
+    def string_dump(self) -> str:
+        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size)}\n" \
+               f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\n"
+
     def __str__(self) -> str:
         if config.absolute_path_filename:
             return str(self.path)
@@ -440,6 +451,9 @@ class MediaContainer:
         return int.__gt__(self.size, other.size)
 
     def stop(self) -> None:
+        if self.current_size is not None:
+            self._done = True
+
         self._stop = True
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
@@ -528,26 +542,27 @@ class MediaContainer:
             link.dump()
             link._done = True
 
+        self._newly_downloaded = True
         self._done = True
 
 
 class Course:
-    old_name: str
+    displayname: str
     _name: str
     name: str
     course_id: int
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, old_name: str, _name: str, name: str, course_id: int) -> None:
-        self.old_name = old_name
+    def __init__(self, displayname: str, _name: str, name: str, course_id: int) -> None:
+        self.displayname = displayname
         self._name = _name
         self.name = name
         self.course_id = course_id
 
     @classmethod
     def from_dict(cls, info: Dict[str, Any]) -> Course:
-        old_name = cast(str, info["displayname"])
+        displayname = cast(str, info["displayname"])
         _name = cast(str, info["shortname"] or info["displayname"])
         id = cast(int, info["id"])
 
@@ -556,7 +571,7 @@ class Course:
         else:
             name = config.renamed_courses.get(id, "") or _name
 
-        obj = cls(sanitize_name(old_name, True), _name, sanitize_name(name, True), id)
+        obj = cls(sanitize_name(displayname, True), _name, sanitize_name(name, True), id)
         obj.make_directories()
 
         return obj
@@ -674,7 +689,7 @@ class Course:
         return self.name
 
     def __repr__(self) -> str:
-        return f"{self._name} ({self.course_id})"
+        return self.displayname
 
     def __eq__(self, other: Any) -> bool:
         if other is True:
@@ -793,7 +808,7 @@ class RequestHelper:
 
         if enable_multithread:
             with ThreadPoolExecutor(discover_num_threads) as ex:
-                _mod_assign = ex.map(self._download_mod_assign)
+                _mod_assign = ex.map(self._download_mod_assign, [0])
                 _document_containers = ex.map(self._download_documents, self.courses, repeat(exception_lock))
                 _video_containers = ex.map(self._download_videos, self.courses, repeat(exception_lock), repeat(status))
 
@@ -832,7 +847,7 @@ class RequestHelper:
 
         return {typ: sorted(item, key=lambda x: x.time, reverse=True) for typ, item in mapping.items()}
 
-    def _download_mod_assign(self) -> List[PreMediaContainer]:
+    def _download_mod_assign(self, _: Any = None) -> List[PreMediaContainer]:
         all_content = []
         _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
         if _assignments is None:
@@ -997,14 +1012,17 @@ class BandwidthWatcher(Thread):
 
 class CourseDownloader:
     containers: Dict[MediaType, List[MediaContainer]] = {}
+    _did_message: bool = False
 
     def start(self) -> None:
         user = get_credentials()
         with RequestHelperStatus() as status:
             helper = RequestHelper(user, status)
             containers = helper.download_content(status)
+            collapsed_containers = [item for row in containers.values() for item in row]
+            collapsed_containers.sort(reverse=True, key=lambda x: x.time)
 
-            for container in [item for row in containers.values() for item in row]:
+            for container in collapsed_containers:
                 if not container.path.exists() and container.media_type != MediaType.corrupted:
                     container.path.open("w").close()
 
@@ -1013,12 +1031,13 @@ class CourseDownloader:
         # Log the metadata
         conf = config.to_dict()
         del conf["password"]
-        logger.post({
-            "num_g_files": len(containers),
-            "num_c_files": len(containers),
 
-            "total_g_bytes": sum((item.size for row in containers.values() for item in row)),
-            "total_c_bytes": sum((item.size for row in containers.values() for item in row)),
+        logger.post({
+            "num_g_files": len(collapsed_containers),
+            "num_c_files": len(collapsed_containers),
+
+            "total_g_bytes": sum((item.size for item in collapsed_containers)),
+            "total_c_bytes": sum((item.size for item in collapsed_containers)),
 
             "course_ids": sorted([course.course_id for course in helper._courses]),
 
@@ -1030,10 +1049,10 @@ class CourseDownloader:
                 for item in row:
                     item._done = True
 
-            while logger.messages.qsize():
-                time.sleep(status_time)
+            print("Nothing to be done ... (cricket sounds)")
+            logger.done.get()
 
-            return
+            # return
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
@@ -1048,6 +1067,53 @@ class CourseDownloader:
                     time.sleep(65536)
 
             downloader.join()
+
+        self.message_what_did_i_do(collapsed_containers)
+
+    @staticmethod
+    def message_what_did_i_do(collapsed_containers: List[MediaContainer]) -> None:
+        if CourseDownloader._did_message:
+            return
+
+        CourseDownloader._did_message = True
+
+        if not any(item._newly_downloaded or item._newly_discovered for item in collapsed_containers):
+            print("No new files to download ... (cricket sounds)")
+            return
+
+        try:
+            with path(log_file_location).open() as f:
+                prev_msg = f.read()
+
+            now_msg = f"""
+===== {datetime.now().strftime(datetime_str)} =====
+
+Running isisdl version {__version__}
+
+Newly downloaded files:
+
+{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_downloaded) or "None"}
+
+
+Newly discovered files:
+
+{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_discovered) or "None"}
+
+
+
+"""
+
+            with path(log_file_location).open("w") as f:
+                f.write(now_msg)
+                f.write(prev_msg)
+
+            if len([item for item in collapsed_containers if item._newly_downloaded or item._newly_discovered]) < 50:
+                print("".join(now_msg.splitlines(keepends=True)[4:]))
+            else:
+                print(f"Downloaded / Discovered too many files to list here. If you are interested please look at\n`{path(log_file_location)}`")
+
+        except OSError:
+            pass
 
     def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus, session: SessionWithKey) -> None:
         if is_windows:
@@ -1175,5 +1241,24 @@ class CourseDownloader:
                 item.stop()
 
         # Now wait for the downloads to finish
-        while not all(item._done for row in CourseDownloader.containers.values() for item in row):
+        collapsed_containers = [item for row in CourseDownloader.containers.values() for item in row]
+
+        while not all(item._done for item in collapsed_containers):
             time.sleep(status_time)
+
+        CourseDownloader.message_what_did_i_do(collapsed_containers)
+
+
+def maybe_create_log_file() -> None:
+    if not path(log_file_location).exists():
+        with path(log_file_location).open("w") as f:
+            containers = [MediaContainer(*item) for item in database_helper._url_container_mapping.values()]
+            containers = [item for item in containers if item.media_type != MediaType.corrupted.value]
+
+            f.write(f"===== {datetime.now().strftime(datetime_str)} =====\n\n")
+            f.write(f"Detected that the log file does not exist.\nHere is what I currently have in the database:\n\n")
+            f.write("\n".join(item.string_dump() for item in containers))
+            f.write("\n\n")
+
+
+maybe_create_log_file()

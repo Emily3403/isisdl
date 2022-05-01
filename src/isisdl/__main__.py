@@ -75,7 +75,7 @@ Build info:
     install_latest_version()
 
     if args.update:
-        print("No new update available. (Cricket sounds ...)")
+        print("No new update available ... (cricket sounds)")
         exit(0)
 
     elif args.sync:
@@ -114,7 +114,6 @@ Build info:
     else:
         # Main routine
         CourseDownloader().start()
-        CourseDownloader.shutdown_running_downloads()
         print("Done! Have a nice day ^.^")
 
 
@@ -129,6 +128,7 @@ def main() -> None:
 #   Windows autorun
 #   Download of corrupted files
 #   Streaming files: Is it worth it?
+#   Other name than ISIS username
 
 
 # Suggestion for ISIS API:
@@ -137,6 +137,8 @@ def main() -> None:
 # Main TODOS:
 #   Dynamic calc
 #   compress
+
+# https://pypi.org/project/argcomplete/
 
 
 # No size implies:

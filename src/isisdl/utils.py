@@ -39,7 +39,7 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, log_file_location, datetime_str
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -390,6 +390,8 @@ def startup() -> None:
                 f.write(f"# You probably want to start by copying {example_config_file_location} and adapting it.\n")
 
 
+
+
 def clear() -> None:
     if is_windows:
         os.system('cls')
@@ -421,7 +423,7 @@ Please confirm that this is okay. [y/n]""")
     def migrate_1_to_2() -> None:
         course_name_counts: DefaultDict[str, int] = defaultdict(int)
         for course in helper._courses:
-            course_name_counts[course.old_name] += 1
+            course_name_counts[course.displayname] += 1
 
         for _course, num in course_name_counts.items():
             if num > 1:
@@ -432,15 +434,15 @@ Please confirm that this is okay. [y/n]""")
 
         downloaded_courses = set(os.listdir(path()))
         for course in helper._courses:
-            if course.name == course.old_name:
+            if course.name == course.displayname:
                 continue
 
-            if course.old_name in downloaded_courses:
+            if course.displayname in downloaded_courses:
                 if os.path.exists(path(course.name)):
                     shutil.rmtree(path(course.name))
 
                 try:
-                    os.rename(path(course.old_name), path(course.name))
+                    os.rename(path(course.displayname), path(course.name))
                 except OSError as ex:
                     generate_error_message(ex)
 
@@ -1114,6 +1116,7 @@ class DataLogger(Thread):
 
     s: Session
     messages: Queue[Union[str, Dict[str, Any]]]
+    done: Queue[None]  # Used to communicate
     generic_msg: Dict[str, Any]
 
     __slots__ = tuple(__annotations__)  # type: ignore
@@ -1121,6 +1124,7 @@ class DataLogger(Thread):
     def __init__(self) -> None:
         self.s = Session()
         self.messages = Queue()
+        self.done = Queue()
         self.generic_msg = {
             "username": User.sanitize_name(config.username),  # TODO
             "OS": platform.system(),
@@ -1137,7 +1141,8 @@ class DataLogger(Thread):
     def run(self) -> None:
         while True:
             item = self.messages.get()
-            self.s.post("http://static.246.42.12.49.clients.your-server.de/isisdl/", json=item)
+            self.s.post("http://49.12.42.246/isisdl/", json=item)
+            self.done.put(None)
 
     def message(self, msg: Union[str, Dict[str, Any]]) -> None:
         if config.telemetry_policy is False or is_testing:
@@ -1367,3 +1372,4 @@ config = Config()
 created_lock_file = False
 
 logger = DataLogger()
+

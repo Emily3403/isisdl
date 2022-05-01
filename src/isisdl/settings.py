@@ -29,6 +29,10 @@ working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 # The name of the SQLite Database
 database_file_location = ".state.db"
 
+log_file_location = "isisdl.log"
+
+datetime_str = "%Y-%m-%d %H:%M:%S"
+
 # Fallback current database version
 current_database_version = 2
 

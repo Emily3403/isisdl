@@ -404,7 +404,7 @@ def _list_prompt(is_whitelist: bool) -> Union[List[int], bool]:
     helper = RequestHelper(user)
     courses = sorted(helper._courses)
     if not courses:
-        print("No courses available ...   (cricket sounds)")
+        print("No courses available ... (cricket sounds)")
         input()
         return True
 
@@ -519,7 +519,7 @@ def rename_courses_prompt() -> None:
     helper = RequestHelper(user)
     courses = sorted(helper._courses)
     if not courses:
-        print("No courses available ...   (cricket sounds)")
+        print("No courses available ... (cricket sounds)")
         input()
         return
 
