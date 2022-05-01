@@ -376,6 +376,9 @@ def startup() -> None:
     if os.path.exists(path(error_directory_location)) and os.listdir(path(error_directory_location)) == []:
         os.rmdir(path(error_directory_location))
 
+    if os.path.exists(isisdl_executable + ".old"):
+        os.unlink(isisdl_executable + ".old")
+
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
         os.makedirs(systemd_dir_location, exist_ok=True)
@@ -642,7 +645,7 @@ def install_latest_version() -> None:
             with open(new_isisdl, "wb") as f:
                 shutil.copyfileobj(new_file.raw, f)
 
-            os.unlink(isisdl_executable)
+            os.rename(isisdl_executable, isisdl_executable + ".old")
             shutil.copyfile(new_isisdl, isisdl_executable)
 
             st = os.stat(isisdl_executable)
