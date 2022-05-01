@@ -920,7 +920,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
-    # TODO: More conflict: If two files have the same download url (across courses), hard link them.
     for conflict in hard_link_conflicts.values():
         if len(conflict) != 1:
             conflict.sort(key=lambda x: x.time)

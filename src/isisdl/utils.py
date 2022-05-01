@@ -1124,7 +1124,7 @@ class DataLogger(Thread):
         self.messages = Queue()
         self.done = Queue()
         self.generic_msg = {
-            "username": User.sanitize_name(config.username),  # TODO
+            "username": User.sanitize_name(config.username),
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
