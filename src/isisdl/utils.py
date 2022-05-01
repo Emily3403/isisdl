@@ -642,9 +642,12 @@ def install_latest_version() -> None:
             with open(new_isisdl, "wb") as f:
                 shutil.copyfileobj(new_file.raw, f)
 
-            st = os.stat(new_isisdl)
-            os.chmod(new_isisdl, st.st_mode | stat.S_IEXEC)
-            os.replace(isisdl_executable, new_isisdl)
+            os.unlink(isisdl_executable)
+            shutil.copyfile(new_isisdl, isisdl_executable)
+
+            st = os.stat(isisdl_executable)
+            os.chmod(isisdl_executable, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
             ret = 0
 
     else:
