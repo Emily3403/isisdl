@@ -641,7 +641,7 @@ def install_latest_version() -> None:
                 sys.exit(1)
 
             new_file = requests.get(asset["browser_download_url"], stream=True)
-            new_isisdl = os.path.join(tmp, correct_name)
+            new_isisdl = os.path.join(tmp, "tmp." + correct_name)
             with open(new_isisdl, "wb") as f:
                 shutil.copyfileobj(new_file.raw, f)
 
