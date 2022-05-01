@@ -390,24 +390,22 @@ class MediaContainer:
             return False
 
         if not self.path.exists():
-            return True
-
-        actual_size = self.path.stat().st_size
-        if actual_size == 0:
-            return True
-
-        if not (self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum)):
-            return True
+            actual_size = 0
+        else:
+            actual_size = self.path.stat().st_size
 
         maybe_container = MediaContainer.from_dump(self.url, self.course)
         if isinstance(maybe_container, bool):
             return maybe_container
 
-        if self.size == self.path.stat().st_size:
+        if maybe_container.checksum is not None:
             return False
 
-        if maybe_container.checksum is None:
+        if actual_size == 0 or not (self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum)):
             return True
+
+        if self.size == actual_size:
+            return False
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
 
@@ -1035,7 +1033,7 @@ class CourseDownloader:
             collapsed_containers.sort(reverse=True, key=lambda x: x.time)
 
             for container in collapsed_containers:
-                if not container.path.exists() and container.media_type != MediaType.corrupted:
+                if container.should_download:
                     container.path.open("w").close()
 
         CourseDownloader.containers = containers

@@ -77,6 +77,7 @@ def restore_file(
         checksum = calculate_local_checksum(file)
         _checksum_cache[file] = checksum
 
+        # TODO: Also dump the new meta info about the file. This would require a dict from checksum to MediaContainer
         if checksum in checksums:
             return FileStatus.unchanged, file
 

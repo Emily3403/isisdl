@@ -116,7 +116,7 @@ Build info:
     else:
         # Main routine
         CourseDownloader().start()
-        print("Done! Have a nice day ^.^")
+        print("\nDone! Have a nice day ^.^")
 
 
 def main() -> None:
