@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 
 import isisdl.compress as compress
 from isisdl.backend import sync_database
@@ -31,9 +32,9 @@ Please press enter to continue.
 
     elif database_helper.get_database_version() < config.default("database_version"):
         if migrate_database() is False:
-            exit(1)
+            sys.exit(1)
 
-        exit(0)
+        sys.exit(0)
 
     elif args.version:
         print(f"""isisdl version {__version__}
@@ -46,49 +47,49 @@ Build info:
 {forbidden_chars = }
 {fstype = }
 """)
-        exit(0)
+        sys.exit(0)
 
     acquire_file_lock_or_exit()
 
     if args.init:
         init_wizard()
-        exit(0)
+        sys.exit(0)
 
     elif args.config:
         config_wizard()
-        exit(0)
+        sys.exit(0)
 
     elif args.export_config:
         print("Exporting current configuration ...")
         export_config()
-        exit(0)
+        sys.exit(0)
 
     elif args.delete_bad_urls:
         print("Deleting bad urls ...")
         database_helper.delete_bad_urls()
-        exit(0)
+        sys.exit(0)
 
     if not is_online:
         print("I cannot establish an internet connection.")
-        exit(1)
+        sys.exit(1)
 
     install_latest_version()
 
     if args.update:
         print("No new update available ... (cricket sounds)")
-        exit(0)
+        sys.exit(0)
 
     elif args.sync:
         sync_database.main()
-        exit(0)
+        sys.exit(0)
 
     elif args.compress:
         compress.main()
-        exit(0)
+        sys.exit(0)
 
     elif args.subscribe:
         print("Due to legal reasons, this is currently not supported. :(")
-        exit(0)
+        sys.exit(0)
 
 #         print("""Attention:
 # This option will lead to you subscribing to *every* publicly available ISIS course.
@@ -102,14 +103,14 @@ Build info:
 #
 #         input()
 #         subscribe_to_all_courses()
-#         exit(0)
+#         sys.exit(0)
 
     elif args.unsubscribe:
         print("Due to legal reasons, this is currently not supported. :(")
-        exit(0)
+        sys.exit(0)
 
         # unsubscribe_from_courses()
-        # exit(0)
+        # sys.exit(0)
 
     else:
         # Main routine

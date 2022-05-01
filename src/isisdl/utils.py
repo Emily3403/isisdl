@@ -635,7 +635,7 @@ def install_latest_version() -> None:
 
             else:
                 print(f"{error_text} I cannot find the release for your platform.")
-                exit(1)
+                sys.exit(1)
 
             new_file = requests.get(asset["browser_download_url"], stream=True)
             new_isisdl = os.path.join(tmp, correct_name)
@@ -652,10 +652,10 @@ def install_latest_version() -> None:
 
     if ret == 0:
         print("\n\nSuccessfully updated!")
-        exit(0)
+        sys.exit(0)
     else:
         print("\n\nUpdating failed… why?")
-        exit(ret)
+        sys.exit(ret)
 
 
 def path(*args: str) -> Path:

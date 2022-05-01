@@ -1062,10 +1062,9 @@ class CourseDownloader:
                 for item in row:
                     item._done = True
 
-            print("Nothing to be done ... (cricket sounds)")
             logger.done.get()
-
-            # return
+            self.message_what_did_i_do(collapsed_containers)
+            return
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()

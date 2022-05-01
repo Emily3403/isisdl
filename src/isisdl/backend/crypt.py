@@ -5,6 +5,7 @@ from typing import Optional, List
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from sys import exit
 
 from isisdl.utils import User, config, logger
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, error_text
@@ -116,7 +117,7 @@ You can either enter your password manually or rerun me with `isisdl --init` to 
                 return User(config.username, actual_password)
 
     if is_autorun:
-        exit(1)
+        sys.exit(1)
 
     # If nothing is found prompt the user
     return prompt_user()

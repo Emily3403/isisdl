@@ -15,7 +15,7 @@ from typing import List, Tuple, Optional, Dict, DefaultDict, Set, Union
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import RequestHelperStatus, Status
-from isisdl.settings import database_file_location, lock_file_location, enable_multithread
+from isisdl.settings import database_file_location, lock_file_location, enable_multithread, log_file_location
 from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType, HumanBytes
 
 _checksum_cache: Dict[Path, str] = {}
@@ -58,6 +58,7 @@ class FileStatus(enum.Enum):
 not_considered_files = {
     path(database_file_location),
     path(lock_file_location),
+    path(log_file_location)
 }
 
 

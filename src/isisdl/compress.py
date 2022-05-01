@@ -35,7 +35,7 @@ def check_ffmpeg_exists() -> None:
     else:
         print("I could not find the executable `ffmpeg` in your PATH.\nTo use the compress functionality install it with your favorite package manager.")
 
-    exit(1)
+    sys.exit(1)
 
 
 def vstream_from_probe(probe: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
