@@ -81,9 +81,7 @@ If you are having problems see the
 - `--config`: Will gide you through additional configuration.
 - `--sync`: Will synchronize the local database with ISIS.
 - `--compress`: Launches `ffmpeg` and compresses videos.
-
 [//]: # (- `--subscribe`: Subscribes you to *all* publicly available courses)
-
 [//]: # (- `--unsubscribe`: Unsubscribes you from the courses you subscribed to.)
 - `--stream`: Launches `isisdl` in streaming mode.
 
