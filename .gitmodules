@@ -1,3 +1,6 @@
 [submodule "isisdl.wiki"]
 	path = isisdl.wiki
 	url = git@github.com:Emily3403/isisdl.wiki.git
+[submodule "aur"]
+	path = aur
+	url = https://aur.archlinux.org/isisdl.git
