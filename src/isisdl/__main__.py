@@ -148,5 +148,9 @@ def main() -> None:
 #   No download status file size
 #   No sync database
 
+
+# TODO: https://github.com/marketplace/actions/create-aur-release
+
+
 if __name__ == "__main__":
     main()
