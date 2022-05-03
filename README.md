@@ -90,6 +90,7 @@ If you are having problems see the
 
 ## Future Ideas
 
+
 ### Sharing of compressed videos
 
 Compressed videos could be saved and distributed from a central server. The access would be restricted, so there is no
