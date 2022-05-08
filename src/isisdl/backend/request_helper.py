@@ -235,11 +235,11 @@ class MediaContainer:
 
         container.course = RequestHelper.course_id_mapping[course_id]
 
-        if is_testing:
-            if container.media_type == MediaType.corrupted:
-                assert container.size == 0
-            else:
-                assert container.size != 0 and container.size != -1
+        # if is_testing:
+        #     if container.media_type == MediaType.corrupted:
+        #         assert container.size == 0
+        #     else:
+        #         assert container.size != 0 and container.size != -1
 
         return container
 
