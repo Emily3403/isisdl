@@ -1157,6 +1157,9 @@ class DataLogger(Thread):
         self.messages.put(deliver)
 
     def assert_fail(self, msg: str) -> None:
+        if config.telemetry_policy is False or is_testing:
+            return
+
         self.message(f"Assertion failed: {msg}")
 
     def post(self, msg: Dict[str, Any]) -> None:
