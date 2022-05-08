@@ -1059,7 +1059,9 @@ class CourseDownloader:
                 for item in row:
                     item._done = True
 
-            logger.done.get()
+            if not (config.telemetry_policy is False or is_testing):
+                logger.done.get()
+
             self.message_what_did_i_do(collapsed_containers)
             return
 
