@@ -99,6 +99,26 @@ def analyze_users_per_day() -> None:
     plt.savefig(server_path.joinpath(log_dir_location, log_dir_version, graph_dir_location, "users_per_day.png"))
 
 
+def analyze_new_users_over_time() -> None:
+    data = get_data()
+
+    users: DefaultDict[str, int] = defaultdict(int)
+    counted: Set[str] = set()
+
+    for dat in data:
+        if dat.username in counted:
+            continue
+
+        counted.add(dat.username)
+        users[dat.time.strftime("%y-%m-%d")] += 1
+
+    keys = set(users.keys())
+    for key in users.keys():
+        i = 0
+
+    print()
+    pass
+
 def remove_bad_files() -> None:
     for file in server_path.joinpath(log_dir_location, log_dir_version).rglob("*"):
         try:
@@ -112,6 +132,7 @@ def remove_bad_files() -> None:
 
 def main() -> None:
     remove_bad_files()
+    analyze_new_users_over_time()
 
     analyze_versions()
     analyze_users_per_day()

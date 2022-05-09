@@ -64,7 +64,7 @@ yay -S isisdl
 
 ### Windows
 
-The recommended installation is by downloading the latest standalone executable from the [releases page]().
+The recommended installation is by downloading the latest standalone executable from the [releases page](https://github.com/Emily3403/isisdl/releases/latest).
 
 It does not rely on any installation or python version.
 
