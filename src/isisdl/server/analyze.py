@@ -13,6 +13,7 @@ from distlib.version import LegacyVersion
 
 from isisdl.server.server_settings import server_path, log_dir_location, log_type, log_dir_version, graph_dir_location
 
+
 # TODO:
 #   Users over time → moving average window / first time registered.
 #   Different OS versions
@@ -112,12 +113,13 @@ def analyze_new_users_over_time() -> None:
         counted.add(dat.username)
         users[dat.time.strftime("%y-%m-%d")] += 1
 
-    keys = set(users.keys())
-    for key in users.keys():
-        i = 0
+    # keys = set(users.keys())
+    # for key in users.keys():
+    #     i = 0
 
     print()
     pass
+
 
 def remove_bad_files() -> None:
     for file in server_path.joinpath(log_dir_location, log_dir_version).rglob("*"):
