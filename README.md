@@ -51,8 +51,6 @@ with `vlc` (see the `--stream` option), or if you want to start watching videos 
 
 ### Linux
 
-The recommended installation is with pip:
-
 ```shell
 pip install isisdl
 ```
