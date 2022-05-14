@@ -898,22 +898,8 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
     files = new_files
 
-    # First check for the same urls across the entire list
-    hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
-
-    for file in {file.path: file for file in files}.values():
-        hard_link_conflicts[file.download_url].append(file)
-
-    for conflict in hard_link_conflicts.values():
-        if len(conflict) != 1:
-            conflict.sort(key=lambda x: x.time)
-            conflict[0]._links.extend(conflict[1:])
-            final_list.append(conflict[0])
-            for item in conflict[0]._links:
-                files.remove(item)
-
     # Now check for files with the same size in each course
-    hard_link_conflicts = defaultdict(list)
+    hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
 
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
@@ -952,6 +938,20 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         else:
             logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
             continue
+
+    # Finally filter the remaining files based on the url
+    hard_link_conflicts = defaultdict(list)
+
+    for file in {file.path: file for file in files}.values():
+        hard_link_conflicts[file.download_url].append(file)
+
+    for conflict in hard_link_conflicts.values():
+        if len(conflict) != 1:
+            conflict.sort(key=lambda x: x.time)
+            conflict[0]._links.extend(conflict[1:])
+            final_list.append(conflict[0])
+            for item in conflict[0]._links:
+                files.remove(item)
 
     return final_list
 
