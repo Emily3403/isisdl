@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
-    This program downloads all content from your ISIS profile.""")
+    This program downloads and synchronizes all of your ISIS content.""")
 
     parser.add_argument("-t", "--max-num-threads", help="The maximum number of threads to spawn (for downloading files)\n ", type=int, default=3, metavar="{num}")
     parser.add_argument("-d", "--download-rate", help="Limits the download rate to {num} MiB/s\n ", type=float, default=None, metavar="{num}")
@@ -63,11 +63,13 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("-v", "--version", help="Print the version number and exit", action="store_true")
     operations.add_argument("--init", help="Guides you through the initial configuration and setup process.", action="store_true")
     operations.add_argument("--config", help="Guides you through additional configuration which focuses on what to download from ISIS.", action="store_true")
-    operations.add_argument("--sync", help="Synchronizes the local database with ISIS. Will delete not existent or corrupted entries.", action="store_true")
+    operations.add_argument("--sync", help="Do a full reset of the database, updating all file locations and urls.", action="store_true")
     operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
     operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
     operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
-    operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}", action="store_true")
+    if not is_windows:
+        operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}.", action="store_true")
+
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
     operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")
     operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
@@ -1136,7 +1138,7 @@ class DataLogger(Thread):
             "version": __version__,
             "current_database_version": current_database_version,
             "has_ffmpeg": has_ffmpeg,
-            "forbidden_chars": forbidden_chars,
+            "forbidden_chars": list(forbidden_chars),
             "fstype": fstype,
             "is_static": is_static,
             "time": int(time.time()),
@@ -1147,10 +1149,13 @@ class DataLogger(Thread):
         self.start()
 
     def run(self) -> None:
-        while True:
-            item = self.messages.get()
-            self.s.post("http://49.12.42.246/isisdl/", json=item)
-            self.done.put(None)
+        try:
+            while True:
+                item = self.messages.get()
+                self.s.post("http://49.12.42.246/isisdl/", json=item)
+                self.done.put(None)
+        except Exception as ex:
+            generate_error_message(ex)
 
     def message(self, msg: Union[str, Dict[str, Any]]) -> None:
         if config.telemetry_policy is False or is_testing:

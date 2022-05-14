@@ -13,9 +13,10 @@ Once all files are downloaded it takes about 5s to synchronize your files with I
 ### It downloads *everything*
 
 All the files from all of your ISIS courses are found and downloaded. Also, if a link to a file is posted on the ISIS
-page, it will get downloaded. This only works, if the file is an actual file - not a download link to a file.
+page, it will get downloaded. This might work depending on the link. Links to Google Drive and TUBCloud supported, and
+there is planned support for youtube, prezi, doi and some more libraries.
 
-Links to Google Drive and TUBCloud are also supported.
+*Note*: If you have a specific url you would like to have downloaded, feel free to submit an issue.
 
 ### Compatibility
 
@@ -64,7 +65,8 @@ yay -S isisdl
 
 ### Windows
 
-The recommended installation is by downloading the latest standalone executable from the [releases page](https://github.com/Emily3403/isisdl/releases/latest).
+The recommended installation is by downloading the latest standalone executable from
+the [releases page](https://github.com/Emily3403/isisdl/releases/latest).
 
 It does not rely on any installation or python version.
 
@@ -89,7 +91,6 @@ If you are having problems see the
 [//]: # (- `--unsubscribe`: Unsubscribes you from the courses you subscribed to.)
 
 ## Future Ideas
-
 
 ### Sharing of compressed videos
 

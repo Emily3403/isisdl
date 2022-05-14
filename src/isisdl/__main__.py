@@ -5,7 +5,7 @@ import isisdl.compress as compress
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.settings import is_first_time, is_static, current_database_version, forbidden_chars, has_ffmpeg, fstype
+from isisdl.settings import is_first_time, is_static, current_database_version, forbidden_chars, has_ffmpeg, fstype, is_windows
 from isisdl.settings import is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, \
     config, migrate_database
@@ -60,7 +60,7 @@ Build info:
         config_wizard()
         sys.exit(0)
 
-    elif args.export_config:
+    elif not is_windows and args.export_config:
         print("Exporting current configuration ...")
         export_config()
         sys.exit(0)
@@ -150,6 +150,17 @@ def main() -> None:
 
 
 # TODO: https://github.com/marketplace/actions/create-aur-release
+
+# TODO: Test if export config being dynamic leads to problems on windows
+
+# TODO: Wiki tutorial for streaming. It is *really* easy
+
+# TODO Stream: Is it problematic if the download doesnt continue for a short / long time?
+
+# TODO: Catch the bandwidth-small-error bug
+
+
+# TODO with D-VA: How problematic is WZM?
 
 
 if __name__ == "__main__":
