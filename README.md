@@ -64,10 +64,7 @@ yay -S isisdl
 ### Windows
 
 The recommended installation is by downloading the latest standalone executable from
-the [releases page](https://github.com/Emily3403/isisdl/releases/latest).
-
-Scroll down to assets and download the `isisdl-windows.exe` file. It does not rely on any installation or python
-version, simply double click it in the downloads.
+[here](https://github.com/Emily3403/isisdl/releases/latest/download/isisdl-windows.exe).
 
 There may be a Windows defender / smartscreen warning about this executable not being recognized. This is due to the fact
 that there are few Windows users. Simply ignore the warning. 

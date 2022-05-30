@@ -9,15 +9,15 @@ from isisdl.settings import working_dir_location, _working_dir_location, databas
     password_hash_algorithm, password_hash_length, download_progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, \
     enable_multithread, download_chunk_size, download_static_sleep_time, num_tries_download, download_timeout, download_timeout_multiplier, _status_time, config_dir_location, \
     example_config_file_location, config_file_location, systemd_timer_file_location, systemd_service_file_location, lock_file_location, enable_lock, error_directory_location, master_password, \
-    status_progress_bar_resolution, token_queue_refresh_rate, token_queue_download_refresh_rate, discover_num_threads, systemd_dir_location, current_database_version, error_text, \
+    status_progress_bar_resolution, token_queue_refresh_rate, token_queue_download_refresh_rate, discover_num_threads, systemd_dir_location, error_text, \
     throttler_low_prio_sleep_time, subscribed_courses_file_location, subscribe_num_threads, _config_dir_location, _config_file_location, _example_config_file_location, export_config_file_location, \
     _export_config_file_location, is_static, isisdl_executable, is_autorun
+from isisdl.utils import Config
 
 
 def test_settings() -> None:
     assert working_dir_location == os.path.join(os.path.expanduser("~"), "testisisdl")
     assert database_file_location == os.path.join(".state.db")
-    assert current_database_version == 2
 
     assert lock_file_location == ".lock"
     assert enable_lock is True
@@ -82,4 +82,4 @@ def test_settings() -> None:
 
 
 def test_database_version(database_helper: DatabaseHelper) -> None:
-    assert database_helper.get_database_version() == current_database_version
+    assert database_helper.get_database_version() == Config.default("database_version")

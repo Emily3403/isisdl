@@ -5,10 +5,10 @@ import isisdl.compress as compress
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.settings import is_first_time, is_static, current_database_version, forbidden_chars, has_ffmpeg, fstype, is_windows
+from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows
 from isisdl.settings import is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, \
-    config, migrate_database
+    config, migrate_database, Config
 from isisdl.version import __version__
 
 
@@ -43,7 +43,7 @@ Please press enter to continue.
 Build info:
 
 {is_static = }
-{current_database_version = }
+database_version = {Config.default("database_version")}
 {has_ffmpeg = }
 {forbidden_chars = }
 {fstype = }
@@ -92,19 +92,19 @@ Build info:
         print("Due to legal reasons, this is currently not supported. :(")
         sys.exit(0)
 
-#         print("""Attention:
-# This option will lead to you subscribing to *every* publicly available ISIS course.
-#
-# Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
-# This behaviour is due to the fact that the API to unsubscribe from courses
-# is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
-#
-# Please press enter to continue.
-# """)
-#
-#         input()
-#         subscribe_to_all_courses()
-#         sys.exit(0)
+    #         print("""Attention:
+    # This option will lead to you subscribing to *every* publicly available ISIS course.
+    #
+    # Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
+    # This behaviour is due to the fact that the API to unsubscribe from courses
+    # is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
+    #
+    # Please press enter to continue.
+    # """)
+    #
+    #         input()
+    #         subscribe_to_all_courses()
+    #         sys.exit(0)
 
     elif args.unsubscribe:
         print("Due to legal reasons, this is currently not supported. :(")
@@ -129,35 +129,38 @@ def main() -> None:
 # Feature discussion:
 #   Windows autorun
 #   Download of corrupted files
-#   Streaming files: Is it worth it?
-#   Other name than ISIS username
 
 
 # Suggestion for ISIS API:
 #   video server also sends the size
 
 # Main TODOS:
-#   Dynamic calc
-#   compress
-
-# https://pypi.org/project/argcomplete/
+#   Dynamic calculation of num threads for download
+#   fixing / bug hunting the compress
 
 
 # No size implies:
-#   Harder time conflicts in files
+#   More time conflicts in video files (File size from 10^9 → 10^4)
 #   No download status file size
 #   No sync database
 
 
-# TODO: https://github.com/marketplace/actions/create-aur-release
+# TODO: Isis display name change
 
-# TODO: Test if export config being dynamic leads to problems on windows
+# TODO: Throttling does not work when imposed via config ??
+
+# TODO: Argcomplete https://pypi.org/project/argcomplete/
+#  qmk can also do this
 
 # TODO: Wiki tutorial for streaming. It is *really* easy
 
 # TODO Stream: Is it problematic if the download doesnt continue for a short / long time?
 
 # TODO: Catch the bandwidth-small-error bug
+
+# TODO: Test if export config being dynamic leads to problems on windows
+
+# TODO: File list: Add path
 
 
 # TODO with D-VA: How problematic is WZM?

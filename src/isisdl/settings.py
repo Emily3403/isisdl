@@ -33,9 +33,6 @@ log_file_location = "isisdl.log"
 
 datetime_str = "%Y-%m-%d %H:%M:%S"
 
-# Fallback current database version
-current_database_version = 2
-
 # Settings for the lock
 lock_file_location = ".lock"
 enable_lock = True

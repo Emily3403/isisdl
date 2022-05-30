@@ -39,7 +39,7 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, current_database_version, has_ffmpeg, fstype
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -1136,7 +1136,7 @@ class DataLogger(Thread):
             "OS": platform.system(),
             "OS_spec": distro.id(),
             "version": __version__,
-            "current_database_version": current_database_version,
+            "database_version": Config.default("database_version"),
             "has_ffmpeg": has_ffmpeg,
             "forbidden_chars": list(forbidden_chars),
             "fstype": fstype,
