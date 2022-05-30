@@ -6,7 +6,7 @@ rm -rf venv
 python3.8 -m venv venv
 source venv/bin/activate
 pip install ..
-pip install nuitka zstandard
+pip install nuitka zstandard ordered-set
 
 nuitka3 --standalone --onefile --linux-onefile-icon=python_icon.png ../src/isisdl/__main__.py
 
