@@ -426,6 +426,7 @@ class CompressStatus(Thread):
             if info['num_processed'] == 0:
                 continue
 
+            # TODO: Indicate what the values mean
             out = f"{str(course_name_mapping[course_id]).ljust(max_course_name_len)} "
             out += f"{str(info['num_processed']).rjust(max_processed_file_len)} file{'s' if info['num_processed'] != 1 else ' '}  "
 
@@ -462,7 +463,7 @@ def compress(files: List[MediaContainer]) -> None:
                 stop_encoding = False
                 return
 
-            new_file_name = make_temp_filename(file)
+            tmp_file_name = make_temp_filename(file)
 
             if not file.path:
                 continue
@@ -474,7 +475,7 @@ def compress(files: List[MediaContainer]) -> None:
                 "-movflags", "use_metadata_tags", "-metadata", f"previous_size=\"{file.size}\"",
                 *ffmpeg_args,
                 "-x265-params", "log-level=0",
-                new_file_name
+                tmp_file_name
             ], stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, universal_newlines=True)
             current_pid = ffmpeg.pid
 
@@ -484,11 +485,11 @@ def compress(files: List[MediaContainer]) -> None:
             compress_status.done_thing(ret_code == 0)
 
             if ret_code == 0:
-                file.path.replace(new_file_name)
+                os.replace(tmp_file_name, file.path)
 
             else:
                 try:
-                    os.remove(new_file_name)
+                    os.remove(tmp_file_name)
                 except OSError:
                     pass
 
@@ -566,3 +567,4 @@ compress_thread: Optional[Thread] = None
 #   Human readable for compression score
 #   Remote compression?
 #   Online ffprobe
+#   Hard links are not handled transparently
