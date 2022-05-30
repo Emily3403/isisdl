@@ -549,7 +549,7 @@ def main() -> None:
 
         content_and_score.append((con, int(vid_probe["bit_rate"])))
 
-    content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=False)]
+    content = [item for item, _ in sorted(content_and_score, key=lambda pair: pair[1], reverse=True)]
     compress_status = CompressStatus(content + inefficient_videos + already_h265, helper)
     compress_status.start()
 
