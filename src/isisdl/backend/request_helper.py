@@ -820,8 +820,6 @@ class RequestHelper:
             all_content = []
             _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
             if _assignments is None:
-                return []
-
                 assignments = cast(Dict[str, Any], _assignments)
 
                 allowed_ids = {item.course_id for item in self.courses}
@@ -845,8 +843,6 @@ class RequestHelper:
                 generate_error_message(ex)
 
         return []
-
-
 
     def _download_videos(self, _: Any) -> List[PreMediaContainer]:
         try:
@@ -1109,7 +1105,7 @@ class CourseDownloader:
             with path(log_file_location).open() as f:
                 prev_msg = f.read()
 
-            now_msg = f"""HEEEEELLLLPPP"""
+            now_msg = """HEEEEELLLLPPP"""
 
             with path(log_file_location).open("w") as f:
                 f.write(now_msg)
