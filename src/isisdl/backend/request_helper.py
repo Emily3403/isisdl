@@ -26,7 +26,7 @@ from isisdl.settings import download_timeout, download_timeout_multiplier, downl
     extern_ignore, log_file_location, datetime_str
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
-    DownloadThrottler, MediaType
+    DownloadThrottler, MediaType, HumanBytes
 from isisdl.utils import calculate_local_checksum
 
 
@@ -843,6 +843,10 @@ class RequestHelper:
         except Exception as ex:
             with self._lock:
                 generate_error_message(ex)
+
+        return []
+
+
 
     def _download_videos(self, _: Any) -> List[PreMediaContainer]:
         try:
