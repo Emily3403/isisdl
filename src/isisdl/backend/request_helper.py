@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore
+    extern_ignore, log_file_location, datetime_str
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType
@@ -778,18 +778,14 @@ class RequestHelper:
                 # If done with .submit() one would have to wrap the function call into a `Future` which is too cumbersome.
                 _mod_assign = ex.map(self._download_mod_assign, [0])
                 _video_containers = ex.map(self._download_videos, [0])
-
                 _document_containers = ex.map(self._download_documents, self.courses, repeat(status))
-                _mod_assign = ex.map(self._download_mod_assign, [0])
-                _document_containers = ex.map(self._download_documents, self.courses, repeat(exception_lock))
-                _video_containers = ex.map(self._download_videos, self.courses, repeat(exception_lock), repeat(status))
 
         else:
             _mod_assign = iter([self._download_mod_assign(0)])
             _video_containers = iter([self._download_videos(0)])
             _document_containers = iter([self._download_documents(course, status) for course in self.courses])
 
-        pre_containers = [item for row in chain(_document_containers, _video_containers, _mod_assign) for item in row]
+        pre_containers = [item for row in filter(lambda x: x is not None, chain(_document_containers, _video_containers, _mod_assign)) for item in row]
         pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
 
@@ -820,28 +816,29 @@ class RequestHelper:
         return {typ: sorted(item, key=lambda x: x.time, reverse=True) for typ, item in mapping.items()}
 
     def _download_mod_assign(self, _: Any = None) -> List[PreMediaContainer]:
-        all_content = []
-        _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
-        if _assignments is None:
-            return []
+        try:
+            all_content = []
+            _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
+            if _assignments is None:
+                return []
 
-            assignments = cast(Dict[str, Any], _assignments)
+                assignments = cast(Dict[str, Any], _assignments)
 
-            allowed_ids = {item.course_id for item in self.courses}
-            for _course in assignments["courses"]:
-                if _course["id"] in allowed_ids:
-                    for assignment in _course["assignments"]:
-                        if "introattachments" not in assignment:
-                            continue
+                allowed_ids = {item.course_id for item in self.courses}
+                for _course in assignments["courses"]:
+                    if _course["id"] in allowed_ids:
+                        for assignment in _course["assignments"]:
+                            if "introattachments" not in assignment:
+                                continue
 
-                        for file in assignment["introattachments"]:
-                            file["filepath"] = assignment["name"]
-                            all_content.append(PreMediaContainer(
-                                file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                file["filename"], file["filepath"], file["filesize"], file["timemodified"])
-                            )
+                            for file in assignment["introattachments"]:
+                                file["filepath"] = assignment["name"]
+                                all_content.append(PreMediaContainer(
+                                    file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                    file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                                )
 
-            return all_content
+                return all_content
 
         except Exception as ex:
             with self._lock:
