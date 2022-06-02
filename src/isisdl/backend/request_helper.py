@@ -28,6 +28,7 @@ from isisdl.settings import enable_multithread, discover_num_threads, is_windows
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes
 from isisdl.utils import calculate_local_checksum
+from isisdl.version import __version__
 
 
 class SessionWithKey(Session):
@@ -1105,7 +1106,23 @@ class CourseDownloader:
             with path(log_file_location).open() as f:
                 prev_msg = f.read()
 
-            now_msg = """HEEEEELLLLPPP"""
+            now_msg = f"""
+===== {datetime.now().strftime(datetime_str)} =====
+
+Running isisdl version {__version__}
+
+Newly downloaded files:
+
+{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_downloaded) or "None"}
+
+
+Newly discovered files:
+
+{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_discovered) or "None"}
+
+
+
+"""
 
             with path(log_file_location).open("w") as f:
                 f.write(now_msg)
