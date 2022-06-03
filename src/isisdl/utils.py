@@ -605,10 +605,18 @@ def install_latest_version() -> None:
     if config.update_policy is None:
         return
 
+    if is_static and "github" not in config.update_policy:
+        print(f'''{error_text} the update policy specified is {config.update_policy!r}.
+Allowed values are {{"notify github", "install github"}}.
+
+Please run `isisdl --init` to resolve this issue!
+''')
+        os._exit(1)
+
     version_github = check_github_for_version()
     version_pypi = check_pypi_for_version()
 
-    new_version = version_github if config.update_policy.endswith("github") else version_pypi
+    new_version = version_github if config.update_policy.endswith("github") or is_static else version_pypi
 
     if new_version is None:
         return
