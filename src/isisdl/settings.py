@@ -53,7 +53,7 @@ error_directory_location = ".errors"
 error_text = "\033[1;91mError:\033[0m"
 
 # Static settings
-is_static = True
+is_static = False
 
 if is_static:
     isisdl_executable = os.path.realpath(sys.argv[0])
