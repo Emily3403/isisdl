@@ -970,7 +970,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
             for item in conflict[0]._links:
                 final_list.remove(item)
 
-
     return [file for file in final_list if file.url not in conflict_urls] + new_files
 
 
