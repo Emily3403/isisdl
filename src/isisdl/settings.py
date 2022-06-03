@@ -205,6 +205,7 @@ url_finder = re.compile(_url_finder)
 # Testing urls to be excluded. We know that they will not lead to a valid download.
 testing_bad_urls: Set[str] = {
     'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj',
+    'https://www.eecs.tu-berlin.de/fileadmin/f4/fkIVdokumente/studium/Plagiate/Merkblatt_Plagiate_Fak.IV_05-2020.pdf'
 }
 
 # Ignore mod/{whatever} isis urls
