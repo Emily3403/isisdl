@@ -13,7 +13,7 @@ from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict, Tuple
+from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict, Tuple, Set
 from urllib.parse import urlparse
 
 from requests import Session, Response
@@ -948,21 +948,30 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
             logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
             continue
 
+    # TODO: This takes too long.
+
     # Finally filter the remaining files based on the url
     hard_link_conflicts = defaultdict(list)
 
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[file.download_url].append(file)
 
+    conflict_urls: Set[str] = set()
+    new_files = []
+
     for conflict in hard_link_conflicts.values():
         if len(conflict) != 1:
             conflict.sort(key=lambda x: x.time)
             conflict[0]._links.extend(conflict[1:])
+            conflict_urls.add(conflict[0].url)
+            new_files.append(conflict[0])
+
             final_list.append(conflict[0])
             for item in conflict[0]._links:
-                files.remove(item)
+                final_list.remove(item)
 
-    return final_list
+
+    return [file for file in final_list if file.url not in conflict_urls] + new_files
 
 
 class Downloader(Thread):
