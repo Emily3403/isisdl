@@ -1063,16 +1063,16 @@ class CourseDownloader:
             "config": conf,
         })
 
-        # if not any(item.should_download for row in containers.values() for item in row):
-        #     for row in containers.values():
-        #         for item in row:
-        #             item._done = True
-        #
-        #     if not (config.telemetry_policy is False or is_testing):
-        #         logger.done.get()
-        #
-        #     self.message_what_did_i_do(collapsed_containers)
-        #     return
+        if not any(item.should_download for row in containers.values() for item in row):
+            for row in containers.values():
+                for item in row:
+                    item._done = True
+
+            if not (config.telemetry_policy is False or is_testing):
+                logger.done.get()
+
+            self.message_what_did_i_do(collapsed_containers)
+            return
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
         throttler = DownloadThrottler()
