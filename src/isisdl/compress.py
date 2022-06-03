@@ -566,5 +566,4 @@ compress_thread: Optional[Thread] = None
 # TODO:
 #   Human readable for compression score
 #   Remote compression?
-#   Online ffprobe
 #   Hard links are not handled transparently

@@ -18,12 +18,15 @@ Interestingly enough different python version yield different speed.
 
 This is a comparison between them:
 
-python 3.8: [7.87, 7.02, 6.91, 7.07, 7.29] → 7.232
-python 3.9: [6.70, 6.66, 7.06, 6.72, 6.68] → 6.764
+python 3.8:  [7.87, 7.02, 6.91, 7.07, 7.29] → 7.232
+python 3.9:  [6.70, 6.66, 7.06, 6.72, 6.68] → 6.764
 python 3.10: [6.71, 6.05, 5.89, 6.16, 6.56] → 6.273
   → with optimizations: [6.98, 6.64, 6.33, 6.88, 7.02] →
 python 3.11: [6.34, 6.49, 6.04, 6.02, 6.42] → 6.262
 
 static version:
+python 3.8:  [6.91, 7.03, 7.16, 7.43, 7.36] → 7.178
+python 3.10: [7.11, 7.10, 7.32, 7.04, 7.01] → 7.116
+ (clang)     [] →
 
 

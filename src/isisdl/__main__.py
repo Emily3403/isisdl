@@ -160,8 +160,6 @@ def main() -> None:
 
 # TODO: Test if export config being dynamic leads to problems on windows
 
-# TODO: File list: Add path
-
 
 # TODO with D-VA: How problematic is WZM?
 

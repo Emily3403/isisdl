@@ -629,7 +629,6 @@ def install_latest_version() -> None:
     elif "github" in config.update_policy and is_static is False:
         ret = subprocess.call([sys.executable, "-m", "pip", "install", "git+https://github.com/Emily3403/isisdl"])
 
-    # TODO: test if this will work
     elif "github" in config.update_policy and is_static:
         with TemporaryDirectory() as tmp:
             assets = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()["assets"]

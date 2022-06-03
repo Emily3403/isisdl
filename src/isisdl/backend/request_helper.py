@@ -415,7 +415,7 @@ class MediaContainer:
 
     def string_dump(self) -> str:
         return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size)}\n" \
-               f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\n"
+               f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
 
     def __str__(self) -> str:
         if config.absolute_path_filename:
@@ -913,7 +913,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
-    # TODO: More conflict: If two files have the same download url (across courses), hard link them.
     for conflict in hard_link_conflicts.values():
         if len(conflict) != 1:
             conflict.sort(key=lambda x: x.time)
