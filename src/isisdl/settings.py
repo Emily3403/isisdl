@@ -63,6 +63,9 @@ else:
 # A constant to detect if you are on Windows.
 is_windows = platform.system() == "Windows"
 
+# A constant to detect if you are on macOS.
+is_macos = platform.system() == "Darwin"
+
 # If the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
