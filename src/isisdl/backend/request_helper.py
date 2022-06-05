@@ -24,7 +24,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
     extern_ignore, log_file_location, datetime_str
-from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_testing, testing_bad_urls, url_finder, isis_ignore
+from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes
 from isisdl.utils import calculate_local_checksum
@@ -1144,7 +1144,7 @@ Newly discovered files:
             pass
 
     def stream_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, status: DownloadStatus, session: SessionWithKey) -> None:
-        if is_windows:
+        if is_windows or is_macos:
             return
 
         import pyinotify
