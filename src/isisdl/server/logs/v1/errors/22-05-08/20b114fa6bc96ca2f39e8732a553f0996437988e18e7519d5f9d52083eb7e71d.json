@@ -1,0 +1,10 @@
+{
+    "username": null,
+    "OS": "Darwin",
+    "OS_spec": "darwin",
+    "version": "1.3.6",
+    "is_static": false,
+    "time": 1652005483,
+    "is_first_time": true,
+    "message": "Assertion failed: Systemd not installed"
+}

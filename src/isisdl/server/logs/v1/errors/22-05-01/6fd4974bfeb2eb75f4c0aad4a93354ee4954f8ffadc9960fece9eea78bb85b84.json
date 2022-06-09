@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Windows",
+    "OS_spec": "",
+    "version": "1.3.5",
+    "is_static": true,
+    "time": 1651447343,
+    "is_first_time": false,
+    "message": "Assertion failed: conflict: [{'_name': 'JAX.png', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877222/mod_folder/content/6/images/JAX.png', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877222/mod_folder/content/6/images/JAX.png', 'path': WindowsPath('C:/Users/seebe/isisdl/[SoSe 21] PyML/images/JAX.png'), 'time': 1588697846, 'course': Python Programming for Machine Learning, 'media_type': <MediaType.document: 1>, 'size': 34025, '_links': [], 'checksum': None, 'current_size': None, '_stop': False, '_done': False, '_newly_downloaded': False, '_newly_discovered': True}, {'_name': 'JAX.png', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877228/mod_folder/content/3/images/JAX.png', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877228/mod_folder/content/3/images/JAX.png', 'path': WindowsPath('C:/Users/seebe/isisdl/[SoSe 21] PyML/images/JAX.png'), 'time': 1606151828, 'course': Python Programming for Machine Learning, 'media_type': <MediaType.document: 1>, 'size': 34025, '_links': [], 'checksum': None, 'current_size': None, '_stop': False, '_done': False, '_newly_downloaded': False, '_newly_discovered': True}, {'_name': 'jax.png', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877209/mod_folder/content/6/images/jax.png', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1877209/mod_folder/content/6/images/jax.png', 'path': WindowsPath('C:/Users/seebe/isisdl/[SoSe 21] PyML/images/jax.png'), 'time': 1618238121, 'course': Python Programming for Machine Learning, 'media_type': <MediaType.document: 1>, 'size': 144244, '_links': [], 'checksum': None, 'current_size': None, '_stop': False, '_done': False, '_newly_downloaded': False, '_newly_discovered': True}]"
+}

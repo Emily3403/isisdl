@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.7",
+    "is_static": false,
+    "time": 1650214395,
+    "is_first_time": false,
+    "message": "Assertion failed: conflict: [{'_name': 'ImageData.zip', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1473172/mod_resource/content/1/ImageData.zip', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1473172/mod_resource/content/1/ImageData.zip', 'path': PosixPath('/home/emily/isisdl/MIP 2019/ImageData.zip'), 'time': 1571299542, 'course': MIP 2019 (17170), 'media_type': <MediaType.document: 1>, 'size': 1065672, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'ImageData.zip', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1483937/mod_resource/content/1/ImageData.zip', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1483937/mod_resource/content/1/ImageData.zip', 'path': PosixPath('/home/emily/isisdl/MIP 2019/ImageData.zip'), 'time': 1571909972, 'course': MIP 2019 (17170), 'media_type': <MediaType.document: 1>, 'size': 3785753, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'ImageData.zip', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1493189/mod_resource/content/1/ImageData.zip', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1493189/mod_resource/content/1/ImageData.zip', 'path': PosixPath('/home/emily/isisdl/MIP 2019/ImageData.zip'), 'time': 1573122628, 'course': MIP 2019 (17170), 'media_type': <MediaType.document: 1>, 'size': 442060, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'ImageData.zip', 'url': 'https://isis.tu-berlin.de/mod/resource/view.php?id=762818', 'download_url': 'https://isis.tu-berlin.de/mod/resource/view.php?id=762818', 'path': PosixPath('/home/emily/isisdl/MIP 2019/ImageData.zip'), 'time': 1573122628, 'course': MIP 2019 (17170), 'media_type': <MediaType.extern: 2>, 'size': 442060, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}]"
+}

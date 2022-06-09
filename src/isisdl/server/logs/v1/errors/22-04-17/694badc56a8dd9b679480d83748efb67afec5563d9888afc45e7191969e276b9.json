@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.7",
+    "is_static": false,
+    "time": 1650207556,
+    "is_first_time": false,
+    "message": "Assertion failed: re.match(\".*mod/(?:folder|resource|url)/.*\", url) is None\n\nCurrent url: https://isis.tu-berlin.de/mod/journal/view.php?id=952831"
+}

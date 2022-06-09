@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.7",
+    "is_static": false,
+    "time": 1650214395,
+    "is_first_time": false,
+    "message": "Assertion failed: conflict: [{'_name': 'STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1127442/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1127442/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'path': PosixPath('/home/emily/isisdl/IIT - EMP WS 1819/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt'), 'time': 1542185530, 'course': IIT - EMP WS 1819 (14037), 'media_type': <MediaType.document: 1>, 'size': 729088, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1133471/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1133471/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'path': PosixPath('/home/emily/isisdl/IIT - EMP WS 1819/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt'), 'time': 1543322886, 'course': IIT - EMP WS 1819 (14037), 'media_type': <MediaType.document: 1>, 'size': 946176, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1133479/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1133479/mod_resource/content/1/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt', 'path': PosixPath('/home/emily/isisdl/IIT - EMP WS 1819/STC_CH_DA_Seitenplatten_V3_Rechts_NA.prt'), 'time': 1543323102, 'course': IIT - EMP WS 1819 (14037), 'media_type': <MediaType.document: 1>, 'size': 946176, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}]"
+}

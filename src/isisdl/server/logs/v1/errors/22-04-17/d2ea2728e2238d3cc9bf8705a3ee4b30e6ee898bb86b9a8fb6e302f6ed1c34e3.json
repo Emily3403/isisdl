@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.7",
+    "is_static": false,
+    "time": 1650214395,
+    "is_first_time": false,
+    "message": "Assertion failed: conflict: [{'_name': 'Parameters.csv', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1595072/mod_folder/content/1/Parameters.csv', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1595072/mod_folder/content/1/Parameters.csv', 'path': PosixPath('/home/emily/isisdl/CCESD 20/Parameters.csv'), 'time': 1587571230, 'course': CCESD 20 (18584), 'media_type': <MediaType.document: 1>, 'size': 380, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'Parameters.csv', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1630884/mod_folder/content/1/Parameters.csv', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1630884/mod_folder/content/1/Parameters.csv', 'path': PosixPath('/home/emily/isisdl/CCESD 20/Parameters.csv'), 'time': 1590590461, 'course': CCESD 20 (18584), 'media_type': <MediaType.document: 1>, 'size': 612, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'Parameters.csv', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1645461/mod_folder/content/1/Parameters.csv', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/1645461/mod_folder/content/1/Parameters.csv', 'path': PosixPath('/home/emily/isisdl/CCESD 20/Parameters.csv'), 'time': 1592390200, 'course': CCESD 20 (18584), 'media_type': <MediaType.document: 1>, 'size': 612, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}]"
+}

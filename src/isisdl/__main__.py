@@ -153,6 +153,8 @@ def main() -> None:
 
 # TODO: Isis display name change
 
+# TODO: static builds from github runners
+
 # TODO: change settings to posix / linux and do things accordingly.
 
 # TODO: Throttling does not work when imposed via config ??

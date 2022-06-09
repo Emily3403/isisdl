@@ -1,0 +1,10 @@
+{
+    "username": "emily3403",
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.7",
+    "is_static": false,
+    "time": 1650214395,
+    "is_first_time": false,
+    "message": "Assertion failed: conflict: [{'_name': 'Hausaufgabe 8.pdf', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/958209/mod_resource/content/0/Hausaufgabe%208.pdf', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/958209/mod_resource/content/0/Hausaufgabe%208.pdf', 'path': PosixPath('/home/emily/isisdl/Ana2 SS2018/Hausaufgabe 8.pdf'), 'time': 1529065885, 'course': Ana2 SS2018 (12561), 'media_type': <MediaType.document: 1>, 'size': 126667, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'Hausaufgabe 8.pdf', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/960664/mod_resource/content/0/Hausaufgabe%208.pdf', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/960664/mod_resource/content/0/Hausaufgabe%208.pdf', 'path': PosixPath('/home/emily/isisdl/Ana2 SS2018/Hausaufgabe 8.pdf'), 'time': 1529915655, 'course': Ana2 SS2018 (12561), 'media_type': <MediaType.document: 1>, 'size': 157363, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}, {'_name': 'Hausaufgabe 8.pdf', 'url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/965382/mod_folder/content/9/Hausaufgabe%208.pdf', 'download_url': 'https://isis.tu-berlin.de/webservice/pluginfile.php/965382/mod_folder/content/9/Hausaufgabe%208.pdf', 'path': PosixPath('/home/emily/isisdl/Ana2 SS2018/Hausaufgabe 8.pdf'), 'time': 1531312476, 'course': Ana2 SS2018 (12561), 'media_type': <MediaType.document: 1>, 'size': 157363, 'checksum': None, 'current_size': None, '_stop': False, '_links': [], '_done': False}]"
+}

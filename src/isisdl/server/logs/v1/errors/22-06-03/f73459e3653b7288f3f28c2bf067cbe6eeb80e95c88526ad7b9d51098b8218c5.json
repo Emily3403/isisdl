@@ -1,0 +1,9 @@
+{
+    "username": null,
+    "OS": "Linux",
+    "OS_spec": "garuda",
+    "version": "1.2.0",
+    "time": 1654209009,
+    "is_first_time": true,
+    "message": "Assertion failed: re.match(\".*mod/(?:folder|resource)/.*\", url) is None\n\nCurrent url: https://isis.tu-berlin.de/mod/book/view.php?id=924827"
+}
