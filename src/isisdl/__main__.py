@@ -19,7 +19,7 @@ Running on {"MacOS" if is_macos else "Windows" if is_windows else "Linux"}
 This is {"" if is_static else "not"} the compiled version
 
 working directory: {working_dir_location}
-python executable: {python_executable} 
+python executable: {python_executable}
 
 database_version = {Config.default("database_version")}
 {has_ffmpeg = }
