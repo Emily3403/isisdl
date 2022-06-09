@@ -11,7 +11,7 @@ from isisdl.settings import working_dir_location, _working_dir_location, databas
     example_config_file_location, config_file_location, systemd_timer_file_location, systemd_service_file_location, lock_file_location, enable_lock, error_directory_location, master_password, \
     status_progress_bar_resolution, token_queue_refresh_rate, token_queue_download_refresh_rate, discover_num_threads, systemd_dir_location, error_text, \
     throttler_low_prio_sleep_time, subscribed_courses_file_location, subscribe_num_threads, _config_dir_location, _config_file_location, _example_config_file_location, export_config_file_location, \
-    _export_config_file_location, is_static, isisdl_executable, is_autorun
+    _export_config_file_location, is_static, python_executable, is_autorun
 from isisdl.utils import Config
 
 
@@ -29,7 +29,7 @@ def test_settings() -> None:
     assert error_text == "\033[1;91mError:\033[0m"
 
     assert is_static is False
-    assert isisdl_executable == sys.executable
+    assert python_executable == sys.executable
     assert is_autorun is False
 
     assert checksum_algorithm == sha256

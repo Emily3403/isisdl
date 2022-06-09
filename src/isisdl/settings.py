@@ -56,9 +56,9 @@ error_text = "\033[1;91mError:\033[0m"
 is_static = False
 
 if is_static:
-    isisdl_executable = os.path.realpath(sys.argv[0])
+    python_executable = os.path.realpath(sys.argv[0])
 else:
-    isisdl_executable = sys.executable
+    python_executable = sys.executable
 
 # A constant to detect if you are on Windows.
 is_windows = platform.system() == "Windows"

@@ -5,11 +5,27 @@ import isisdl.compress as compress
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows
+from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos
 from isisdl.settings import is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, \
     config, migrate_database, Config
 from isisdl.version import __version__
+
+
+def print_version() -> None:
+    print(f"""isisdl version {__version__}
+
+Running on {"MacOS" if is_macos else "Windows" if is_windows else "Linux"}
+This is {"" if is_static else "not"} the compiled version
+
+working directory: {working_dir_location}
+python executable: {python_executable} 
+
+database_version = {Config.default("database_version")}
+{has_ffmpeg = }
+{forbidden_chars = }
+{fstype = }
+""")
 
 
 def _main() -> None:
@@ -37,17 +53,7 @@ Please press enter to continue.
         sys.exit(0)
 
     elif args.version:
-        print(f"""isisdl version {__version__}
-
-
-Build info:
-
-{is_static = }
-database_version = {Config.default("database_version")}
-{has_ffmpeg = }
-{forbidden_chars = }
-{fstype = }
-""")
+        print_version()
         sys.exit(0)
 
     acquire_file_lock_or_exit()
@@ -146,6 +152,8 @@ def main() -> None:
 
 
 # TODO: Isis display name change
+
+# TODO: change settings to posix / linux and do things accordingly.
 
 # TODO: Throttling does not work when imposed via config ??
 

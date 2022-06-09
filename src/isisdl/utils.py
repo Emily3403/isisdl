@@ -43,7 +43,7 @@ from isisdl.settings import download_chunk_size, token_queue_download_refresh_ra
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
-    isisdl_executable, is_static, enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
+    python_executable, is_static, enable_multithread, subscribe_num_threads, subscribed_courses_file_location, error_text, token_queue_refresh_rate
 from isisdl.version import __version__
 
 if TYPE_CHECKING:
@@ -378,8 +378,8 @@ def startup() -> None:
     if os.path.exists(path(error_directory_location)) and os.listdir(path(error_directory_location)) == []:
         os.rmdir(path(error_directory_location))
 
-    if os.path.exists(isisdl_executable + ".old"):
-        os.unlink(isisdl_executable + ".old")
+    if os.path.exists(python_executable + ".old"):
+        os.unlink(python_executable + ".old")
 
     if not is_windows:
         os.makedirs(path(config_dir_location), exist_ok=True)
@@ -654,11 +654,11 @@ Please run `isisdl --init` to resolve this issue!
             with open(new_isisdl, "wb") as f:
                 shutil.copyfileobj(new_file.raw, f)
 
-            os.rename(isisdl_executable, isisdl_executable + ".old")
-            shutil.copyfile(new_isisdl, isisdl_executable)
+            os.rename(python_executable, python_executable + ".old")
+            shutil.copyfile(new_isisdl, python_executable)
 
-            st = os.stat(isisdl_executable)
-            os.chmod(isisdl_executable, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            st = os.stat(python_executable)
+            os.chmod(python_executable, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
             ret = 0
 
@@ -703,7 +703,7 @@ Wants=isisdl.timer
 
 [Service]
 Type=oneshot
-ExecStart={isisdl_executable} {isisdl.autorun.__file__}
+ExecStart={python_executable} {isisdl.autorun.__file__}
 
 [Install]
 WantedBy=multi-user.target

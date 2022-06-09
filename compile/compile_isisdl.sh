@@ -6,6 +6,13 @@ rm -rf venv
 python3.10 -m venv venv
 source venv/bin/activate
 pip install ..
+
+
+python3 -c "from isisdl.settings import is_static
+assert(is_static)
+" || exit 1
+
+
 pip install nuitka zstandard ordered-set
 
 nuitka3 --standalone --onefile --linux-onefile-icon=python_icon.png ../src/isisdl/__main__.py
