@@ -53,7 +53,7 @@ error_directory_location = ".errors"
 error_text = "\033[1;91mError:\033[0m"
 
 # Static settings
-is_static = False
+is_static = True
 
 if is_static:
     python_executable = os.path.realpath(sys.argv[0])

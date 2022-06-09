@@ -16,7 +16,7 @@ def print_version() -> None:
     print(f"""isisdl version {__version__}
 
 Running on {"MacOS" if is_macos else "Windows" if is_windows else "Linux"}
-This is {"" if is_static else "not"} the compiled version
+This is{"" if is_static else " not"} the compiled version
 
 working directory: {working_dir_location}
 python executable: {python_executable}
