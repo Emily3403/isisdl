@@ -210,14 +210,26 @@ testing_bad_urls: Set[str] = {
     'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj',
 }
 
+# @formatter:off
+# In order to maintain a sense of order in the regex it is indented. Flake8 / PyCharm formatter do not seem to like that ...
+
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
-    ".*isis.tu-berlin.de/mod/(?:"
-    "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"
-    "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
-    "|organizer|registration|journal|workshop|survey"
+    ".*isis.tu-berlin.de/(?:"
+        "mod/(?:"  # noqa:E131
+            "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
+            "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"  # noqa:E131
+            "|organizer|registration|journal|workshop|survey|"  # noqa:E131
+        ")"  # noqa:E131
+    "|"
+        "availabilicy/condition/shibboleth2fa"
+    "|"
+        "course"
+    "|"
+        "theme/image.php"  # noqa:E131
     ")/.*"
 )
+# @formatter:on
 
 extern_ignore = re.compile(
     ".*(?:"

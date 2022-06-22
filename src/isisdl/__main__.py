@@ -94,14 +94,14 @@ Please press enter to continue.
         compress.main()
         sys.exit(0)
 
-    elif args.subscribe:
-        print("Due to legal reasons, this is currently not supported. :(")
-        sys.exit(0)
+    # elif args.subscribe:
+    #    print("Due to legal reasons, this is currently not supported. :(")
+    #    sys.exit(0)
 
     #         print("""Attention:
     # This option will lead to you subscribing to *every* publicly available ISIS course.
     #
-    # Subscribing will be quite fast 10-20s, but unsubscribing takes a few minutes.
+    # Subscribing will be quite fast 10-20s, but unsubscribing takes a fe-minutes.
     # This behaviour is due to the fact that the API to unsubscribe from courses
     # is not yet implemented. (https://tracker.moodle.org/browse/MDL-64255)
     #
@@ -112,9 +112,9 @@ Please press enter to continue.
     #         subscribe_to_all_courses()
     #         sys.exit(0)
 
-    elif args.unsubscribe:
-        print("Due to legal reasons, this is currently not supported. :(")
-        sys.exit(0)
+    # elif args.unsubscribe:
+    #     print("Due to legal reasons, this is currently not supported. :(")
+    #     sys.exit(0)
 
         # unsubscribe_from_courses()
         # sys.exit(0)

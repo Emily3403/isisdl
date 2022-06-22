@@ -4,3 +4,6 @@
 [submodule "aur"]
 	path = aur
 	url = https://aur.archlinux.org/isisdl.git
+[submodule "tldr"]
+	path = tldr
+	url = git@github.com:Emily3403/tldr.git

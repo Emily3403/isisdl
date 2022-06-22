@@ -65,8 +65,8 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--config", help="Guides you through additional configuration which focuses on what to download from ISIS.", action="store_true")
     operations.add_argument("--sync", help="Do a full reset of the database, updating all file locations and urls.", action="store_true")
     operations.add_argument("--compress", help="Starts ffmpeg and will compress all downloaded videos.", action="store_true")
-    operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
-    operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
+    # operations.add_argument("--subscribe", help="Subscribes you to *all* ISIS courses publicly available.", action="store_true")
+    # operations.add_argument("--unsubscribe", help="Unsubscribes you from the courses you got subscribed by running `isisdl --subscribe`.", action="store_true")
     if not is_windows:
         operations.add_argument("--export-config", help=f"Exports the config to {export_config_file_location}.", action="store_true")
 
@@ -675,6 +675,13 @@ Please run `isisdl --init` to resolve this issue!
 
 def path(*args: str) -> Path:
     return Path(working_dir_location, *args)
+
+
+def normalize_url(url: str) -> str:
+    if url.endswith("?forcedownload=1"):
+        url = url[:-len("?forcedownload=1")]
+
+    return url
 
 
 def remove_systemd_timer() -> None:

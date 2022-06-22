@@ -26,7 +26,7 @@ from isisdl.settings import download_timeout, download_timeout_multiplier, downl
     extern_ignore, log_file_location, datetime_str
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
-    DownloadThrottler, MediaType, HumanBytes
+    DownloadThrottler, MediaType, HumanBytes, normalize_url
 from isisdl.utils import calculate_local_checksum
 from isisdl.version import __version__
 
@@ -154,10 +154,7 @@ class PreMediaContainer:
         if config.make_subdirs is False:
             relative_location = ""
 
-        if url.endswith("?forcedownload=1"):
-            url = url[:-len("?forcedownload=1")]
-
-        self.url = url
+        self.url = normalize_url(url)
         self._name = name
         self.time = time
         self.size = size
@@ -588,6 +585,7 @@ class Course:
 
         content = cast(List[Dict[str, Any]], content)
         all_content: List[PreMediaContainer] = []
+        parsed_url_ids = set()
 
         for week in content:
             if "modules" not in week:
@@ -595,13 +593,7 @@ class Course:
 
             module: Dict[str, Any]
             for module in week["modules"]:
-                # Check if the description contains url's to be followed
-                if "description" in module:
-                    links = url_finder.findall(module["description"])
-                    for link in links:
-                        parse = urlparse(link)
-                        if parse.scheme and parse.netloc and config.follow_links and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
-                            all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
+                parsed_url_ids.add(str(module["id"]))
 
                 if "url" not in module:
                     continue
@@ -625,11 +617,27 @@ class Course:
 
                 if "contents" in module:
                     for file in module["contents"]:
-                        if config.follow_links and "type" in file and file["type"] == "url" and "fileurl" in file and extern_ignore.match(file["fileurl"]) is None and isis_ignore.match(
-                                file["fileurl"]) is None:
+                        if config.follow_links and "type" in file and file["type"] == "url" and "fileurl" in file and extern_ignore.match(file["fileurl"]) is None \
+                                and isis_ignore.match(file["fileurl"]) is None:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
+
+        if config.follow_links is False:
+            return all_content
+
+        # Now check all links to find those that were not parsed yet
+        links = {normalize_url(url) for url in url_finder.findall(str(content))} - {item.url for item in all_content} - parsed_url_ids
+        _links = []
+        for link in links:
+            possible_id = re.findall(r"https://isis\.tu-berlin\.de/.*/view\.php\?id=(\d*).*", link)
+            if possible_id is not None and len(possible_id) == 1 and possible_id[0] in parsed_url_ids:
+                continue
+
+            parse = urlparse(link)
+            if parse.scheme and parse.netloc and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
+                all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
+                _links.append(link)
 
         return all_content
 
@@ -769,6 +777,14 @@ class RequestHelper:
 
         return response.json()
 
+    @staticmethod
+    def analyze_most_common_urls(pre_containers: List[PreMediaContainer]) -> None:
+        urls: DefaultDict[Optional[str], int] = defaultdict(int)
+        for container in pre_containers:
+            urls[urlparse(container.url).hostname] += 1
+
+        pass
+
     def download_content(self, status: Optional[RequestHelperStatus] = None) -> Dict[MediaType, List[MediaContainer]]:
         if status is not None:
             status.set_total(len(self.courses))
@@ -789,6 +805,8 @@ class RequestHelper:
         pre_containers = [item for row in filter(lambda x: x is not None, chain(_document_containers, _video_containers, _mod_assign)) for item in row]
         pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
+
+        self.analyze_most_common_urls(pre_containers)
 
         if (num_cached := sum(pre_container.is_cached for pre_container in pre_containers)) != len(pre_containers):
             if status is not None:
