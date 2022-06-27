@@ -408,7 +408,8 @@ class MediaContainer:
 
     def hardlink(self, other: MediaContainer) -> None:
         # TODO: Remove
-        assert self.should_download
+        if is_testing:
+            assert self.should_download
 
         self.current_size = other.current_size
         self.media_type = other.media_type
@@ -490,6 +491,10 @@ class MediaContainer:
             if self.media_type != MediaType.video:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
+
+            for link in self._links:
+                if link.should_download:
+                    link.hardlink(self)
 
             self.dump()
             return
