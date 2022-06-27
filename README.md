@@ -80,7 +80,7 @@ If you are having problems see the
 
 - `--help`: Displays a helpful message.
 - `--init`: Will guide you through the base configuration.
-- `--config`: Will gide you through additional configuration.
+- `--config`: Will guide you through additional configuration.
 - `--sync`: Will synchronize the local database with ISIS.
 - `--compress`: Launches `ffmpeg` and compresses videos.
 - `--stream`: Launches `isisdl` in streaming mode.
