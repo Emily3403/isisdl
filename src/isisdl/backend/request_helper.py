@@ -406,6 +406,20 @@ class MediaContainer:
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
 
+    def hardlink(self, other: MediaContainer) -> None:
+        # TODO: Remove
+        assert self.should_download
+
+        self.current_size = other.current_size
+        self.media_type = other.media_type
+        self.checksum = other.checksum
+
+        self.path.unlink(missing_ok=True)
+        os.link(other.path, self.path)
+
+        self.dump()
+        self._done = True
+
     def dump(self) -> MediaContainer:
         database_helper.add_pre_container(self)
         return self
@@ -469,6 +483,10 @@ class MediaContainer:
         download = session.get_(self.download_url, params={"token": session.token}, stream=True)
 
         if download is None or not download.ok:
+            if self.media_type == MediaType.video:
+                # The video server is sometimes unreliable but it _should_ always work. Don't add the file to the bad urls then.
+                return
+
             self.size = 0
             self.current_size = None
             self.media_type = MediaType.corrupted
@@ -525,14 +543,8 @@ class MediaContainer:
                 assert link.size == self.size
                 assert link._links == []
 
-            link.current_size = self.current_size
-            link.media_type = self.media_type
-            link.checksum = self.checksum
-
-            link.path.unlink(missing_ok=True)
-            os.link(self.path, link.path)
-            link.dump()
-            link._done = True
+            if not link.should_download:
+                link.hardlink(self)
 
         self._newly_downloaded = True
         self._done = True
@@ -1070,6 +1082,10 @@ class CourseDownloader:
             for container in collapsed_containers:
                 if container.should_download:
                     container.path.open("w").close()
+                else:
+                    for con in container._links:
+                        if con.should_download:
+                            con.hardlink(container)
 
         CourseDownloader.containers = containers
 

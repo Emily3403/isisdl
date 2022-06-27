@@ -166,9 +166,9 @@ def main() -> None:
 
 # TODO Stream: Is it problematic if the download doesnt continue for a short / long time?
 
-# TODO: Catch the bandwidth-small-error bug
-
 # TODO: Test if export config being dynamic leads to problems on windows
+
+# TODO: When evaluating bad urls use a exponential reevaluation algorithm to check the urls from time to time again.
 
 
 # TODO with D-VA: How problematic is WZM?

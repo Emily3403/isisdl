@@ -2,22 +2,22 @@
 # Don't overwrite any settings since you will have to manually edit this file everytime.
 # Use the config file feature instead.
 
+from collections import defaultdict
+from hashlib import sha256
+from http.client import HTTPSConnection
 import os
+from pathlib import Path
 import platform
 import re
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
-from hashlib import sha256
-from http.client import HTTPSConnection
-from pathlib import Path
-from typing import Any, DefaultDict, Set, Dict, Optional
+from typing import Any, DefaultDict, Dict, Optional, Set
 
-import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
+import psutil as psutil
 from psutil._common import sdiskpart
-from yaml import safe_load, YAMLError
+from yaml import YAMLError, safe_load
 
 import isisdl.autorun
 
