@@ -543,7 +543,7 @@ class MediaContainer:
                 assert link.size == self.size
                 assert link._links == []
 
-            if not link.should_download:
+            if link.should_download:
                 link.hardlink(self)
 
         self._newly_downloaded = True
