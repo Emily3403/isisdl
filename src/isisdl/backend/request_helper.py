@@ -483,15 +483,14 @@ class MediaContainer:
         download = session.get_(self.download_url, params={"token": session.token}, stream=True)
 
         if download is None or not download.ok:
-            if self.media_type == MediaType.video:
-                # The video server is sometimes unreliable but it _should_ always work. Don't add the file to the bad urls then.
-                return
-
             self.size = 0
             self.current_size = None
             self.media_type = MediaType.corrupted
             self._done = True
-            database_helper.add_bad_url(self.url)
+            if self.media_type != MediaType.video:
+                # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
+                database_helper.add_bad_url(self.url)
+
             self.dump()
             return
 
