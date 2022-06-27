@@ -965,10 +965,11 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         conflict.sort(key=lambda x: x.time)
 
         if len(conflict) == 1:
-            # Only same sizes
-            final_list.append(conflict[0])
+            # Don't handle the conflict here
+            continue
 
         elif all(item.size == conflict[0].size for item in conflict):
+            # Only same sizes
             final_list.append(conflict[0])
 
         elif len(set(item.size for item in conflict)) == len(conflict):
