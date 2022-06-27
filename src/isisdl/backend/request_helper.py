@@ -927,7 +927,6 @@ class RequestHelper:
             if status is not None:
                 status.done()
 
-
 def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
     final_list: List[MediaContainer] = []
     new_files: List[MediaContainer] = []
@@ -947,13 +946,16 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
+    new_files = []
     for conflict in hard_link_conflicts.values():
-        if len(conflict) != 1:
+        if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
             conflict[0]._links.extend(conflict[1:])
             final_list.append(conflict[0])
-            for item in conflict[0]._links:
-                files.remove(item)
+        else:
+            new_files.append(conflict[0])
+
+    files = new_files
 
     conflicts: DefaultDict[Path, List[MediaContainer]] = defaultdict(list)
     for file in set(files):
@@ -982,8 +984,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
             logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
             continue
 
-    # TODO: This takes too long.
-
     # Finally filter the remaining files based on the url
     hard_link_conflicts = defaultdict(list)
 
@@ -991,20 +991,18 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         hard_link_conflicts[file.download_url].append(file)
 
     conflict_urls: Set[str] = set()
-    new_files = []
 
     for conflict in hard_link_conflicts.values():
-        if len(conflict) != 1:
+        if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
             conflict[0]._links.extend(conflict[1:])
             conflict_urls.add(conflict[0].url)
-            new_files.append(conflict[0])
-
             final_list.append(conflict[0])
-            for item in conflict[0]._links:
-                final_list.remove(item)
 
-    return [file for file in final_list if file.url not in conflict_urls] + new_files
+        else:
+            final_list.append(conflict[0])
+
+    return [file for file in final_list if file.url not in conflict_urls]
 
 
 class Downloader(Thread):
