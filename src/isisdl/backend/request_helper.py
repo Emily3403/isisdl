@@ -927,6 +927,7 @@ class RequestHelper:
             if status is not None:
                 status.done()
 
+
 def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
     final_list: List[MediaContainer] = []
     new_files: List[MediaContainer] = []
