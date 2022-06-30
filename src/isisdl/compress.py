@@ -417,8 +417,12 @@ class CompressStatus(Thread):
                 infos[file.course.course_id]["size_skipped"] += curr_size
                 infos[file.course.course_id]["num_skipped"] += 1
 
-        max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
-        max_course_name_len = max(len(str(course)) for course in self.helper.courses)
+        try:
+            max_processed_file_len = max(len(str(info["num_processed"])) for info in infos.values())
+            max_course_name_len = max(len(str(course)) for course in self.helper.courses)
+        except ValueError:
+            max_processed_file_len, max_course_name_len = 0, 0
+
 
         log_strings = ["", "", "Summary of course size savings:", ""]
 

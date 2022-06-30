@@ -1,9 +1,0 @@
-{
-    "username": null,
-    "OS": "Linux",
-    "OS_spec": "garuda",
-    "version": "1.2.0",
-    "time": 1654209009,
-    "is_first_time": true,
-    "message": "Assertion failed: \"contents\" not in file\n\nCurrent url: https://isis.tu-berlin.de/mod/resource/view.php?id=1030002"
-}

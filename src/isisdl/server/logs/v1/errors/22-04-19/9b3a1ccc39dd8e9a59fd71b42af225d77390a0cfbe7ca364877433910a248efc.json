@@ -1,9 +1,0 @@
-{
-    "username": "mhuebner",
-    "OS": "Linux",
-    "OS_spec": "fedora",
-    "version": "1.2.2",
-    "time": 1650371295,
-    "is_first_time": false,
-    "message": "Assertion failed: \"contents\" not in file\n\nCurrent url: https://isis.tu-berlin.de/mod/resource/view.php?id=1338598"
-}
