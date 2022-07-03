@@ -423,7 +423,6 @@ class CompressStatus(Thread):
         except ValueError:
             max_processed_file_len, max_course_name_len = 0, 0
 
-
         log_strings = ["", "", "Summary of course size savings:", ""]
 
         for course_id, info in sorted(infos.items()):
