@@ -1166,7 +1166,11 @@ class DataLogger(Thread):
         try:
             while True:
                 item = self.messages.get()
-                self.s.post("http://49.12.42.246/isisdl/", json=item)
+                try:
+                    self.s.post("http://49.12.42.246/isisdl/", json=item)
+                except Exception:
+                    return
+
                 self.done.put(None)
         except Exception as ex:
             generate_error_message(ex)
