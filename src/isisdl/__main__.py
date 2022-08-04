@@ -5,10 +5,8 @@ import isisdl.compress as compress
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos
-from isisdl.settings import is_online
-from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, \
-    config, migrate_database, Config
+from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config
 from isisdl.version import __version__
 
 
@@ -116,8 +114,8 @@ Please press enter to continue.
     #     print("Due to legal reasons, this is currently not supported. :(")
     #     sys.exit(0)
 
-        # unsubscribe_from_courses()
-        # sys.exit(0)
+    # unsubscribe_from_courses()
+    # sys.exit(0)
 
     else:
         # Main routine
@@ -137,9 +135,6 @@ def main() -> None:
 #   Download of corrupted files
 
 
-# Suggestion for ISIS API:
-#   video server also sends the size
-
 # Main TODOS:
 #   Dynamic calculation of num threads for download
 #   fixing / bug hunting the compress
@@ -148,27 +143,35 @@ def main() -> None:
 # No size implies:
 #   More time conflicts in video files (File size from 10^9 → 10^4)
 #   No download status file size
-#   No sync database
+#   No sync database -> Not really since the videos names are sha-sums of the content
 
 
-# TODO: Isis display name change
+# TODO:
+#
+#   Files should only be in extern if they do not originate from `isis.tu-berlin.de`
+#
+#   Check how many urls requested multiple times
+#
+#   Argcomplete
+#       https://pypi.org/project/argcomplete/
+#       qmk can also do this
+#
+#   Compare program to check diffs against isia-tub
+#
+#   Refactor the config in database
+#       No more json strings
+#       When a file is corrupted also save the last time checked. Then use an exponential reevaluation algorithm to check if the urls are available again
+#
+#   Throttling does not work when imposed via config ??
 
-# TODO: static builds from github runners
 
-# TODO: change settings to posix / linux and do things accordingly.
-
-# TODO: Throttling does not work when imposed via config ??
-
-# TODO: Argcomplete https://pypi.org/project/argcomplete/
-#  qmk can also do this
-
-# TODO: Wiki tutorial for streaming. It is *really* easy
-
-# TODO Stream: Is it problematic if the download doesnt continue for a short / long time?
-
-# TODO: Test if export config being dynamic leads to problems on windows
-
-# TODO: When evaluating bad urls use a exponential reevaluation algorithm to check the urls from time to time again.
+# Maybe TODO
+#
+#   Have a variable for posix and linux
+#
+#   Static builds from github runners
+#
+#   Wiki tutorial for streaming
 
 
 # TODO with D-VA: How problematic is WZM?
