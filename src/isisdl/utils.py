@@ -1006,8 +1006,9 @@ def compare_download_diff() -> None:
     forbidden_files = {path(database_file_location), path(lock_file_location), path(log_file_location)}
 
     other_path = Path(args.download_diff)
-    isisdl_checksums = calc_checksums(path(), forbidden_files)
     other_checksums = calc_checksums(other_path, set())
+    isisdl_checksums = calc_checksums(path(), forbidden_files)
+
 
     with open(path("diff.txt"), "w") as f:
 
