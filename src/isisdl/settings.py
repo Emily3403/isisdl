@@ -354,7 +354,9 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
 
     "hfs": set(),
     "hfsplus": set(),
+    "apfs": set(),
 }
+
 
 if _path in _mount_partitions:
     if "windows_names" in _mount_partitions[_path].opts:
@@ -367,9 +369,10 @@ if _path in _mount_partitions:
             os._exit(1)
 
         fstype = force_filesystem
+
     elif _mount_partitions[_path].fstype == "fuseblk":
         fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
-        pass
+
     else:
         fstype = _mount_partitions[_path].fstype
 
@@ -377,3 +380,6 @@ if _path in _mount_partitions:
         forbidden_chars.update(_fs_forbidden_chars[fstype])
         if _fs_forbidden_chars[fstype] == windows_forbidden_chars:
             replace_dot_at_end_of_dir_name = True
+
+else:
+    fstype = "ntfs" if is_windows else "ext4"

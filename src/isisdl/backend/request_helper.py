@@ -929,6 +929,7 @@ class RequestHelper:
 
 
 def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
+    # TODO: Check for case insensitive filesystem and implement the fix here
     final_list: List[MediaContainer] = []
     new_files: List[MediaContainer] = []
 
