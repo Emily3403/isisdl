@@ -383,6 +383,7 @@ class MediaContainer:
 
     @property
     def should_download(self) -> bool:
+        # raise ValueError
         if "Tutorial 12 Inference, Intro to Bayesian Networks" in self._name:
             container = MediaContainer.from_dump(self.url, self.course)
             print(self._done, self.media_type, container)
@@ -1095,15 +1096,17 @@ class CourseDownloader:
 
             for container in collapsed_containers:
                 if container.should_download:
-                    container.path.open("w").close()
+                    pass
+                    # container.path.open("w").close()
                 else:
+                    pass
 
-                    if not container.path.exists():
-                        container.path.open("w").close()
-
-                    for con in container._links:
-                        if con.should_download:
-                            con.hardlink(container)
+                    # if not container.path.exists():
+                    #     container.path.open("w").close()
+                    #
+                    # for con in container._links:
+                    #     if con.should_download:
+                    #         con.hardlink(container)
 
         CourseDownloader.containers = containers
 
