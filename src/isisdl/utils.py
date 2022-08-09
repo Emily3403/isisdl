@@ -1006,8 +1006,14 @@ def compare_download_diff() -> None:
     forbidden_files = {path(database_file_location), path(lock_file_location), path(log_file_location)}
 
     other_path = Path(args.download_diff)
-    other_checksums = calc_checksums(other_path, set())
+
+    s = time.perf_counter()
     isisdl_checksums = calc_checksums(path(), forbidden_files)
+    print(f"First took {time.perf_counter() - s} s")
+
+    s = time.perf_counter()
+    other_checksums = calc_checksums(other_path, set())
+    print(f"Second took {time.perf_counter() - s} s")
 
 
     with open(path("diff.txt"), "w") as f:
