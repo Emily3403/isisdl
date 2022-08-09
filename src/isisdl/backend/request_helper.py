@@ -392,8 +392,7 @@ class MediaContainer:
             actual_size = self.path.stat().st_size
 
         maybe_container = MediaContainer.from_dump(self.url, self.course)
-        if self._name == "Tutorial 12 Inference, Intro to Bayesian Networks (Pt 14 Inference and Uncertainty).mp4":
-            print(maybe_container)
+
         if isinstance(maybe_container, bool):
             return maybe_container
 
@@ -466,6 +465,9 @@ class MediaContainer:
         self._stop = True
 
     def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
+        if self._name == "Tutorial 12 Inference, Intro to Bayesian Networks (Pt 1/4 Inference and Uncertainty).mp4":
+            raise ValueError
+
         if self._stop or self.media_type == MediaType.corrupted:
             self._done = True
             return
