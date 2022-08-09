@@ -383,7 +383,7 @@ class MediaContainer:
 
     @property
     def should_download(self) -> bool:
-        if self._name == "Tutorial 12 Inference, Intro to Bayesian Networks (Pt 1/4 Inference and Uncertainty).mp4":
+        if "Tutorial 12 Inference, Intro to Bayesian Networks" in self._name:
             container = MediaContainer.from_dump(self.url, self.course)
             print(self._done, self.media_type, container)
             if not isinstance(container, bool):
