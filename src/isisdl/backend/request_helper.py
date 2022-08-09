@@ -13,7 +13,7 @@ from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict, Tuple, Set
+from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse
 
 from requests import Session, Response

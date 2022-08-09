@@ -1015,7 +1015,6 @@ def compare_download_diff() -> None:
     other_checksums = calc_checksums(other_path, set())
     print(f"Second took {time.perf_counter() - s} s")
 
-
     with open(path("diff.txt"), "w") as f:
 
         f.write(f"Files downloaded which are in {path()} but not in {other_path}:\n")
