@@ -1094,22 +1094,17 @@ class CourseDownloader:
             collapsed_containers = [item for row in containers.values() for item in row]
             collapsed_containers.sort(reverse=True, key=lambda x: x.time)
 
-            print(sorted([container._name for container in collapsed_containers if container._name.startswith("Tutorial")]))
-            raise ValueError
 
             for container in collapsed_containers:
                 if container.should_download:
-                    pass
-                    # container.path.open("w").close()
+                    container.path.open("w").close()
                 else:
-                    pass
+                    if not container.path.exists():
+                        container.path.open("w").close()
 
-                    # if not container.path.exists():
-                    #     container.path.open("w").close()
-                    #
-                    # for con in container._links:
-                    #     if con.should_download:
-                    #         con.hardlink(container)
+                    for con in container._links:
+                        if con.should_download:
+                            con.hardlink(container)
 
         CourseDownloader.containers = containers
 
