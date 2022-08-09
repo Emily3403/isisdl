@@ -39,7 +39,7 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -73,6 +73,7 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--stream", help="Launches isisdl in streaming mode. Will watch for file accesses and download only those files.", action="store_true")
     operations.add_argument("--update", help="Checks if an update is available and installs it.", action="store_true")
     operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
+    operations.add_argument("--download-diff", help="Checks if a given directory contains more / different content than downloaded from isisdl.", type=str)
 
     if is_testing:
         return parser.parse_known_args()[0]
@@ -979,6 +980,44 @@ def calculate_local_checksum(filename: Path) -> str:
             i += 1
 
     return alg.hexdigest()
+
+
+def compare_download_diff() -> None:
+    # TODO: Make compressed videos work
+    from isisdl.backend.status import Status
+
+    def calc_checksum(file: Path, status: Status) -> str:
+        checksum = calculate_local_checksum(file)
+        status.add(file.stat().st_size)
+        return checksum
+
+    def calc_checksums(p: Path, extra_forbidden_paths: Set[Path]) -> Dict[str, Path]:
+        files = list(p.rglob("*"))
+        total_file_size = sum(it.stat().st_size for it in files)
+
+        with Status(f"Calculating checksums for {p}", total_file_size) as status:
+            if enable_multithread:
+                with ThreadPoolExecutor(os.cpu_count()) as ex:
+                    checksums = list(ex.map(calc_checksum, filter(lambda it: not it.is_dir() and it not in extra_forbidden_paths, files), repeat(status)))
+                    return {checksum: file for file, checksum in zip(filter(lambda it: not it.is_dir() and it not in extra_forbidden_paths, files), checksums)}
+            else:
+                return {calc_checksum(file, status): file for file in filter(lambda it: not it.is_dir() and it not in extra_forbidden_paths, files)}
+
+    forbidden_files = {path(database_file_location), path(lock_file_location), path(log_file_location)}
+
+    other_path = Path(args.download_diff)
+    isisdl_checksums = calc_checksums(path(), forbidden_files)
+    other_checksums = calc_checksums(other_path, set())
+
+    with open(path("diff.txt"), "w") as f:
+
+        f.write(f"Files downloaded which are in {path()} but not in {other_path}:\n")
+        for checksum in set(isisdl_checksums) - set(other_checksums):
+            f.write(f"{isisdl_checksums[checksum]}\n")
+
+        f.write(f"\n\nFiles downloaded which are in {other_path} but not in {path()}:\n")
+        for checksum in set(other_checksums) - set(isisdl_checksums):
+            f.write(f"{other_checksums[checksum]}\n")
 
 
 def subscribe_to_all_courses() -> None:

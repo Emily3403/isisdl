@@ -102,9 +102,9 @@ class Status(Thread):
     def generate_log_message(self) -> List[str]:
         return []
 
-    def add(self, *args: Any, **kwargs: Any) -> None:
-        # self.count += 1
-        ...
+    def add(self, num: int) -> None:
+        if self.count is not None:
+            self.count += num
 
     def done(self, *args: Any, **kwargs: Any) -> None:
         if self.count is not None:
