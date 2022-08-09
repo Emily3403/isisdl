@@ -1094,7 +1094,8 @@ class CourseDownloader:
             collapsed_containers = [item for row in containers.values() for item in row]
             collapsed_containers.sort(reverse=True, key=lambda x: x.time)
 
-            print([container for container in collapsed_containers if container._name.startswith("Tutorial")])
+            print([container._name for container in collapsed_containers if container._name.startswith("Tutorial")])
+            raise ValueError
 
             for container in collapsed_containers:
                 if container.should_download:
