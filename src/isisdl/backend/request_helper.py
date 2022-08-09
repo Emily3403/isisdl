@@ -384,14 +384,6 @@ class MediaContainer:
     @property
     def should_download(self) -> bool:
         # raise ValueError
-        if "Tutorial 12 Inference, Intro to Bayesian Networks" in self._name:
-            container = MediaContainer.from_dump(self.url, self.course)
-            print(self._done, self.media_type, container)
-            if not isinstance(container, bool):
-                print(container.url)
-
-            raise ValueError
-
         if self._done or self.media_type == MediaType.corrupted:
             return False
 
@@ -1003,19 +995,21 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[file.download_url].append(file)
 
-    conflict_urls: Set[str] = set()
+    # TODO: Figure out what the fuck conflict urls was for and why I am so retarded
+    # conflict_urls: Set[str] = set()
 
     for conflict in hard_link_conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
             conflict[0]._links.extend(conflict[1:])
-            conflict_urls.add(conflict[0].url)
+            # conflict_urls.add(conflict[0].url)
             final_list.append(conflict[0])
 
         else:
             final_list.append(conflict[0])
 
-    return [file for file in final_list if file.url not in conflict_urls]
+    # return [file for file in final_list if file.url not in conflict_urls]
+    return final_list
 
 
 class Downloader(Thread):
@@ -1093,7 +1087,6 @@ class CourseDownloader:
             containers = helper.download_content(status)
             collapsed_containers = [item for row in containers.values() for item in row]
             collapsed_containers.sort(reverse=True, key=lambda x: x.time)
-
 
             for container in collapsed_containers:
                 if container.should_download:
