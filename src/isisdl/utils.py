@@ -1009,11 +1009,11 @@ def compare_download_diff() -> None:
 
     s = time.perf_counter()
     isisdl_checksums = calc_checksums(path(), forbidden_files)
-    print(f"First took {time.perf_counter() - s} s")
+    print(f"This step took {time.perf_counter() - s:.3f} s")
 
     s = time.perf_counter()
     other_checksums = calc_checksums(other_path, set())
-    print(f"Second took {time.perf_counter() - s} s")
+    print(f"This step took {time.perf_counter() - s:.3f} s")
 
     with open(path("diff.txt"), "w") as f:
 
