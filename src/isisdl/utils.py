@@ -1025,6 +1025,8 @@ def compare_download_diff() -> None:
         for checksum in set(other_checksums) - set(isisdl_checksums):
             f.write(f"{other_checksums[checksum]}\n")
 
+    print(f"The diff was written to {path('diff.txt')}")
+
 
 def subscribe_to_all_courses() -> None:
     from isisdl.backend.request_helper import RequestHelper
