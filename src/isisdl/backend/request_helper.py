@@ -995,9 +995,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for file in {file.path: file for file in files}.values():
         hard_link_conflicts[file.download_url].append(file)
 
-    # TODO: Figure out what the fuck conflict urls was for and why I am so retarded
-    # conflict_urls: Set[str] = set()
-
     for conflict in hard_link_conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
@@ -1008,7 +1005,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         else:
             final_list.append(conflict[0])
 
-    # return [file for file in final_list if file.url not in conflict_urls]
     return final_list
 
 
