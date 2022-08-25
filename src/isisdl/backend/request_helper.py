@@ -94,7 +94,7 @@ class SessionWithKey(Session):
 
                 s.get(
                     "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
-                    params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}
+                    params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}, proxies={"a": "b"}
                 )
 
                 raise InvalidSchema
