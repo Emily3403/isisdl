@@ -43,7 +43,6 @@ class SessionWithKey(Session):
         super().__init__()
         self.key = key
         self.token = token
-        # self.trust_env = False
 
         # Increase the number of recycled connections (Copied from https://stackoverflow.com/a/18845952/18680554)
         self.mount("https://", HTTPAdapter(pool_maxsize=discover_num_threads // 2, pool_block=False))
@@ -80,7 +79,7 @@ class SessionWithKey(Session):
 
             key = _key[0]
 
-            # token = ""
+            token = ""
             try:
                 # This is a somewhat dirty hack.
                 # The Moodle API always wants to have a token. This is obtained through the `/login/token.php` site.
@@ -97,10 +96,11 @@ class SessionWithKey(Session):
 
                 s.get(
                     "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
-                    params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}, proxies={"https": None, "http": None}
+                    params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}
                 )
 
                 raise InvalidSchema
+
             except InvalidSchema as ex:
                 token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
 
