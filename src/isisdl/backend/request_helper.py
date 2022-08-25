@@ -92,6 +92,8 @@ class SessionWithKey(Session):
 
                 # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
 
+                os.environ['no_proxy'] = '*'
+
                 s.get(
                     "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
                     params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}, proxies={"https": None, "http": None}
