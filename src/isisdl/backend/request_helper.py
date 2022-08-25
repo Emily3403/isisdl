@@ -668,6 +668,7 @@ class Course:
 
             parse = urlparse(link)
             if parse.scheme and parse.netloc and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
+
                 all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
                 _links.append(link)
 

@@ -215,7 +215,7 @@ testing_bad_urls: Set[str] = {
 
 # Ignore mod/{whatever} isis urls
 isis_ignore = re.compile(
-    ".*isis.tu-berlin.de/(?:"
+    r".*isis\.tu-berlin\.de/(?:"
         "mod/(?:"  # noqa:E131
             "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
             "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"  # noqa:E131
@@ -230,6 +230,8 @@ isis_ignore = re.compile(
     ")/.*"
 )
 # @formatter:on
+
+regex_is_isis = re.compile(r".*isisi\.tu-berlin\.de/")
 
 extern_ignore = re.compile(
     ".*(?:"
