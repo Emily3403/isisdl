@@ -43,7 +43,6 @@ class SessionWithKey(Session):
         super().__init__()
         self.key = key
         self.token = token
-        self.trust_env = False
 
         # Increase the number of recycled connections (Copied from https://stackoverflow.com/a/18845952/18680554)
         self.mount("https://", HTTPAdapter(pool_maxsize=discover_num_threads // 2, pool_block=False))
