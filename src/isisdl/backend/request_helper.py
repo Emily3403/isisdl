@@ -91,7 +91,11 @@ class SessionWithKey(Session):
 
                 # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
 
-                s.get("https://isis.tu-berlin.de/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345&urlscheme=moodledownloader")
+                s.get(
+                    "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
+                    params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}
+                )
+
                 raise InvalidSchema
             except InvalidSchema as ex:
                 token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
