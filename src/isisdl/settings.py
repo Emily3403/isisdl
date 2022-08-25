@@ -2,20 +2,20 @@
 # Don't overwrite any settings since you will have to manually edit this file everytime.
 # Use the config file feature instead.
 
-from collections import defaultdict
-from hashlib import sha256
-from http.client import HTTPSConnection
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
+from hashlib import sha256
+from http.client import HTTPSConnection
+from pathlib import Path
 from typing import Any, DefaultDict, Dict, Optional, Set
 
-from cryptography.hazmat.primitives.hashes import SHA3_512
 import psutil as psutil
+from cryptography.hazmat.primitives.hashes import SHA3_512
 from psutil._common import sdiskpart
 from yaml import YAMLError, safe_load
 
@@ -222,7 +222,7 @@ isis_ignore = re.compile(
             "|organizer|registration|journal|workshop|survey|"  # noqa:E131
         ")"  # noqa:E131
     "|"
-        "availabilicy/condition/shibboleth2fa"
+        "availability/condition/shibboleth2fa"
     "|"
         "course"
     "|"
@@ -231,7 +231,13 @@ isis_ignore = re.compile(
 )
 # @formatter:on
 
-regex_is_isis = re.compile(r".*isisi\.tu-berlin\.de/")
+regex_is_isis_document = re.compile(
+    r".*isis\.tu-berlin\.de/(?:"
+    r"webservice/pluginfile\.php"
+    "|"
+    ".*"
+    ")/.*"
+)
 
 extern_ignore = re.compile(
     ".*(?:"
@@ -358,7 +364,6 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
     "hfsplus": set(),
     "apfs": set(),
 }
-
 
 if _path in _mount_partitions:
     if "windows_names" in _mount_partitions[_path].opts:

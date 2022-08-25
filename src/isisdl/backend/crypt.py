@@ -20,6 +20,10 @@ def generate_key(password: str) -> bytes:
     # at once and the password file is limited to a single system
     # (no central storage) it doesn't make sense to include it.
     # It adds useless complexity.
+
+    # TODO: In the next database update store the random salt (32 Byte) in the database as well -> Makes security better :)
+    #       -> Also applies to the master password
+
     salt = b"salty~salt"
 
     kdf = PBKDF2HMAC(algorithm=password_hash_algorithm(), length=password_hash_length, salt=salt, iterations=password_hash_iterations)

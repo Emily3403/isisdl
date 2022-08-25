@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore, log_file_location, datetime_str
+    extern_ignore, log_file_location, datetime_str, regex_is_isis_document
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes, normalize_url
@@ -668,7 +668,7 @@ class Course:
 
             parse = urlparse(link)
             if parse.scheme and parse.netloc and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
-
+                it = regex_is_isis_document.match(link)
                 all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
                 _links.append(link)
 
