@@ -180,8 +180,6 @@ def main() -> None:
 #   Wiki tutorial for streaming
 
 
-# TODO with D-VA: How problematic is WZM?
-
 
 if __name__ == "__main__":
     main()
