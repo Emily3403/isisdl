@@ -80,6 +80,7 @@ class SessionWithKey(Session):
 
             key = _key[0]
 
+            # token = ""
             try:
                 # This is a somewhat dirty hack.
                 # The Moodle API always wants to have a token. This is obtained through the `/login/token.php` site.
@@ -102,6 +103,12 @@ class SessionWithKey(Session):
                 raise InvalidSchema
             except InvalidSchema as ex:
                 token = standard_b64decode(str(ex).split("token=")[-1]).decode().split(":::")[1]
+
+            finally:
+                try:
+                    del os.environ['no_proxy']
+                except Exception:
+                    pass
 
             s.key = key
             s.token = token
