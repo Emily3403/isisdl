@@ -91,7 +91,7 @@ class SessionWithKey(Session):
 
                 # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
 
-                s.post(
+                s.head(
                     "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
                     params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}
                 )
