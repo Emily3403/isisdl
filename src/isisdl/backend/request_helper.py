@@ -43,6 +43,7 @@ class SessionWithKey(Session):
         super().__init__()
         self.key = key
         self.token = token
+        self.trust_env = False
 
         # Increase the number of recycled connections (Copied from https://stackoverflow.com/a/18845952/18680554)
         self.mount("https://", HTTPAdapter(pool_maxsize=discover_num_threads // 2, pool_block=False))
@@ -91,7 +92,7 @@ class SessionWithKey(Session):
 
                 # Note: Don't replace .get by .get_ - Since the .get_ will catch all exceptions.
 
-                s.head(
+                s.get(
                     "https://isis.tu-berlin.de/admin/tool/mobile/launch.php",
                     params={"service": "moodle_mobile_app", "passport": "12345", "urlscheme": "moodledownloader"}
                 )
