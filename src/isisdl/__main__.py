@@ -167,6 +167,10 @@ def main() -> None:
 #   Refactor the config in database
 #       No more json strings
 #       When a file is corrupted also save the last time checked. Then use an exponential reevaluation algorithm to check if the urls are available again
+#       Paths should be relative to working dir - makes for a seamless migration when moving
+#       On startup check for files that are out of order (path + size doesn't match) and prompt the user that they moved that files.
+#           → Also advertise the functionality of `isisdl --mv` to directly update the files
+#       Only store the parent path such that the path is dynamically dependant on runtime attributes
 #
 #   Throttling does not work when imposed via config ??
 
