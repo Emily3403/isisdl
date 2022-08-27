@@ -668,8 +668,7 @@ class Course:
 
             parse = urlparse(link)
             if parse.scheme and parse.netloc and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
-                it = regex_is_isis_document.match(link)
-                all_content.append(PreMediaContainer(link, self, MediaType.extern, None))
+                all_content.append(PreMediaContainer(link, self, MediaType.document if regex_is_isis_document.match(link) is not None else MediaType.extern, None))
                 _links.append(link)
 
         return all_content
