@@ -218,16 +218,16 @@ isis_ignore = re.compile(
     r".*isis\.tu-berlin\.de/(?:"
         "mod/(?:"  # noqa:E131
             "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
-            "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"  # noqa:E131
-            "|organizer|registration|journal|workshop|survey|"  # noqa:E131
+            "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
+            "|organizer|registration|journal|workshop|survey|"
         ")"  # noqa:E131
     "|"
         "availability/condition/shibboleth2fa"
     "|"
         "h5p"
     "|"
-        "theme/image.php"  # noqa:E131
-    "|" 
+        "theme/image.php"
+    "|"
     ")/.*"
 )
 # @formatter:on
