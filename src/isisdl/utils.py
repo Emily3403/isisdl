@@ -601,34 +601,34 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 def print_changelog_for_version(new_version: Union[LegacyVersion, Version]) -> None:
     def version_check(v: str) -> bool:
-        return version.parse(__version__) <= new_version <= version.parse(v)
+        return version.parse(__version__) < version.parse(v) <= new_version
+
+    current_version = version.parse(__version__)
+    assert not isinstance(current_version, LegacyVersion)
+    assert not isinstance(new_version, LegacyVersion)
+
+    for i in range(current_version.micro + 1, new_version.micro + 1):
+
+        print(i)
+
+
 
     if version_check("1.3.14"):
-        print("""- This changelog
-Now you will get notified about all new features through this text.
-This should be more convenient than tracking down individual release notes or going through commit messages
-
-- Fixed (Apple) ARM bug with isisdl
-When executing isisdl on a ARM machine the following error would arise
-  > `UnicodeError: encoding with 'idna' codec failed (UnicodeError: label too long)`
-This bug has now been resolved by bypassing all proxies. 
-
-- Changed the storage place of documents to be strictly in the root of the course.
-Previously some documents that originate from `isis.tu-berlin.de` were placed in the `Extern/` directory.
-The origin is now tracked and the files are placed in their respective directories accordingly.
-
-- More Content
-Due to a bug in the conflict-checker, some videos were not downloaded. This behaviour is now fixed.
-
-- Download diff
-There is now a new subprogram to compare the downloaded files of an arbitrary directory and compare the differences to the `isisdl` directory.
-This program is especially useful when comparing different ISIS / Moodle-downloaders and checking if isisdl grabs all the content.    
-""")
         pass
 
+    if version_check("1.3.15"):
+        print("""
+Changelog version 1.3.15
+
+UwU
+
+""")
     pass
 
+
 def install_latest_version() -> None:
+    print_changelog_for_version(version.parse("1.3.14"))
+
     if is_first_time:
         return
 
@@ -655,7 +655,6 @@ Please run `isisdl --init` to resolve this issue!
         return
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
-    print("\nChangelog:\n")
     print_changelog_for_version(new_version)
 
     if config.update_policy.startswith("notify") and not args.update:
