@@ -156,6 +156,10 @@ def main() -> None:
 #       No more json strings
 #           → Extra table for user configuration
 #
+#       Make storing your password more secure
+#           → Achieved by generating a random master password + random salt and store it in the database.
+#             This enables for greater security since 1 table is all that is needed in order to crack multiple passwords
+#
 #       Verify the database state on every startup by iterating over all files + sizes and raising an error if the size and checksum don't match
 #
 #       These changes imply the following
