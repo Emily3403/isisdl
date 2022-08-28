@@ -154,9 +154,9 @@ def main() -> None:
 
 # TODO:
 #
-#   Files should only be in extern if they do not originate from `isis.tu-berlin.de`
-#
 #   Check how many urls requested multiple times
+#
+#   Dant
 #
 #   Argcomplete
 #       https://pypi.org/project/argcomplete/
@@ -182,7 +182,6 @@ def main() -> None:
 #   Static builds from github runners
 #
 #   Wiki tutorial for streaming
-
 
 
 if __name__ == "__main__":

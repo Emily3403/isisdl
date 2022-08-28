@@ -75,6 +75,8 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
     operations.add_argument("--download-diff", help="Checks if a given directory contains more / different content than downloaded from isisdl.", type=str)
 
+    # argcomplete.autocomplete(parser)
+
     if is_testing:
         return parser.parse_known_args()[0]
 
@@ -599,6 +601,20 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
         return version.parse(found_version.group(1))
 
 
+def print_changelog_for_version(new_version: Union[LegacyVersion, Version]) -> None:
+    def version_check(v: str) -> bool:
+        return version.parse(__version__) < version.parse(v) <= new_version
+
+    current_version = version.parse(__version__)
+    assert not isinstance(current_version, LegacyVersion)
+    assert not isinstance(new_version, LegacyVersion)
+
+    for i in range(current_version.micro + 1, new_version.micro + 1):
+        con = requests.get(f"https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/changelog/"
+                           f"{new_version.major}.{new_version.minor}/{new_version.major}.{new_version.minor}.{new_version.micro}")
+        print(con.text)
+
+
 def install_latest_version() -> None:
     if is_first_time:
         return
@@ -626,6 +642,7 @@ Please run `isisdl --init` to resolve this issue!
         return
 
     print(f"\nThere is a new version of isisdl available: {new_version} (current: {__version__}).")
+    print_changelog_for_version(new_version)
 
     if config.update_policy.startswith("notify") and not args.update:
         return
