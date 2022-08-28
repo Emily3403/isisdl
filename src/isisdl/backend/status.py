@@ -270,6 +270,7 @@ class DownloadStatus(Status):
 
             # Now determine the already downloaded amount and display it
             thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
+            course_format = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
             for thread_id, container in self.thread_files.items():
                 thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
                 if container is None:
@@ -277,14 +278,19 @@ class DownloadStatus(Status):
                     continue
 
                 log_strings.append(
-                    f"{thread_string} {self.progress_bar_container(container)} [ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ] - {container}")
+                    f"{self.progress_bar_container(container)} "
+                    f"[ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ]"
+                    f" ({str(container.course):{' '}<{course_format}})"
+                    f" - {container}")
                 pass
 
             # Optional streaming info
             if self.stream_file is not None:
                 log_strings.append("")
                 log_strings.append(
-                    f"Stream:  {self.progress_bar_container(self.stream_file)} [ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
+                    f"Stream:  {self.progress_bar_container(self.stream_file)} "
+                    f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
+                    f" ({str(self.stream_file.course)})"
                     f" - {self.stream_file}")
             else:
                 log_strings.extend(["", ""])

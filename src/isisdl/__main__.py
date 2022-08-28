@@ -156,8 +156,6 @@ def main() -> None:
 #
 #   Check how many urls requested multiple times
 #
-#   Add Course name to download
-#
 #   Dant
 #
 #   Argcomplete
