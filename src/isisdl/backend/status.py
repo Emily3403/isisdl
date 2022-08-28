@@ -272,9 +272,8 @@ class DownloadStatus(Status):
             thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
             course_format = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
             for thread_id, container in self.thread_files.items():
-                thread_string = f"Thread {thread_id:{' '}<{thread_format}}"
                 if container is None:
-                    log_strings.append(thread_string)
+                    log_strings.append("")
                     continue
 
                 log_strings.append(

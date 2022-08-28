@@ -473,8 +473,8 @@ class MediaContainer:
 
         return acc
 
-    def __gt__(self, other: MediaContainer) -> bool:
-        return int.__gt__(self.size, other.size)
+    # def __gt__(self, other: MediaContainer) -> bool:
+    #     return int.__gt__(self.size, other.size)
 
     def stop(self) -> None:
         self._stop = True
