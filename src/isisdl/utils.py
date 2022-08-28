@@ -802,7 +802,7 @@ def sanitize_name(name: str, is_dir: bool) -> str:
         final = str_list
 
     # Folder names cannot end with a period in Windows ...
-    while replace_dot_at_end_of_dir_name and is_dir and final and (final[-1] == "." or final[-1] == " "):
+    while is_dir and replace_dot_at_end_of_dir_name and final and (final[-1] == "." or final[-1] == " "):
         final.pop()
 
     final_str = "".join(item for item in final if item not in forbidden_chars)

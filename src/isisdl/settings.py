@@ -72,13 +72,19 @@ has_ffmpeg = shutil.which("ffmpeg") is not None
 # Check if being automatically run
 is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
-# Forbidden chars lookup-able by `is_windows`.
+# Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
 windows_forbidden_chars: Set[str] = {"\\", "/", "?", "*", ":", "|", "\"", "<", ">", "\0"}
 linux_forbidden_chars: Set[str] = {"\0", "/"}
+macos_forbidden_chars: Set[str] = set()
 
-forbidden_chars: Set[str] = windows_forbidden_chars if is_windows else linux_forbidden_chars
+if is_windows:
+    forbidden_chars = windows_forbidden_chars
+elif is_macos:
+    forbidden_chars = macos_forbidden_chars
+else:
+    forbidden_chars = linux_forbidden_chars
 
 # Yes, this is a windows thing...
 replace_dot_at_end_of_dir_name = is_windows
@@ -201,6 +207,8 @@ systemd_service_file_location = os.path.join(systemd_dir_location, "isisdl.servi
 
 # -/- Linux only feature options ---
 
+# --- Regex stuff ---
+
 # Finds all urls in a given piece of text. Copied from https://gist.github.com/gruber/8891611
 _url_finder = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""  # noqa
 url_finder = re.compile(_url_finder)
@@ -210,17 +218,17 @@ testing_bad_urls: Set[str] = {
     'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj',
 }
 
-# @formatter:off
 # In order to maintain a sense of order in the regex it is indented. Flake8 / PyCharm formatter do not seem to like that ...
+# @formatter:off
 
-# Ignore mod/{whatever} isis urls
+# Regex to ignore a url depending on if there is some content
 isis_ignore = re.compile(
     r".*isis\.tu-berlin\.de/(?:"
         "mod/(?:"  # noqa:E131
             "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
             "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
             "|organizer|registration|journal|workshop|survey|"
-        ")"  # noqa:E131
+        ")"
     "|"
         "availability/condition/shibboleth2fa"
     "|"
@@ -242,6 +250,9 @@ extern_ignore = re.compile(
     "|wikipedia.org|github.com|gitlab.tubit.tu-berlin.de|kahoot.it|www.python.org|www.anaconda.com|miro.com"
     ").*"
 )
+
+
+# -/- Regex stuff ---
 
 
 def parse_config_file() -> DefaultDict[str, Any]:
@@ -270,6 +281,7 @@ def parse_config_file() -> DefaultDict[str, Any]:
     return defaultdict(lambda: None)
 
 
+# Parse the config file into the globals if on Posix
 if not is_windows:
     data = parse_config_file()
     if data is not None:
@@ -298,7 +310,7 @@ is_first_time = not os.path.exists(os.path.join(working_dir_location, database_f
 
 # --- Test options ---
 
-# Yes, changing behaviour when testing is evil. But I'm doing so in order to protect my `~/isisdl_downloads` directory.
+# Yes, changing behaviour when testing is evil. But I'm doing so in order to protect my `~/isisdl` directory.
 is_testing = "pytest" in sys.modules
 if is_testing:
     _working_dir_location = working_dir_location
@@ -334,15 +346,17 @@ testing_download_sizes = {
 
 # -/- Test Options ---
 
+# --- Filesystem settings ---
+
 # Filesystems also have limitations on their filenames.
 # Reference: https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
 
+# Find out the `_path` of the mounted directory where the `working_dir_location` lives
 _mount_partitions: Dict[str, sdiskpart] = {part.mountpoint: part for part in psutil.disk_partitions()}
-_working_path = Path(working_dir_location)
-while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.parent != _working_path:
-    _working_path = _working_path.parent
 
-force_filesystem: Optional[str] = None
+_working_path = Path(working_dir_location)
+while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.resolve().parent != _working_path.resolve():
+    _working_path = _working_path.parent
 
 _fs_forbidden_chars: Dict[str, Set[str]] = {
     "ext": linux_forbidden_chars,
@@ -357,16 +371,28 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
     "vfat": windows_forbidden_chars,
     "ntfs": windows_forbidden_chars,
 
-    "hfs": set(),
-    "hfsplus": set(),
-    "apfs": set(),
+    "hfs": macos_forbidden_chars,
+    "hfsplus": macos_forbidden_chars,
+    "apfs": macos_forbidden_chars,
 }
 
+# This is a constant to be overwritten for debugging purposes from the config file
+force_filesystem: Optional[str] = None
+
 if _path in _mount_partitions:
+
+    # If the path is mounted with windows names also forbid the windows chars
     if "windows_names" in _mount_partitions[_path].opts:
         forbidden_chars.update(windows_forbidden_chars)
 
     # Linux uses Filesystem in userspace and reports "fuseblk".
+    if _mount_partitions[_path].fstype == "fuseblk":
+        fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
+
+    else:
+        fstype = _mount_partitions[_path].fstype
+
+    # Maybe apply the fstype overwrite
     if force_filesystem is not None:
         if force_filesystem not in _fs_forbidden_chars:
             print(f"{error_text} you have forced a filesystem, but it is not in the expected:\n\n" + "\n".join(repr(item) for item in _fs_forbidden_chars))
@@ -374,16 +400,20 @@ if _path in _mount_partitions:
 
         fstype = force_filesystem
 
-    elif _mount_partitions[_path].fstype == "fuseblk":
-        fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
-
-    else:
-        fstype = _mount_partitions[_path].fstype
-
     if fstype in _fs_forbidden_chars:
         forbidden_chars.update(_fs_forbidden_chars[fstype])
         if _fs_forbidden_chars[fstype] == windows_forbidden_chars:
             replace_dot_at_end_of_dir_name = True
 
 else:
-    fstype = "ntfs" if is_windows else "ext4"
+    print(f"{error_text} your filesystem is very wierd. Falling back on os-dependant fstype!")
+
+    # This should not happen
+    if is_windows:
+        fstype = "ntfs"
+    elif is_macos:
+        fstype = "apfs"
+    else:
+        fstype = "ext4"
+
+# -/- Filesystem settings ---
