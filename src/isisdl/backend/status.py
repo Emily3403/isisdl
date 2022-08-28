@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import math
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -269,7 +268,7 @@ class DownloadStatus(Status):
             log_strings.append("")
 
             # Now determine the already downloaded amount and display it
-            thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
+            # thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
             course_format = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
             for thread_id, container in self.thread_files.items():
                 if container is None:
