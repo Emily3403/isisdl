@@ -233,7 +233,7 @@ isis_ignore = re.compile(
 # @formatter:on
 
 regex_is_isis_document = re.compile(
-    r".*isis\.tu-berlin\.de/webservice/pluginfile\.php/.*"
+    r".*isis\.tu-berlin\.de/(?:webservice/|)pluginfile\.php/.*"
 )
 
 extern_ignore = re.compile(

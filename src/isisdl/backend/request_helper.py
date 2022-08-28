@@ -1102,11 +1102,11 @@ class CourseDownloader:
                 if container.should_download:
                     container.path.open("w").close()
                 else:
-                    if not container.path.exists():
-                        container.path.open("w").close()
-
                     for con in container._links:
                         if con.should_download:
+                            if not container.path.exists():
+                                container.path.open("w").close()
+
                             con.hardlink(container)
 
         CourseDownloader.containers = containers

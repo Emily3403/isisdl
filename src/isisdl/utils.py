@@ -75,6 +75,8 @@ def get_args() -> argparse.Namespace:
     operations.add_argument("--delete-bad-urls", help="Deletes all urls deemed to be \"bad\" - meaning there is no content.", action="store_true")
     operations.add_argument("--download-diff", help="Checks if a given directory contains more / different content than downloaded from isisdl.", type=str)
 
+    # argcomplete.autocomplete(parser)
+
     if is_testing:
         return parser.parse_known_args()[0]
 

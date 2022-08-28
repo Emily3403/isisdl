@@ -154,9 +154,11 @@ def main() -> None:
 
 # TODO:
 #
-#   Files should only be in extern if they do not originate from `isis.tu-berlin.de`
-#
 #   Check how many urls requested multiple times
+#
+#   Add Course name to download
+#
+#   Dant
 #
 #   Argcomplete
 #       https://pypi.org/project/argcomplete/
