@@ -280,7 +280,7 @@ class DownloadStatus(Status):
                 log_strings.append(
                     f"{self.progress_bar_container(container)} "
                     f"[ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ]"
-                    f" ({str(container.course):{' '}<{course_format}})"
+                    f" {str(container.course):{' '}<{course_format}}"
                     f" - {container}")
                 pass
 
@@ -290,7 +290,7 @@ class DownloadStatus(Status):
                 log_strings.append(
                     f"Stream:  {self.progress_bar_container(self.stream_file)} "
                     f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                    f" ({str(self.stream_file.course)})"
+                    f" {str(self.stream_file.course)}"
                     f" - {self.stream_file}")
             else:
                 log_strings.extend(["", ""])

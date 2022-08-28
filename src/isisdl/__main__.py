@@ -136,46 +136,52 @@ def main() -> None:
         generate_error_message(ex)
 
 
-# Feature discussion:
-#   Windows autorun
-#   Download of corrupted files
-
-
-# Main TODOS:
-#   Dynamic calculation of num threads for download
-#   fixing / bug hunting the compress
-
-
-# No size implies:
-#   More time conflicts in video files (File size from 10^9 → 10^4)
-#   No download status file size
-#   No sync database -> Not really since the videos names are sha-sums of the content
-
+#   Change Database → Version 1.4
+#       Make the size attribute not mandatory for a file
+#           → Logger looses the ability to report total number of bytes available
+#           → MediaContainer can't be compared with __gt__ → TODO: what does this cause?
+#           → Loose the ability to _always_ check if a file exists → if a file does not have a size, it is not downloaded
+#           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?
+#           → DownloadStatus won't have an ETA
+#           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
+#
+#       is_corrupted attribute change
+#           → Note the last time checked and retry the url based on an exponential backoff strategy
+#
+#       Remove the path attribute
+#           → Make the path of a file entirely dynamic and dependant on the configured state.
+#             This should lead to a seamless migration of the directory when changing it's name.
+#             This also enables easy renaming of courses and deselecting of the subdir option, assuming the directories have been moved accordingly.
+#
+#       No more json strings
+#           → Extra table for user configuration
+#
+#       Verify the database state on every startup by iterating over all files + sizes and raising an error if the size and checksum don't match
+#
+#       These changes imply the following
+#           → Don't check any URL's that are not extern
+#           →
 
 # TODO:
 #
 #   Check how many urls requested multiple times
 #
-#   Dant
+#   Calculate the number of threads to use dynamically
 #
 #   Argcomplete
 #       https://pypi.org/project/argcomplete/
 #       qmk can also do this
+#   → Seems kinda hard / shitty to use
 #
 #   Compare program to check diffs against isia-tub
-#
-#   Refactor the config in database
-#       No more json strings
-#       When a file is corrupted also save the last time checked. Then use an exponential reevaluation algorithm to check if the urls are available again
-#       Paths should be relative to working dir - makes for a seamless migration when moving
-#       On startup check for files that are out of order (path + size doesn't match) and prompt the user that they moved that files.
-#           → Also advertise the functionality of `isisdl --mv` to directly update the files
-#       Only store the parent path such that the path is dynamically dependant on runtime attributes
+#       → More content
 #
 #   Throttling does not work when imposed via config ??
 
 
 # Maybe TODO
+#
+#   fixing / bug hunting the compress
 #
 #   Have a variable for posix and linux
 #
