@@ -1360,6 +1360,7 @@ class DownloadThrottler(Thread):
         return int((self.download_rate * 1024 ** 2) // download_chunk_size * self.refresh_rate) or 1
 
 
+# TODO: Add link type and store that in the database + reference to checksum?
 class MediaType(enum.Enum):
     document = 1
     extern = 2
