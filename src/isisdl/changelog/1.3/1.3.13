@@ -1,4 +1,4 @@
-Changelog version 1.3.14
+Changelog version 1.3.13
 
 - This changelog
 Now you will get notified about all new features through this text.
@@ -19,3 +19,5 @@ Due to a bug in the conflict-checker, some videos were not downloaded. This beha
 - Download diff
 There is now a new subprogram to compare the downloaded files of an arbitrary directory and compare the differences to the `isisdl` directory.
 This program is especially useful when comparing different ISIS / Moodle-downloaders and checking if isisdl grabs all the content.
+
+(I realize that this changelog is probably not going to be read as the previous version of isisdl did not include a mechanism to view the changelog)
