@@ -139,7 +139,7 @@ def main() -> None:
 #   Change Database → Version 1.4
 #       Make the size attribute not mandatory for a file
 #           → Logger looses the ability to report total number of bytes available
-#           → MediaContainer can't be compared with __gt__ → TODO: what does this cause?
+#           → MediaContainer can't be compared with __gt__ → TODO: what does this cause? → Tests start failing in chop_down_size
 #           → Loose the ability to _always_ check if a file exists → if a file does not have a size, it is not downloaded
 #           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?
 #           → DownloadStatus won't have an ETA
