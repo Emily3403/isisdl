@@ -13,7 +13,8 @@ assert(is_static)
 " || exit 1
 
 
-pip install nuitka zstandard ordered-set
+pip install  zstandard ordered-set
+pip install nuitka
 
 nuitka3 --standalone --onefile --linux-onefile-icon=python_icon.png ../src/isisdl/__main__.py
 
