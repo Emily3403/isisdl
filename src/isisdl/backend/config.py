@@ -678,7 +678,7 @@ vs
 """)
     bool_prompt("absolute_path_filename")
 
-
+# TODO: Add tab completion prompt
 def init_wizard() -> None:
     global was_in_configuration
     was_in_configuration = True
