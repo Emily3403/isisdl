@@ -834,7 +834,6 @@ class RequestHelper:
             _video_containers = iter([self._download_videos(0)])
             _document_containers = iter([self._download_documents(course, status) for course in self.courses])
 
-        mod_assign = list(_mod_assign)
         pre_containers = [item for row in filter(lambda x: x is not None, chain(_document_containers, _video_containers, _mod_assign)) for item in row]
         pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
@@ -885,9 +884,10 @@ class RequestHelper:
 
                         for file in assignment["introattachments"]:
                             file["filepath"] = assignment["name"]
-                            all_content.append(PreMediaContainer(
-                                file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                            all_content.append(
+                                PreMediaContainer(
+                                    file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                    file["filename"], file["filepath"], file["filesize"], file["timemodified"])
                             )
 
             return all_content
@@ -895,8 +895,6 @@ class RequestHelper:
         except Exception as ex:
             with self._lock:
                 generate_error_message(ex)
-
-        return []
 
     def _download_videos(self, _: Any) -> List[PreMediaContainer]:
         try:
