@@ -834,6 +834,7 @@ class RequestHelper:
             _video_containers = iter([self._download_videos(0)])
             _document_containers = iter([self._download_documents(course, status) for course in self.courses])
 
+        mod_assign = list(_mod_assign)
         pre_containers = [item for row in filter(lambda x: x is not None, chain(_document_containers, _video_containers, _mod_assign)) for item in row]
         pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
         random.shuffle(pre_containers)
@@ -871,23 +872,25 @@ class RequestHelper:
             all_content = []
             _assignments = self.post_REST("mod_assign_get_assignments", use_timeout=False)
             if _assignments is None:
-                assignments = cast(Dict[str, Any], _assignments)
+                return []
 
-                allowed_ids = {item.course_id for item in self.courses}
-                for _course in assignments["courses"]:
-                    if _course["id"] in allowed_ids:
-                        for assignment in _course["assignments"]:
-                            if "introattachments" not in assignment:
-                                continue
+            assignments: Dict[str, Any] = _assignments
 
-                            for file in assignment["introattachments"]:
-                                file["filepath"] = assignment["name"]
-                                all_content.append(PreMediaContainer(
-                                    file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                    file["filename"], file["filepath"], file["filesize"], file["timemodified"])
-                                )
+            allowed_ids = {item.course_id for item in self.courses}
+            for _course in assignments["courses"]:
+                if _course["id"] in allowed_ids:
+                    for assignment in _course["assignments"]:
+                        if "introattachments" not in assignment:
+                            continue
 
-                return all_content
+                        for file in assignment["introattachments"]:
+                            file["filepath"] = assignment["name"]
+                            all_content.append(PreMediaContainer(
+                                file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                            )
+
+            return all_content
 
         except Exception as ex:
             with self._lock:
