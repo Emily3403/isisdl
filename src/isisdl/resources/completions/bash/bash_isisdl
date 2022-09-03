@@ -1,4 +1,4 @@
-#! /opt/homebrew/bin/bash
+#! /bin/bash
 
 # Adopted from https://stackoverflow.com/questions/23998364/bash-completion-script-to-complete-file-path-after-certain-arguments-options
 
