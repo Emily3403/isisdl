@@ -36,6 +36,11 @@ class DataV1:
     config: Dict[str, Union[bool, str, int, None, Dict[int, str]]]
     message: Optional[str] = None
     is_static: Optional[bool] = None
+    current_database_version: Optional[int] = None
+    database_version: Optional[int] = None
+    has_ffmpeg: Optional[bool] = None
+    forbidden_chars: Optional[List[int]] = None
+    fstype: Optional[str] = None
 
     @classmethod
     def from_json(cls, info: Dict[str, Any]) -> DataV1:
