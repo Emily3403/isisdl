@@ -607,9 +607,11 @@ def print_changelog_for_version(new_version: Union[LegacyVersion, Version]) -> N
     assert not isinstance(new_version, LegacyVersion)
 
     for i in range(current_version.micro + 1, new_version.micro + 1):
-        con = requests.get(f"https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/changelog/"
+        con = requests.get(f"https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/resources/changelog/"
                            f"{new_version.major}.{new_version.minor}/{new_version.major}.{new_version.minor}.{new_version.micro}.md")
+        print("\n-----\n")
         print(con.text)
+        print("\n-/---")
 
 
 def install_latest_version() -> None:
