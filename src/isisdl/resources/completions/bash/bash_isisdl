@@ -1,0 +1,27 @@
+#! /bin/bash
+
+# Adopted from https://stackoverflow.com/questions/23998364/bash-completion-script-to-complete-file-path-after-certain-arguments-options
+
+
+_isisdl()
+{
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="-h -v -t -d \
+      --help --version --max-num-threads --download-rate \
+      --init --config --sync --compress \
+      --export-config --stream --update \
+      --delete-bad-urls --download-diff"
+
+    if [[ ${prev} == --download-diff ]] ; then
+        compopt -o dirnames 2>/dev/null
+        COMPREPLY=( $(compgen -d -- ${cur}) )
+    elif [[ ${cur} == -* ]] ; then
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+    fi
+}
+complete -F _isisdl isisdl
+
