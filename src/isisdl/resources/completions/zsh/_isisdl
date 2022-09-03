@@ -1,0 +1,20 @@
+#compdef _isisdl isisdl
+
+function _isisdl {
+    _arguments \
+      {-v,--version}'[Prints the version number]' \
+      {-h,--help}'[Shows usage information]' \
+      {-t,--max-num-threads}'[The maximum number of threads to spawn (for downloading files)]: :_guard "[[\:digit\:]]#" "NUMBER"' \
+      {-d,--download-rate}'[Limits the download rate to given number of MiB/s]: :_guard "[[\:digit\:]]#" "NUMBER"' \
+      '--init[Guides you through the initial configuration and setup process]' \
+      '--config[Guides you through additional configuration which focuses on what to download from ISIS]' \
+      '--sync[Do a full reset of the database, updating all file locations and URLs]' \
+      '--compress[Uses ffmpeg to compress all downloaded videos]' \
+      '--export-config[Exports the config to ~/.config/isisdl/export.yaml]' \
+      '--stream[Launches isisdl in streaming mode: It will watch for file accesses and download only those files]' \
+      '--update[Checks for isisdl updates and installs them]' \
+      '--delete-bad-urls[Deletes all urls deemed to be bad, meaning there is no content]' \
+      '--download-diff[Checks if a given directory contains different content than downloaded from isisdl]:directory:_files -/'
+}
+
+
