@@ -602,9 +602,6 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
 
 
 def print_changelog_for_version(new_version: Union[LegacyVersion, Version]) -> None:
-    def version_check(v: str) -> bool:
-        return version.parse(__version__) < version.parse(v) <= new_version
-
     current_version = version.parse(__version__)
     assert not isinstance(current_version, LegacyVersion)
     assert not isinstance(new_version, LegacyVersion)

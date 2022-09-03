@@ -1257,6 +1257,7 @@ Newly discovered files:
                 with exception_lock:
                     generate_error_message(ex)
 
+        # TODO: Refactor this into a `sorted` expression with file.should_download as key.
         first_files: List[MediaContainer] = []
         second_files: List[MediaContainer] = []
 
@@ -1274,43 +1275,56 @@ Newly discovered files:
             for file in first_files + second_files:
                 download(file)
 
-        # files_to_download = files[MediaType.document] + files[MediaType.extern] + files[MediaType.video]
-        # files_to_download = [file for file in files_to_download if file.should_download]
-        #
-        # bandwidths: Dict[int, Tuple[int, float]] = {i: (0, 0.0) for i in range(args.max_num_threads)}
-        # ret_q: Queue[int] = Queue()
-        #
-        # if enable_multithread:
-        #     threads = [Downloader(Queue(), ret_q, i, status, throttler, session) for i in range(args.max_num_threads)]
-        #
-        # else:
-        #     threads = [Downloader(Queue(), ret_q, 0, status, throttler, session)]
-        #
-        # max_downloading = args.max_num_threads // 2
-        # i = -1
-        # num_iter = 2 / status_time
-        #
-        # while files_to_download:
-        #     i += 1
-        #
-        #     num_dl_threads = sum(thread.is_downloading for thread in threads)
-        #
-        #
-        #     if i == num_iter:
-        #         i = 0
-        #
-        #     if num_dl_threads >= max_downloading:
-        #         time.sleep(status_time)
-        #         continue
-        #
-        #     for thread in threads:
-        #         if num_dl_threads >= max_downloading:
-        #             break
-        #
-        #         if not thread.is_downloading:
-        #             thread.q.put(files_to_download.pop(0))
-        #             time.sleep(status_time)
-        #             num_dl_threads += 1
+    def _download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+
+        # The threads only have to be re-filled once there is an item in ret_q.
+        # → The entire process could be blocking instead of active waiting
+        # → One could always store the bandwidth from before and evaluate on waking if there was a speedup
+
+        # We have to be explorative in + and - directions:
+        #   If we are currently at the maximum number of threads recorded, then sometimes just add a thread.
+
+        # Too many threads don't hurt: They just Make stopping the download slower.
+
+        # Maybe add in two phases: First download all small files → (Everything below 30M?), then the big one.
+        # Use the same algorithm but with the maximum number of threads doubled.
+
+        files_to_download = files[MediaType.extern] + files[MediaType.corrupted] + files[MediaType.document]
+
+        ret_q: Queue[int] = Queue()
+
+        if enable_multithread:
+            threads = [Downloader(Queue(), ret_q, i, status, throttler, session) for i in range(args.max_num_threads)]
+
+        else:
+            threads = [Downloader(Queue(), ret_q, 0, status, throttler, session)]
+
+        i = 0
+        for i in range(args.max_num_threads // 2 + 1):
+            threads[i].q.put(files_to_download.pop(0))
+
+        num_threads_downloading = i
+
+        def eval_spawn_next_thread() -> Optional[bool]:
+            # TODO
+            pass
+
+        while files_to_download:
+            thread_id_woken_up = ret_q.get()
+
+            spawn = eval_spawn_next_thread()
+
+            if spawn is True:
+                threads[thread_id_woken_up].q.put(files_to_download.pop(0))
+                threads[num_threads_downloading].q.put(files_to_download.pop(0))
+                num_threads_downloading += 1
+
+            elif spawn is False:
+                pass
+                num_threads_downloading -= 1
+
+            else:
+                threads[thread_id_woken_up].q.put(files_to_download.pop(0))
 
     @staticmethod
     @on_kill(2)
