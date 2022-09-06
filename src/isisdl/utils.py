@@ -39,7 +39,8 @@ from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location
+from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location, \
+    source_code_location
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -388,6 +389,7 @@ def startup() -> None:
         os.makedirs(path(config_dir_location), exist_ok=True)
         os.makedirs(systemd_dir_location, exist_ok=True)
 
+        # Install config file
         default_config_str = generate_default_config_str()
 
         with open(example_config_file_location, "w") as f:
@@ -396,6 +398,50 @@ def startup() -> None:
         if not os.path.exists(config_file_location):
             with open(config_file_location, "w") as f:
                 f.write(f"# You probably want to start by copying {example_config_file_location} and adapting it.\n")
+
+        # Install completions if they don't exist already
+        user_dir = os.path.expanduser("~")
+
+        if shutil.which("zsh") is not None:
+            default_path = f"{user_dir}/.local/share/zsh/site-functions"
+            whitelist_paths = [
+                f"{user_dir}/.oh-my-zsh/completions",
+                f"{user_dir}/.oh-my-zsh/custom/plugins/zsh-completions/src",
+                f"/usr/local/share/zsh/site-functions"
+            ]
+
+            # Since the session is interactive it might contain stuff like neofetch etc.
+            rand_string = "".join(random.choice(string.ascii_letters) for _ in range(32))
+            fpath = subprocess.check_output(["zsh", "-c", "-i", f"echo {rand_string}; echo $FPATH"]) \
+                .decode().split(rand_string)[-1].strip().split(":")
+
+            # 1. Find install path (default .local/share/zsh/site-functions or .local/share/isisdl/)
+            # 2. copy _isisdl there
+
+            # 3. Export this path to $FPATH via .zshrc (make this transparent to user)
+            # 4. autoload [path]/_isisdl
+
+            for final_path in whitelist_paths:
+                for p in fpath:
+                    if final_path == p and not (os.path.exists(final_path) and not os.access(final_path, os.W_OK | os.X_OK)):
+                        break
+
+            else:
+                final_path = default_path
+
+            # Here the file is always copied to the destination dir.
+            # This is fine since the Filesystem will (hopefully) realize that the files are the same and thus ignore it.
+            os.makedirs(final_path, exist_ok=True)
+            shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
+
+        if shutil.which("fish") is not None:
+            # TODO
+            pass
+
+        if shutil.which("bash") is not None:
+            final_path = f"{user_dir}/.local/share/bash-completion/completions"
+            os.makedirs(final_path, exist_ok=True)
+            shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
 
 
 def clear() -> None:

@@ -72,6 +72,9 @@ has_ffmpeg = shutil.which("ffmpeg") is not None
 # Check if being automatically run
 is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
+source_code_location = Path(isisdl.__file__).parent
+
+
 # Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
