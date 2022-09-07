@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 from getpass import getpass
 from pathlib import Path
@@ -678,6 +679,61 @@ vs
 """)
     bool_prompt("absolute_path_filename")
 
+def ask_completions_prompt() -> None:
+    clear()
+    # TODO: Check if completions are available
+
+    shell = os.environ['SHELL']
+    is_zsh = "zsh" in shell
+    is_fish = "fish" in shell
+    is_bash = "bash" in shell
+
+    if is_zsh:
+        completion = subprocess.check_output([shell, "-c", "echo $_comps[isisdl]"])
+
+    elif is_fish:
+        pass
+
+    elif is_bash:
+        pass
+
+
+
+    print(f"""There are tab-completions available for your shell: {shell}
+
+However, the prerequisites for this shell are not fulfilled.""")
+
+    path_dir = "TODO"
+
+    if is_zsh:
+
+        print(f"""The FPATH does not contain the directory for the isisdl completions.
+In order to use them you must add the following to your ~/.zshrc:
+
+export FPATH=$FPATH:{path_dir}
+
+If you wish, I can also do that for you. Do you want me to add this to your config?
+""")
+
+
+    if is_fish:
+        print("""In order for you to use the completions all of your system manpages have to be parsed.
+This will take a considerable amount of time (~20s). You can manually regerage them by executing the following command:
+
+`fish_update_completions`
+
+If you wish, I can also do that for you. Should I do that?""")
+
+        if True:
+            os.system("fish_update_completions")
+
+    if is_bash:
+        print(f"""In order for you to use the completions the following command has to be added to your ~/.bashrc:
+   
+source {path_dir}
+
+If you wish, I can also do that for you. Do you want me to add this to your config?""")
+
 
 # TODO: Add tab completion prompt
 def init_wizard() -> None:
@@ -699,6 +755,7 @@ def config_wizard() -> None:
     global was_in_configuration
     was_in_configuration = True
 
+    # ask_completions_prompt()
     throttler_prompt()
     dont_download_videos_prompt()
     whitelist_prompt()

@@ -433,6 +433,7 @@ def startup() -> None:
             # This is fine since the Filesystem will (hopefully) realize that the files are the same and thus ignore it.
             os.makedirs(final_path, exist_ok=True)
             shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
+            # TODO: Also tag this file as autoloadable
 
         if shutil.which("fish") is not None:
             # TODO
