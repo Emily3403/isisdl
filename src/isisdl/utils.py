@@ -407,7 +407,6 @@ def startup() -> None:
             whitelist_paths = [
                 f"{user_dir}/.oh-my-zsh/completions",
                 f"{user_dir}/.oh-my-zsh/custom/plugins/zsh-completions/src",
-                f"/usr/local/share/zsh/site-functions"
             ]
 
             # Since the session is interactive it might contain stuff like neofetch etc.
