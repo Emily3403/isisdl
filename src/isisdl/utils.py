@@ -399,6 +399,7 @@ def startup() -> None:
             with open(config_file_location, "w") as f:
                 f.write(f"# You probably want to start by copying {example_config_file_location} and adapting it.\n")
 
+    if not is_windows and not is_static:
         # Install completions if they don't exist already
         user_dir = os.path.expanduser("~")
 
