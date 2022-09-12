@@ -183,6 +183,12 @@ def main() -> None:
 #       → More content
 #
 #   Throttling does not work when imposed via config ??
+#
+#   When exiting show exact done in.
+#
+#   When no new discovered files then don't show None but instead don't print anything at all.
+#
+#   Better course targeting mechanism by first downloading those where you have participated
 
 
 # Maybe TODO

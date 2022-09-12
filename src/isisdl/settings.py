@@ -104,7 +104,7 @@ checksum_algorithm = sha256
 checksum_num_bytes = 1024 * 500
 
 # If the file size is not equal, but it is in this percentage the checksum will be computed in order to
-perc_diff_for_checksum = 0.5
+perc_diff_for_checksum = 0.1  # 10% ± is allowed
 
 # -/- Checksum options ---
 
@@ -160,6 +160,8 @@ download_static_sleep_time = 3
 
 # Moving average percent for the bandwidth calculation
 bandwidth_mavg_perc = 0.2
+
+bandwidth_download_files_mavg_perc = 0.6
 
 # -/- Download options ---
 

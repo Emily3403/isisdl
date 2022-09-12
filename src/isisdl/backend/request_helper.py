@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore, log_file_location, datetime_str, regex_is_isis_document
+    extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes, normalize_url
@@ -411,13 +411,16 @@ class MediaContainer:
         if isinstance(maybe_container, bool):
             return maybe_container
 
-        if maybe_container.checksum is not None:
-            return False
-
-        if actual_size == 0 or not (self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum)):
+        if actual_size == 0:
             return True
 
         if self.size == actual_size:
+            return False
+
+        if maybe_container.checksum is None:
+            return True
+
+        if self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum):
             return False
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
@@ -479,20 +482,27 @@ class MediaContainer:
     def stop(self) -> None:
         self._stop = True
 
-    def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> None:
+    def download(self, throttler: DownloadThrottler, session: SessionWithKey, is_stream: bool = False) -> bool:
+        """
+        The bool return value indicates if any downloading took place. Used for the bandwidth calculations.
+        """
+
         if self._stop or self.media_type == MediaType.corrupted:
             self._done = True
-            return
+            return False
 
         if self.current_size is not None:
-            return
+            if is_testing:
+                assert self._done
+
+            return False
 
         self.current_size = 0
 
         if not self.should_download and self.url != 'https://www.eecs.tu-berlin.de/fileadmin/f4/fkIVdokumente/studium/Plagiate/Merkblatt_Plagiate_Fak.IV_05-2020.pdf':
             self.current_size = self.size
             self._done = True
-            return
+            return False
 
         if is_stream:
             throttler.start_stream(self.path)
@@ -500,10 +510,14 @@ class MediaContainer:
         download = session.get_(self.download_url, params={"token": session.token}, stream=True)
 
         if download is None or not download.ok:
+            if download is not None:
+                download.close()
+
             self.size = 0
             self.current_size = None
             self.media_type = MediaType.corrupted
             self._done = True
+
             if self.media_type != MediaType.video:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
@@ -513,7 +527,7 @@ class MediaContainer:
                     link.hardlink(self)
 
             self.dump()
-            return
+            return False
 
         # We copy in chunks so the download rate can be limited. This could also be done with `shutil.copyfileobj(…)`
         with self.path.open("wb") as f:
@@ -549,9 +563,8 @@ class MediaContainer:
         download.close()
 
         # Only register the file after successfully downloading it.
-        if self.media_type != MediaType.corrupted:
-            if is_testing:
-                assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
+        if is_testing and self.media_type != MediaType.corrupted:
+            assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
 
         self.size = self.path.stat().st_size
         self.checksum = calculate_local_checksum(self.path)
@@ -568,6 +581,8 @@ class MediaContainer:
 
         self._newly_downloaded = True
         self._done = True
+
+        return True
 
 
 class Course:
@@ -1025,7 +1040,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
 class Downloader(Thread):
     q: Queue[MediaContainer]
-    ret_q: Queue[int]
+    ret_q: Queue[Tuple[int, bool]]
     thread_id: int
     status: DownloadStatus
     throttler: DownloadThrottler
@@ -1034,7 +1049,7 @@ class Downloader(Thread):
     is_downloading: bool = False
     _lock = Lock()
 
-    def __init__(self, q: Queue[MediaContainer], ret_q: Queue[int], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
+    def __init__(self, q: Queue[MediaContainer], ret_q: Queue[Tuple[int, bool]], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
         self.q = q
         self.ret_q = ret_q
         self.thread_id = thread_id
@@ -1052,10 +1067,10 @@ class Downloader(Thread):
                 self.is_downloading = True
                 self.status.add_container(self.thread_id, file)
 
-                file.download(self.throttler, self.session)
+                ret = file.download(self.throttler, self.session)
                 self.status.done(self.thread_id, file)
                 self.is_downloading = False
-                self.ret_q.put(self.thread_id)
+                self.ret_q.put((self.thread_id, ret))
 
         except Exception as ex:
             with self._lock:
@@ -1238,11 +1253,11 @@ Newly discovered files:
 
         notifier.loop()
 
-    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+    def _download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
-        def download(file: MediaContainer) -> None:
+        def download(file: MediaContainer) -> bool:
             if enable_multithread:
                 thread_id = int(current_thread().name.split("T_")[-1])
             else:
@@ -1250,8 +1265,9 @@ Newly discovered files:
 
             status.add_container(thread_id, file)
             try:
-                file.download(throttler, session)
+                exit_ = file.download(throttler, session)
                 status.done(thread_id, file)
+                return exit_
 
             except Exception as ex:
                 with exception_lock:
@@ -1275,7 +1291,7 @@ Newly discovered files:
             for file in first_files + second_files:
                 download(file)
 
-    def _download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
 
         # The threads only have to be re-filled once there is an item in ret_q.
         # → The entire process could be blocking instead of active waiting
@@ -1289,9 +1305,11 @@ Newly discovered files:
         # Maybe add in two phases: First download all small files → (Everything below 30M?), then the big one.
         # Use the same algorithm but with the maximum number of threads doubled.
 
-        files_to_download = files[MediaType.extern] + files[MediaType.corrupted] + files[MediaType.document]
+        # TODO: Add extern + corrupted
+        files_to_download = files[MediaType.document] + files[MediaType.video]
+        files_to_download.sort(key=lambda it: it.should_download)
 
-        ret_q: Queue[int] = Queue()
+        ret_q: Queue[Tuple[int, bool]] = Queue()
 
         if enable_multithread:
             threads = [Downloader(Queue(), ret_q, i, status, throttler, session) for i in range(args.max_num_threads)]
@@ -1300,31 +1318,48 @@ Newly discovered files:
             threads = [Downloader(Queue(), ret_q, 0, status, throttler, session)]
 
         i = 0
-        for i in range(args.max_num_threads // 2 + 1):
+        for i in range(args.max_num_threads // 2):
             threads[i].q.put(files_to_download.pop(0))
 
-        num_threads_downloading = i
+        num_threads_downloading = i + 1
 
         def eval_spawn_next_thread() -> Optional[bool]:
             # TODO
-            pass
+            # 2. Predict in which direction to 'jump'
+            return True
+
+        bandwidths: Dict[int, float] = {}
+        time_last_measurement = time.perf_counter()
 
         while files_to_download:
-            thread_id_woken_up = ret_q.get()
+            thread_id_woken_up, was_successful = ret_q.get()
+
+            if was_successful:
+                # Measure the bandwidth
+                time_taken = min(time.perf_counter() - time_last_measurement, token_queue_download_refresh_rate)
+                timestamps = [item for item in throttler.timestamps if time.perf_counter() - item < time_taken]
+
+                bandwidth_used = float(len(timestamps) * download_chunk_size / token_queue_download_refresh_rate)
+
+                if num_threads_downloading not in bandwidths:
+                    bandwidths[num_threads_downloading] = bandwidth_used
+                else:
+                    bandwidths[num_threads_downloading] = bandwidths[num_threads_downloading] * (1 - bandwidth_mavg_perc) + bandwidth_used * bandwidth_mavg_perc
 
             spawn = eval_spawn_next_thread()
 
-            if spawn is True:
+            if spawn is True and num_threads_downloading < args.max_num_threads:
                 threads[thread_id_woken_up].q.put(files_to_download.pop(0))
                 threads[num_threads_downloading].q.put(files_to_download.pop(0))
                 num_threads_downloading += 1
 
-            elif spawn is False:
-                pass
+            elif spawn is False and num_threads_downloading > 1:
                 num_threads_downloading -= 1
 
             else:
                 threads[thread_id_woken_up].q.put(files_to_download.pop(0))
+
+            time_last_measurement = time.perf_counter()
 
     @staticmethod
     @on_kill(2)

@@ -228,7 +228,8 @@ class DownloadStatus(Status):
             elif item._stop:
                 self.total_downloaded += item.size
 
-    def progress_bar_container(self, container: MediaContainer) -> str:
+    @staticmethod
+    def progress_bar_container(container: MediaContainer) -> str:
         if container.size in {0, -1}:
             percent: float = 0
         elif container.current_size is None:
@@ -236,7 +237,7 @@ class DownloadStatus(Status):
         else:
             percent = container.current_size / container.size
 
-        # Sometimes this bug happens… I don't know why
+        # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
         if percent > 1:
             percent = 1
 
