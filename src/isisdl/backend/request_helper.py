@@ -1077,31 +1077,6 @@ class Downloader(Thread):
                 generate_error_message(ex)
 
 
-class BandwidthWatcher(Thread):
-    throttler: DownloadThrottler
-    num_threads: int
-    bandwidths: Dict[int, Tuple[int, float]]
-
-    def __init__(self, throttler: DownloadThrottler, num_threads: int, bandwidths: Dict[int, Tuple[int, float]]) -> None:
-        self.throttler = throttler
-        self.num_threads = num_threads
-        self.bandwidths = bandwidths
-
-        super().__init__(daemon=True)
-        self.start()
-
-    def run(self) -> None:
-        while True:
-            num_samples, old_bw = self.bandwidths[self.num_threads]
-            if num_samples:
-                new_bw = old_bw * (1 - bandwidth_mavg_perc) + self.throttler.bandwidth_used * bandwidth_mavg_perc
-                self.bandwidths[self.num_threads] = (num_samples + 1, new_bw)
-            else:
-                self.bandwidths[self.num_threads] = (1, self.throttler.bandwidth_used)
-
-            pass
-
-
 class CourseDownloader:
     containers: Dict[MediaType, List[MediaContainer]] = {}
     _did_message: bool = False
