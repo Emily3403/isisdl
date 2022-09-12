@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from threading import Thread, Lock
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, download_progress_bar_resolution, is_testing
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, is_testing
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 
 if TYPE_CHECKING:
@@ -228,70 +228,43 @@ class DownloadStatus(Status):
             elif item._stop:
                 self.total_downloaded += item.size
 
-    @staticmethod
-    def progress_bar_container(container: MediaContainer) -> str:
-        if container.size in {0, -1}:
-            percent: float = 0
-        elif container.current_size is None:
-            percent = 0
-        else:
-            percent = container.current_size / container.size
-
-        # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
-        if percent > 1:
-            percent = 1
-
-        progress_chars = int(percent * download_progress_bar_resolution)
-        return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
-
     def generate_log_message(self) -> List[str]:
         log_strings = []
-        curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
-        total_size = sum(item.size for item in self.files if item.size != -1)
 
+        total_size = sum(item.size for item in self.files if item.size != -1)
         downloaded_bytes = self.total_downloaded + sum(item.current_size for item in self.thread_files.values() if item is not None and item.current_size is not None)
+        curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
 
         log_strings.append("")
-        log_strings.append(f"Current bandwidth usage: {curr_bandwidth}/s {f'(limited to {self.throttler.download_rate} MiB/s)' if self.throttler.download_rate != -1 else ''}")
+        log_strings.append(
+            f"Current bandwidth usage: "
+            f"{curr_bandwidth}/s {f'(limited to {self.throttler.download_rate} MiB/s)' if self.throttler.download_rate != -1 else ''}"
+        )
 
-        if args.stream:
-            log_strings.append("")
-            if self.stream_file is not None:
-                log_strings.append(f"Stream: {self.progress_bar_container(self.stream_file)} "
-                                   f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ] - {self.stream_file}")
-            else:
-                log_strings.append("Stream: Waiting")
-        else:
-            # General meta-info
-            log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {HumanBytes.format_str(total_size)}")
-            log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
-            log_strings.append(f"Done in: {timedelta(seconds=int((total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
-            log_strings.append("")
+        # General meta-info
+        log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {HumanBytes.format_str(total_size)}")
+        log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
+        log_strings.append(f"Done in: {timedelta(seconds=int((total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
+        log_strings.append("")
 
-            # Now determine the already downloaded amount and display it
-            # thread_format = math.ceil(math.log10(len(self.thread_files) or 1))
-            course_format = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
-            for thread_id, container in self.thread_files.items():
-                if container is None:
+        # Now determine the already downloaded amount and display it
+        course_pad = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
+        for thread_id, container in self.thread_files.items():
+            if container is None:
+                if args.stream is False:
                     log_strings.append("")
-                    continue
+                continue
 
-                log_strings.append(
-                    f"{self.progress_bar_container(container)} "
-                    f"[ {HumanBytes.format_pad(container.current_size)} | {HumanBytes.format_pad(container.size)} ]"
-                    f" {str(container.course):{' '}<{course_format}}"
-                    f" - {container}")
-                pass
+            log_strings.append(container.render_status(course_pad))
 
-            # Optional streaming info
-            if self.stream_file is not None:
-                log_strings.append("")
-                log_strings.append(
-                    f"Stream:  {self.progress_bar_container(self.stream_file)} "
-                    f"[ {HumanBytes.format_pad(self.stream_file.current_size)} | {HumanBytes.format_pad(self.stream_file.size)} ]"
-                    f" {str(self.stream_file.course)}"
-                    f" - {self.stream_file}")
-            else:
-                log_strings.extend(["", ""])
+        # Optional streaming info
+        if self.stream_file is not None:
+            if args.stream is False:
+                log_strings.extend(("", ""))
+
+            log_strings.append(self.stream_file.render_status(stream=False))
+
+        if args.stream and self.stream_file is None:
+            log_strings.append("Stream: Waiting")
 
         return log_strings

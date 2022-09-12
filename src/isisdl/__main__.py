@@ -189,6 +189,8 @@ def main() -> None:
 #   When no new discovered files then don't show None but instead don't print anything at all.
 #
 #   Better course targeting mechanism by first downloading those where you have participated
+#
+#   Fix bug when first starting then it looks like stream
 
 
 # Maybe TODO

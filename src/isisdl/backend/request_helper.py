@@ -23,7 +23,7 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size
+    extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes, normalize_url
@@ -453,6 +453,28 @@ class MediaContainer:
             return str(self.path)
 
         return sanitize_name(self._name, False)
+
+    def render_progress_bar(self) -> str:
+        if self.size in {0, -1}:
+            percent: float = 0.
+        elif self.current_size is None:
+            percent = 0.
+        else:
+            percent = self.current_size / self.size
+
+        # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
+        if percent > 1:
+            percent = 1.
+
+        progress_chars = int(percent * download_progress_bar_resolution)
+        return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
+
+    def render_status(self, course_pad: int = 0, stream: bool = False) -> str:
+        return \
+            f"{'Stream:  ' if stream else ''}{self.render_progress_bar()} " \
+            f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size)} ]" \
+            f" - {str(self.course):<{course_pad}}" \
+            f" - {self}"
 
     def __repr__(self) -> str:
         return self.__str__()
