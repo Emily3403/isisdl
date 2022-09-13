@@ -8,7 +8,7 @@ from threading import Thread, Lock
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
-from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, is_testing
+from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, is_testing, course_pad_minimum_width
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 
 if TYPE_CHECKING:
@@ -249,7 +249,7 @@ class DownloadStatus(Status):
         log_strings.append("")
 
         # Now determine the already downloaded amount and display it
-        course_pad = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
+        course_pad = max(max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values()), course_pad_minimum_width)
         hostname_pad = max(len(urlparse(item.url).hostname or "") if item is not None else 1 for item in self.thread_files.values())
 
         for thread_id, container in self.thread_files.items():
