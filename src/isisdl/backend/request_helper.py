@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import random
 import re
@@ -22,8 +23,8 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, bandwidth_mavg_perc, \
-    extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution
+from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
+    log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
     DownloadThrottler, MediaType, HumanBytes, normalize_url
@@ -469,11 +470,12 @@ class MediaContainer:
         progress_chars = int(percent * download_progress_bar_resolution)
         return "╶" + "█" * progress_chars + " " * (download_progress_bar_resolution - progress_chars) + "╴"
 
-    def render_status(self, course_pad: int = 0, stream: bool = False) -> str:
+    def render_status(self, course_pad: int = 0, hostname_pad: int = 0, stream: bool = False) -> str:
         return \
             f"{'Stream:  ' if stream else ''}{self.render_progress_bar()} " \
             f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size)} ]" \
             f" - {str(self.course):<{course_pad}}" \
+            f" - {urlparse(self.url).hostname:<{hostname_pad}}" \
             f" - {self}"
 
     def __repr__(self) -> str:
@@ -1250,7 +1252,7 @@ Newly discovered files:
 
         notifier.loop()
 
-    def _download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
         # TODO: Dynamic calculation of num threads such that optimal Internet Usage is achieved
         exception_lock = Lock()
 
@@ -1288,7 +1290,7 @@ Newly discovered files:
             for file in first_files + second_files:
                 download(file)
 
-    def download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
+    def _download_files(self, files: Dict[MediaType, List[MediaContainer]], throttler: DownloadThrottler, session: SessionWithKey, status: DownloadStatus) -> None:
 
         # The threads only have to be re-filled once there is an item in ret_q.
         # → The entire process could be blocking instead of active waiting
@@ -1302,8 +1304,8 @@ Newly discovered files:
         # Maybe add in two phases: First download all small files → (Everything below 30M?), then the big one.
         # Use the same algorithm but with the maximum number of threads doubled.
 
-        # TODO: Add extern + corrupted
-        files_to_download = files[MediaType.document] + files[MediaType.video]
+        # TODO: Add extern + corrupted + documents
+        files_to_download = files[MediaType.video]
         files_to_download.sort(key=lambda it: it.should_download)
 
         ret_q: Queue[Tuple[int, bool]] = Queue()
@@ -1323,9 +1325,32 @@ Newly discovered files:
         def eval_spawn_next_thread() -> Optional[bool]:
             # TODO
             # 2. Predict in which direction to 'jump'
-            return True
+
+            num_times_counted
+            bandwidths
+
+            weights: Dict[Optional[bool], float] = {False: 0.0, True: 0.0, None: 0.0}
+
+            # Score metric consisting of
+            #   - number of times already sampled
+            #   - Expected utility → Fewer threads = better
+            if num_threads_downloading + 1 in bandwidths:
+                weights[True] += -2 * math.log(num_times_counted[num_threads_downloading + 1]) + 2
+
+            else:
+                weights[True] += 3
+
+            if num_threads_downloading - 1 in bandwidths:
+                weights[False] += -2 * math.log(num_times_counted[num_threads_downloading - 1]) + 2
+
+            else:
+                weights[False] += 3
+
+            choice = random.choices(list(weights.keys()), list(weights.values()))
+            return choice[0]
 
         bandwidths: Dict[int, float] = {}
+        num_times_counted: Dict[int, int] = {}
         time_last_measurement = time.perf_counter()
 
         while files_to_download:
@@ -1340,8 +1365,10 @@ Newly discovered files:
 
                 if num_threads_downloading not in bandwidths:
                     bandwidths[num_threads_downloading] = bandwidth_used
+                    num_times_counted[num_threads_downloading] = len(timestamps)
                 else:
-                    bandwidths[num_threads_downloading] = bandwidths[num_threads_downloading] * (1 - bandwidth_mavg_perc) + bandwidth_used * bandwidth_mavg_perc
+                    bandwidths[num_threads_downloading] = bandwidths[num_threads_downloading] * (1 - bandwidth_download_files_mavg_perc) + bandwidth_used * bandwidth_download_files_mavg_perc
+                    num_times_counted[num_threads_downloading] += len(timestamps)
 
             spawn = eval_spawn_next_thread()
 

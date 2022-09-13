@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from threading import Thread, Lock
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from urllib.parse import urlparse
 
 from isisdl.settings import status_chop_off, is_windows, status_time, status_progress_bar_resolution, is_testing
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
@@ -249,20 +250,22 @@ class DownloadStatus(Status):
 
         # Now determine the already downloaded amount and display it
         course_pad = max(len(str(item.course)) if item is not None else 1 for item in self.thread_files.values())
+        hostname_pad = max(len(urlparse(item.url).hostname or "") if item is not None else 1 for item in self.thread_files.values())
+
         for thread_id, container in self.thread_files.items():
             if container is None:
                 if args.stream is False:
                     log_strings.append("")
                 continue
 
-            log_strings.append(container.render_status(course_pad))
+            log_strings.append(container.render_status(course_pad, hostname_pad))
 
         # Optional streaming info
         if self.stream_file is not None:
             if args.stream is False:
                 log_strings.extend(("", ""))
 
-            log_strings.append(self.stream_file.render_status(stream=False))
+            log_strings.append(self.stream_file.render_status(stream=True))
 
         if args.stream and self.stream_file is None:
             log_strings.append("Stream: Waiting")
