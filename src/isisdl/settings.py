@@ -130,7 +130,7 @@ status_progress_bar_resolution = 50
 download_progress_bar_resolution = 10
 
 course_pad_minimum_width = 20
-hostname_pad_minimum_width = 20
+hostname_pad_minimum_width = 17
 
 # Chop off the last ↓ characters of the status message for a ...
 status_chop_off = 3
