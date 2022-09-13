@@ -129,7 +129,7 @@ status_progress_bar_resolution = 50
 # The number of spaces for the downloads progress bar.
 download_progress_bar_resolution = 10
 
-course_pad_minimum_width = 10
+course_pad_minimum_width = 30
 hostname_pad_minimum_width = 10
 
 # Chop off the last ↓ characters of the status message for a ...
