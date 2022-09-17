@@ -166,6 +166,9 @@ def main() -> None:
 #           → Don't check any URL's that are not extern
 #           →
 
+# More Visualisation:
+#
+
 # TODO:
 #
 #   Check how many urls requested multiple times
