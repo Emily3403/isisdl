@@ -80,7 +80,7 @@ source_code_location = Path(isisdl.__file__).parent
 
 windows_forbidden_chars: Set[str] = {"\\", "/", "?", "*", ":", "|", "\"", "<", ">", "\0"}
 linux_forbidden_chars: Set[str] = {"\0", "/"}
-macos_forbidden_chars: Set[str] = set()
+macos_forbidden_chars: Set[str] = {"\0", "/"}
 
 if is_windows:
     forbidden_chars = windows_forbidden_chars
