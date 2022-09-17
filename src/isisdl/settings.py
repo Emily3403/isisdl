@@ -129,6 +129,7 @@ status_progress_bar_resolution = 50
 # The number of spaces for the downloads progress bar.
 download_progress_bar_resolution = 10
 
+# Minimum padding for courses / hostnames
 course_pad_minimum_width = 20
 hostname_pad_minimum_width = 17
 
