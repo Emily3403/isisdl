@@ -26,7 +26,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict
+from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict, get_type_hints
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -194,33 +194,17 @@ class Config:
             database_helper.set_config(self._stored)
 
     def verify_state_types(self) -> None:
-        # TODO: Use Config.__annotations__
-        # Unfortunately we can't use the type annotations since they provide very little interface to python.
-        def fail(attr: str, typ: Any, may_be_none: bool = False) -> None:
-            if self.state[attr] is None and may_be_none:
-                return
+        from typing import get_args as t_get_args
+        slots = set(self.__slots__)
 
-            if type(self.state[attr]) is not typ:
+        for name, hint in get_type_hints(Config).items():
+            if name not in slots:
+                continue
+
+            if type(self.state[name]) not in set(t_get_args(hint)) | {hint}:
                 print(f"{error_text} the config file is malformed.\n"
-                      f"Reason: Expected type {typ} for key {repr(attr)}. Got {type(self.state[attr])}.\nBailing out!")
+                      f"Reason: Expected type {hint} for key {repr(name)}. Got {type(self.state[name])}.\nBailing out!")
                 os._exit(1)
-
-        fail("password_encrypted", bool, True)
-        fail("username", str, True)
-        fail("password", str, True)
-        fail("whitelist", list, True)
-        fail("blacklist", list, True)
-        fail("renamed_courses", dict, True)
-        fail("make_subdirs", bool)
-        fail("follow_links", bool)
-        fail("download_videos", bool)
-        fail("timer_enable", bool)
-        fail("throttle_rate", int, True)
-        fail("throttle_rate_autorun", int, True)
-        fail("update_policy", str, True)
-        fail("telemetry_policy", bool)
-        fail("database_version", int)
-        fail("absolute_path_filename", bool)
 
     @staticmethod
     def default(attr: str) -> Any:

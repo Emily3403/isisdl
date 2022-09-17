@@ -214,11 +214,13 @@ def analyze_config() -> None:
 
         counted.add(dat.username)
         for k, v in dat.config.items():
-            users[f"{dat.username} {k}"].append(v)
+            users[f"{k} {dat.username}"].append(v)
 
     for k, val in users.items():
         if all(it == val[0] for it in val):
             users[k] = val[0]
+
+    final = {k: v for k, v in sorted(users.items(), key=lambda item: item[0])}
 
     pass
 
