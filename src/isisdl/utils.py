@@ -40,7 +40,7 @@ from requests import Session
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
 from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location, \
-    source_code_location
+    source_code_location, intern_dir_location
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
     enable_lock, error_directory_location, systemd_dir_location, master_password, is_testing, systemd_timer_file_location, systemd_service_file_location, export_config_file_location, \
@@ -362,7 +362,7 @@ def export_config() -> None:
 
 
 def startup() -> None:
-    os.makedirs(path(), exist_ok=True)
+    os.makedirs(path(intern_dir_location), exist_ok=True)
     if os.path.exists(path(error_directory_location)) and os.listdir(path(error_directory_location)) == []:
         os.rmdir(path(error_directory_location))
 
@@ -370,67 +370,75 @@ def startup() -> None:
         os.unlink(python_executable + ".old")
 
     if not is_windows:
+        # Make the necessary directories
         os.makedirs(path(config_dir_location), exist_ok=True)
         os.makedirs(systemd_dir_location, exist_ok=True)
 
-        # Install config file
+        # Install config files
         default_config_str = generate_default_config_str()
 
         with open(example_config_file_location, "w") as f:
             f.write(default_config_str)
 
+        # TODO: Refactor this to be manages from the `src/resources` directory and, while you are at it also factor it out into a function to use everywhere else.
         if not os.path.exists(config_file_location):
             with open(config_file_location, "w") as f:
                 f.write(f"# You probably want to start by copying {example_config_file_location} and adapting it.\n")
 
     if not is_windows and not is_static:
-        # Install completions if they don't exist already
-        user_dir = os.path.expanduser("~")
+        # Currently this part is untested and kinda unstable. Thus wrap it in a big try and then simply don't exit. Here failure is not fatal.
+        try:
+            # Install completions if they don't exist already
+            user_dir = os.path.expanduser("~")
 
-        if shutil.which("zsh") is not None:
-            default_path = f"{user_dir}/.local/share/zsh/site-functions"
-            whitelist_paths = [
-                f"{user_dir}/.oh-my-zsh/completions",
-                f"{user_dir}/.oh-my-zsh/custom/plugins/zsh-completions/src",
-            ]
+            if shutil.which("zsh") is not None:
+                default_path = f"{user_dir}/.local/share/zsh/site-functions"
+                whitelist_paths = [
+                    f"{user_dir}/.oh-my-zsh/completions",
+                    f"{user_dir}/.oh-my-zsh/custom/plugins/zsh-completions/src",
+                ]
 
-            # Since the session is interactive it might contain stuff like neofetch etc.
-            rand_string = "".join(random.choice(string.ascii_letters) for _ in range(32))
-            fpath = subprocess.check_output(["zsh", "-c", "-i", f"echo {rand_string}; echo $FPATH"]) \
-                .decode().split(rand_string)[-1].strip().split(":")
+                # Since the session is interactive it might contain stuff like neofetch etc.
+                rand_string = "".join(random.choice(string.ascii_letters) for _ in range(32))
+                fpath = subprocess.check_output(["zsh", "-c", "-i", f"echo {rand_string}; echo $FPATH"]) \
+                    .decode().split(rand_string)[-1].strip().split(":")
 
-            # 1. Find install path (default .local/share/zsh/site-functions or .local/share/isisdl/)
-            # 2. copy _isisdl there
+                # 1. Find install path (default .local/share/zsh/site-functions or .local/share/isisdl/)
+                # 2. copy _isisdl there
 
-            # 3. Export this path to $FPATH via .zshrc (make this transparent to user)
-            # 4. autoload [path]/_isisdl
+                # 3. Export this path to $FPATH via .zshrc (make this transparent to user)
+                # 4. autoload [path]/_isisdl
 
-            for final_path in whitelist_paths:
-                for p in fpath:
-                    if final_path == p and not (os.path.exists(final_path) and not os.access(final_path, os.W_OK | os.X_OK)):
-                        break
+                for final_path in whitelist_paths:
+                    for p in fpath:
+                        if final_path == p and not (os.path.exists(final_path) and not os.access(final_path, os.W_OK | os.X_OK)):
+                            break
 
-            else:
-                final_path = default_path
+                else:
+                    final_path = default_path
 
-            # Here the file is always copied to the destination dir.
-            # This is fine since the Filesystem will (hopefully) realize that the files are the same and thus ignore it.
-            os.makedirs(final_path, exist_ok=True)
+                # Here the file is always copied to the destination dir.
+                # This is fine since the Filesystem will (hopefully) realize that the files are the same and thus ignore it.
+                os.makedirs(final_path, exist_ok=True)
 
-            completion_source = source_code_location.joinpath("resources", "completions", "zsh", "_isisdl")
-            if completion_source.exists():
-                shutil.copy(completion_source, final_path)
+                completion_source = source_code_location.joinpath("resources", "completions", "zsh", "_isisdl")
+                if completion_source.exists():
+                    shutil.copy(completion_source, final_path)
 
-            # TODO: Also tag this file as autoloadable
+                # TODO: Also tag this file as autoloadable
 
-        if shutil.which("fish") is not None:
-            # TODO
-            pass
+            if shutil.which("fish") is not None:
+                # TODO
+                pass
 
-        if shutil.which("bash") is not None:
-            final_path = f"{user_dir}/.local/share/bash-completion/completions"
-            os.makedirs(final_path, exist_ok=True)
-            shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
+            if shutil.which("bash") is not None:
+                final_path = f"{user_dir}/.local/share/bash-completion/completions"
+                os.makedirs(final_path, exist_ok=True)
+                shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
+
+        except Exception as ex:
+            generate_error_message(ex, should_exit=False)
+
 
 
 def clear() -> None:
@@ -788,6 +796,8 @@ WantedBy=timers.target
     run_cmd_with_error(["systemctl", "--user", "daemon-reload"])
 
 
+# TODO: Try to limit test this function with the test courses. What about emojis in course names? Slashes? Backslashes? So many ideas :D
+
 def sanitize_name(name: str, is_dir: bool) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
@@ -835,7 +845,7 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     else:
         final = str_list
 
-    # Folder names cannot end with a period in Windows ...
+    # Folder names cannot end with a period in Windows ... why does this limitation exist??
     while is_dir and replace_dot_at_end_of_dir_name and final and (final[-1] == "." or final[-1] == " "):
         final.pop()
 
@@ -1022,6 +1032,7 @@ def calculate_local_checksum(filename: Path) -> str:
         i = 1
         while True:
             # f.seek(3 ** i, 1)  # This enables O(log(n)) time.
+            # TODO: Limit test this: how inefficient vs ↑ is it?
             data = f.read(checksum_num_bytes)
 
             if not data:
@@ -1469,7 +1480,7 @@ class HumanBytes:
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 
 
-def generate_error_message(ex: Exception) -> NoReturn:
+def generate_error_message(ex: Exception, should_exit: bool = True) -> NoReturn:
     if is_testing:
         raise ex
 
@@ -1483,7 +1494,8 @@ def generate_error_message(ex: Exception) -> NoReturn:
     with open(file_location, "w") as f:
         f.write(traceback.format_exc())
 
-    os._exit(1)
+    if should_exit:
+        os._exit(1)
 
 
 # Don't create startup files

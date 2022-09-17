@@ -26,19 +26,21 @@ import isisdl.autorun
 # The directory where everything lives in.
 working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 
-# The name of the SQLite Database
-database_file_location = ".state.db"
+intern_dir_location = ".intern"
 
-log_file_location = "isisdl.log"
+# The name of the SQLite Database
+database_file_location = os.path.join(intern_dir_location, ".state.db")
+
+log_file_location = os.path.join(intern_dir_location, "isisdl.log")
 
 datetime_str = "%Y-%m-%d %H:%M:%S"
 
 # Settings for the lock
-lock_file_location = ".lock"
+lock_file_location = os.path.join(intern_dir_location, ".lock")
 enable_lock = True
 
 # Options for the `--subscribe` feature
-subscribed_courses_file_location = "subscribed_courses.json"
+subscribed_courses_file_location = os.path.join(intern_dir_location, "subscribed_courses.json")
 subscribe_num_courses_to_subscribe_to = -1
 subscribe_num_threads = 32
 
@@ -49,7 +51,7 @@ course_ids_cant_unsub_from = {
 }
 
 # Settings for errors
-error_directory_location = ".errors"
+error_directory_location = os.path.join(intern_dir_location, ".errors")
 error_text = "\033[1;91mError:\033[0m"
 
 # Static settings
@@ -66,14 +68,16 @@ is_windows = platform.system() == "Windows"
 # A constant to detect if you are on macOS.
 is_macos = platform.system() == "Darwin"
 
-# If the user has ffmpeg installed
+# Note the absense of is_linux. It is implied by !is_windows and !is_macos.
+
+# Check if the user has ffmpeg installed
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
 # Check if being automatically run
 is_autorun = sys.argv[0] == isisdl.autorun.__file__
 
+# The location of the source code on disk
 source_code_location = Path(isisdl.__file__).parent
-
 
 # Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
@@ -103,7 +107,11 @@ checksum_algorithm = sha256
 # The number of bytes sampled per iteration to compute a checksum
 checksum_num_bytes = 1024 * 500
 
-# If the file size is not equal, but it is in this percentage the checksum will be computed in order to
+# Debugging option: after getting the entire content and after building the request cache do the following
+# for file in content:
+#  assert
+#
+# If the file size is not equal, but it is in a deviation of ±10%, the checksum will not be computed in order save some time.
 perc_diff_for_checksum = 0.1  # 10% ± is allowed
 
 # -/- Checksum options ---

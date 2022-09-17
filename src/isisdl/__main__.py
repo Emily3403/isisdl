@@ -194,6 +194,8 @@ def main() -> None:
 #   Better course targeting mechanism by first downloading those where you have participated
 #
 #   Fix bug when first starting then it looks like stream
+#
+#   In Windows one could also create a `~/.config/` directory. Since the typical windows user never views their home directory, this could be fine.
 
 
 # Maybe TODO
