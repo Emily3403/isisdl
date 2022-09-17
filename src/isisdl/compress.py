@@ -508,6 +508,9 @@ def main() -> None:
     global compress_thread
     global total_time_for_compression
 
+    print("Unfortunately, breaking changes to the database have broken this program and it is not yet fixed ...")
+    sys.exit(1)
+
     if is_first_time:
         print("\nAttention: Dont rename your video files please!")
         print("Press enter to continue ...\n")
