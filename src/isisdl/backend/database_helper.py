@@ -7,7 +7,7 @@ from sqlite3 import Connection, Cursor
 from threading import Lock
 from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
 
-from isisdl.settings import database_file_location
+from isisdl.settings import database_file_location, error_text
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer
@@ -29,7 +29,7 @@ class DatabaseHelper:
         self.cur = self.con.cursor()
         self.create_default_tables()
 
-        # This leads to *way* better performance on slow drives.
+        # This leads to *way* better performance on slow drives with high latency.
         self.cur.execute("PRAGMA synchronous = OFF")
 
         self._bad_urls.update(self.get_bad_urls())
@@ -39,13 +39,27 @@ class DatabaseHelper:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
-                (name text, url text, download_url text, location text, time int, course_id int, media_type int, size int, checksum text, UNIQUE(url, course_id) ON CONFLICT REPLACE)
+                (
+                name text,
+                url text,
+                download_url text,
+                time int,
+                course_id int,
+                media_type int,
+                size int,
+                checksum text,
+                UNIQUE(url, course_id) ON CONFLICT REPLACE
+                )
             """)
 
             self.cur.execute("""
-                CREATE TABLE IF NOT EXISTS json_strings
-                (id text primary key unique, json text)
+                CREATE TABLE IF NOT EXISTS config
+                (key text primary key unique, value text)
             """)
+
+    def close_connection(self) -> None:
+        self.cur.close()
+        self.con.close()
 
     def get_state(self) -> Dict[str, List[Any]]:
         res: Dict[str, List[Any]] = {}
@@ -55,10 +69,6 @@ class DatabaseHelper:
                 res[name[0]] = self.cur.execute(f"""SELECT * FROM {name[0]}""").fetchall()
 
         return res
-
-    def close_connection(self) -> None:
-        self.cur.close()
-        self.con.close()
 
     def _get_attr_by_equal(self, attr: str, eq_val: str, eq_name: str, table: str = "fileinfo") -> Any:
         with self.lock:
@@ -73,20 +83,25 @@ class DatabaseHelper:
 
     def get_database_version(self) -> int:
         from isisdl.utils import Config
+        default_version = int(Config.default("database_version"))
 
         config = self.get_config()
-        if "database_version" in config:
-            if config["database_version"] is None:
-                return int(Config.default("database_version"))
-            elif isinstance(config["database_version"], int):
-                return config["database_version"]
-            else:
-                assert False
 
         if config == {}:
-            return int(Config.default("database_version"))
+            return default_version
 
-        return 1
+        if "database_version" not in config:
+            return 1
+
+        version = config["database_version"]
+        if version is None:
+            return default_version
+
+        if type(version) != int:
+            print(f"{error_text} Malformed config in database: Expected type 'int' for key version. Got {type(version)}.\nBailing out!")
+
+        assert type(version) == int
+        return version
 
     def does_checksum_exist(self, checksum: str) -> bool:
         return bool()
@@ -99,11 +114,11 @@ class DatabaseHelper:
         DatabaseHelper._url_container_mapping = self.get_containers()
 
     def add_pre_container(self, file: MediaContainer) -> None:
-        tup = (file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
+        tup = (file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
 
         with self.lock:
             self.cur.execute("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?)
             """, tup)
             self.con.commit()
 
@@ -197,6 +212,8 @@ class DatabaseHelper:
 
         return info
 
+    # TODO: Fix this
+
     def update_inefficient_videos(self, file: MediaContainer, estimated_efficiency: float) -> None:
         with self.lock:
             _data = self.cur.execute("SELECT json FROM json_strings where id=\"inefficient_videos\"").fetchone()
@@ -241,6 +258,7 @@ class DatabaseHelper:
         with self.lock:
             return bool(self.cur.execute("SELECT * FROM fileinfo").fetchone())
 
+    # TODO: Fix this
     def delete_inefficient_videos(self) -> None:
         with self.lock:
             self.cur.execute("DELETE FROM json_strings where id=\"inefficient_videos\"")

@@ -144,6 +144,7 @@ def main() -> None:
 #           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?
 #           → DownloadStatus won't have an ETA
 #           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
+#           → If we don't know the file size but have to know if to download do it iff `online_file_size === disk_file_size`
 #
 #       is_corrupted attribute change
 #           → Note the last time checked and retry the url based on an exponential backoff strategy

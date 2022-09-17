@@ -199,7 +199,7 @@ class MediaContainer:
     course: Course
     media_type: MediaType
     size: int
-    _links: List[MediaContainer]
+    _links: List[MediaContainer]  # Links can only be to files in the same course
     checksum: Optional[str]
     current_size: Optional[int]
     _stop: bool
