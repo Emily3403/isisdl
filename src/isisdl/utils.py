@@ -188,10 +188,11 @@ class Config:
 
     def __setattr__(self, key: str, value: Union[bool, str, int, None, Dict[int, str]]) -> None:
         super().__setattr__(key, value)
+
         if not self._in_backup:
             Config.state[key] = value
             Config._stored[key] = value
-            database_helper.set_config(self._stored)
+            database_helper.set_config_key(key, value)
 
     def verify_state_types(self) -> None:
         from typing import get_args as t_get_args
