@@ -35,6 +35,8 @@ class DatabaseHelper:
         self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
 
+        self.maybe_insert_database_version()
+
     def create_default_tables(self) -> None:
         with self.lock:
             self.cur.execute("""
@@ -82,26 +84,29 @@ class DatabaseHelper:
         return res
 
     def get_database_version(self) -> int:
-        from isisdl.utils import Config
-        default_version = int(Config.default("database_version"))
+        # TODO: This function will fail with older databases. Make sure it doesn't.
+        def default_version() -> int:
+            from isisdl.utils import Config
+            return int(Config.default("database_version"))
 
-        config = self.get_config()
+        with self.lock:
+            version = self.cur.execute("SELECT value from config WHERE key='database_version'").fetchone()
 
-        if config == {}:
-            return default_version
-
-        if "database_version" not in config:
-            return 1
-
-        version = config["database_version"]
-        if version is None:
-            return default_version
+        if version is None or len(version) != 1:
+            return default_version()
 
         if type(version) != int:
             print(f"{error_text} Malformed config in database: Expected type 'int' for key version. Got {type(version)}.\nBailing out!")
 
         assert type(version) == int
         return version
+
+    def maybe_insert_database_version(self) -> None:
+        from isisdl.utils import Config
+
+        with self.lock:
+            self.cur.execute("INSERT OR IGNORE into config values (?, ?)", ("database_version", int(Config.default("database_version"))))
+            self.con.commit()
 
     def does_checksum_exist(self, checksum: str) -> bool:
         return bool()
@@ -118,7 +123,7 @@ class DatabaseHelper:
 
         with self.lock:
             self.cur.execute("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO fileinfo VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, tup)
             self.con.commit()
 
@@ -127,7 +132,7 @@ class DatabaseHelper:
     def add_pre_containers(self, files: List[MediaContainer]) -> None:
         with self.lock:
             self.cur.executemany("""
-                INSERT OR REPLACE INTO fileinfo values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO fileinfo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [(file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum) for file in files])
             self.con.commit()
 
@@ -141,23 +146,18 @@ class DatabaseHelper:
 
         return ret
 
-    def set_config(self, config: Dict[str, Union[bool, str, int, None, Dict[int, str]]]) -> None:
+    def set_config_key(self, key: str, value: Union[bool, str, int, None, Dict[int, str]]) -> None:
         with self.lock:
             self.cur.execute("""
-                INSERT OR REPLACE INTO json_strings VALUES (?, ?)
-            """, ("config", json.dumps(config)))
+                INSERT OR REPLACE INTO config VALUES (?, ?)
+            """, (key, value))
             self.con.commit()
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None, Dict[int, str]]]:
         with self.lock:
-            data = self.cur.execute("SELECT json from json_strings where id=\"config\"").fetchone()
-            if data is None:
-                return defaultdict(lambda: None)
+            data = self.cur.execute("SELECT * from config").fetchall()
 
-            if len(data) == 0:
-                return defaultdict(lambda: None)
-
-            return defaultdict(lambda: None, json.loads(data[0]))
+            return defaultdict(lambda: None, data)
 
     def add_bad_url(self, url: str) -> None:
         with self.lock:
