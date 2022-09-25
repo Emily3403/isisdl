@@ -146,7 +146,7 @@ def main() -> None:
 #           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
 #           → If we don't know the file size but have to know if to download do it iff `online_file_size === disk_file_size`
 #
-#       is_corrupted attribute change
+#       is_corrupted attribute change  (Done)
 #           → Note the last time checked and retry the url based on an exponential backoff strategy
 #
 #       Remove the path attribute  (Done)

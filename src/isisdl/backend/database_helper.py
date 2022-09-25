@@ -2,15 +2,43 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections import defaultdict
+from dataclasses import dataclass
 from sqlite3 import Connection, Cursor
 from threading import Lock
-from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable
+from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable, Tuple
 
-from isisdl.settings import database_file_location, error_text
+from isisdl.settings import database_file_location, error_text, bad_url_cache_reeval_times_mul, bad_url_cache_reeval_exp, \
+    bad_url_cache_reeval_static_mul
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer
+
+
+@dataclass
+class BadUrl:
+    url: str
+    last_checked: int
+    times_checked: int
+
+    def dump(self) -> Tuple[str, int, int]:
+        return self.url, self.last_checked, self.times_checked
+
+    def __hash__(self):
+        return self.url.__hash__()
+
+    def __eq__(self, other):
+        if self.__class__ == other.__class__:
+            return self.url == other.url
+
+        elif isinstance(other, str):
+            return self.url == other
+
+        return False
+
+    def should_download(self) -> bool:
+        return time.time() > self.last_checked + (self.times_checked * bad_url_cache_reeval_times_mul) ** bad_url_cache_reeval_exp * bad_url_cache_reeval_static_mul
 
 
 class DatabaseHelper:
@@ -20,7 +48,7 @@ class DatabaseHelper:
     __slots__ = tuple(__annotations__)  # type: ignore
 
     lock = Lock()
-    _bad_urls: Set[str] = set()
+    _bad_urls: Dict[str, BadUrl] = dict()
     _url_container_mapping: Dict[str, Iterable[Any]] = {}
 
     def __init__(self) -> None:
@@ -32,15 +60,18 @@ class DatabaseHelper:
         # This leads to *way* better performance on slow drives with high latency.
         self.cur.execute("PRAGMA synchronous = OFF")
 
-        # self._bad_urls.update(self.get_bad_urls())
+        self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
 
         self.maybe_insert_database_version()
+
+        self.know_url("uwu.com", 123)
 
     def create_default_tables(self) -> None:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
+                
                 (
                 name text,
                 url text,
@@ -56,7 +87,21 @@ class DatabaseHelper:
 
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS config
-                (key text primary key unique, value text)
+                
+                (
+                key text primary key unique, 
+                value text
+                )
+            """)
+
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS bad_url_cache
+                
+                (
+                url text primary key unique,
+                last_checked int,
+                times_checked int
+                )
             """)
 
             self.con.commit()
@@ -134,7 +179,7 @@ class DatabaseHelper:
         with self.lock:
             self.cur.executemany("""
                 INSERT OR REPLACE INTO fileinfo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [(file._name, file.url, file.download_url, str(file.path), file.time, file.course.course_id, file.media_type.value, file.size, file.checksum) for file in files])
+            """, [(file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size, file.checksum) for file in files])
             self.con.commit()
 
         self._url_container_mapping.update(self.get_containers())
@@ -169,34 +214,26 @@ class DatabaseHelper:
 
     def add_bad_url(self, url: str) -> None:
         with self.lock:
-            _data = self.cur.execute("SELECT json FROM json_strings where id=\"bad_url_cache\"").fetchone()
-            if _data is None or len(_data) == 0:
-                data = []
+            _data = self.cur.execute("SELECT times_checked FROM bad_url_cache where url=?", (url,)).fetchone()
+
+            if _data is None:
+                times_checked = 0
             else:
-                data = json.loads(_data[0])
+                times_checked, = _data
 
-            data.append(url)
-            if len(data) != len(set(data)):
-                from isisdl.utils import logger
-                logger.assert_fail("len(data) != len(set(data))")
+            bad_url = BadUrl(url, int(time.time()), times_checked + 1)
 
-            self.cur.execute("INSERT OR REPLACE INTO json_strings VALUES (?, ?)", ("bad_url_cache", json.dumps(data)))
+            self.cur.execute("INSERT OR REPLACE INTO bad_url_cache values (?, ?, ?)", bad_url.dump())
             self.con.commit()
-            self._bad_urls.add(url)
+            self._bad_urls[url] = bad_url
 
-    def get_bad_urls(self) -> List[str]:
+    def get_bad_urls(self) -> Dict[str, BadUrl]:
         with self.lock:
-            data = self.cur.execute("SELECT json FROM json_strings where id=\"bad_url_cache\"").fetchone()
+            data = self.cur.execute("SELECT * FROM bad_url_cache").fetchall()
             if data is None:
-                return []
+                return {}
 
-            if len(data) == 0:
-                return []
-
-            if data[0] is None:
-                return []
-
-            return cast(List[str], json.loads(data[0]))
+            return dict(map(lambda it: (it[0], BadUrl(*it)), data))
 
     def get_containers(self) -> Dict[str, Iterable[Any]]:
         with self.lock:
@@ -211,8 +248,9 @@ class DatabaseHelper:
         return set(map(lambda x: str(x[0]), res))
 
     def know_url(self, url: str, course_id: int) -> Union[bool, Iterable[Any]]:
-        if url in self._bad_urls:
-            return False
+        maybe_bad_url = self._bad_urls.get(url, None)
+        if maybe_bad_url is not None:
+            return maybe_bad_url.should_download()
 
         info = self._url_container_mapping.get(f"{url} {course_id}", None)
         if info is None:
