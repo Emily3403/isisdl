@@ -134,6 +134,9 @@ password_hash_length = 32
 # The password used to encrypt if no password is provided
 master_password = "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
 
+# The length of the salt stored in the database
+random_salt_length = 64
+
 # -/- Password options ---
 
 # --- Status options ---

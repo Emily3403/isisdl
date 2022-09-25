@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, error_text
-from isisdl.utils import User, config, logger
+from isisdl.utils import User, config, logger, database_helper
 
 # TODO: Also make the caching work for when the password is entered manually
 last_password: Optional[str] = None
@@ -16,16 +16,8 @@ last_username: Optional[str] = None
 
 
 def generate_key(password: str) -> bytes:
-    # You might notice that the salt is static. This is a deliberate decision.
-    # Since the salt only protects against brute forcing of multiple passwords
-    # at once and the password file is limited to a single system
-    # (no central storage) it doesn't make sense to include it.
-    # It adds useless complexity.
-
-    # TODO: In the next database update store the random salt (32 Byte) in the database as well -> Makes security better :)
-    #       -> Also applies to the master password
-
-    salt = b"salty~salt"
+    # TODO: Discuss with Carsten if storing the master password in the data base is a good idea.
+    salt = database_helper.get_config_key("salt").encode()
 
     kdf = PBKDF2HMAC(algorithm=password_hash_algorithm(), length=password_hash_length, salt=salt, iterations=password_hash_iterations)
 
