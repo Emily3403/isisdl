@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import time
 from collections import defaultdict
@@ -10,7 +11,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable, Tuple
 
 from isisdl.settings import database_file_location, error_text, bad_url_cache_reeval_times_mul, bad_url_cache_reeval_exp, \
-    bad_url_cache_reeval_static_mul
+    bad_url_cache_reeval_static_mul, random_salt_length
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer
@@ -151,7 +152,14 @@ class DatabaseHelper:
         from isisdl.utils import Config
 
         with self.lock:
-            self.cur.execute("INSERT OR IGNORE into config values (?, ?)", ("database_version", int(Config.default("database_version"))))
+            self.cur.execute("INSERT OR IGNORE into config values (?, ?)", ("database_version", json.dumps(int(Config.default("database_version")))))
+            self.con.commit()
+
+    def maybe_insert_salt(self) -> None:
+        password = secrets.token_urlsafe(random_salt_length)
+
+        with self.lock:
+            self.cur.execute("INSERT OR IGNORE into config values (?, ?)", ("salt", json.dumps(password)))
             self.con.commit()
 
     def does_checksum_exist(self, checksum: str) -> bool:
