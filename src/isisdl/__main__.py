@@ -149,12 +149,12 @@ def main() -> None:
 #       is_corrupted attribute change
 #           → Note the last time checked and retry the url based on an exponential backoff strategy
 #
-#       Remove the path attribute
+#       Remove the path attribute  (Done)
 #           → Make the path of a file entirely dynamic and dependant on the configured state.
 #             This should lead to a seamless migration of the directory when changing it's name.
 #             This also enables easy renaming of courses and deselecting of the subdir option, assuming the directories have been moved accordingly.
 #
-#       No more json strings
+#       No more json strings  (Done)
 #           → Extra table for user configuration
 #
 #       Make storing your password more secure
