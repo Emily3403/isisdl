@@ -96,6 +96,13 @@ else:
 # Yes, this is a windows thing...
 replace_dot_at_end_of_dir_name = is_windows
 
+
+# Caching strategy
+
+bad_url_cache_reeval_times_mul = 5
+bad_url_cache_reeval_exp = 3
+bad_url_cache_reeval_static_mul = 60
+
 # -/- Options for this executable ---
 
 
