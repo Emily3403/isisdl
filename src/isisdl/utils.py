@@ -1162,7 +1162,7 @@ def subscribe_to_all_courses() -> None:
           f"Make sure to backup this file. If the database is deleted and you don't have this file,\nyou will not be able to unsubscribe from the courses.")
 
 
-def check_can_unsub_from_course(course_id: int, status: Status, helper: RequestHelper) -> tuple[int, bool | None]:
+def check_can_unsub_from_course(course_id: int, status: Status, helper: RequestHelper) -> tuple[int, bool] | None:
     res = helper.session.get_("https://isis.tu-berlin.de/course/view.php", params={"id": course_id})
     if res is None:
         return None
