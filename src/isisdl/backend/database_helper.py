@@ -26,20 +26,20 @@ class BadUrl:
     def dump(self) -> Tuple[str, int, int]:
         return self.url, self.last_checked, self.times_checked
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.url.__hash__()
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if self.__class__ == other.__class__:
-            return self.url == other.url
+            return bool(self.url == other.url)
 
         elif isinstance(other, str):
-            return self.url == other
+            return bool(self.url == other)
 
         return False
 
     def should_download(self) -> bool:
-        return time.time() > self.last_checked + (self.times_checked * bad_url_cache_reeval_times_mul) ** bad_url_cache_reeval_exp * bad_url_cache_reeval_static_mul
+        return bool(time.time() > self.last_checked + (self.times_checked * bad_url_cache_reeval_times_mul) ** bad_url_cache_reeval_exp * bad_url_cache_reeval_static_mul)
 
 
 class DatabaseHelper:
@@ -49,8 +49,8 @@ class DatabaseHelper:
     __slots__ = tuple(__annotations__)  # type: ignore
 
     lock = Lock()
-    _bad_urls: Dict[str, BadUrl] = dict()
-    _url_container_mapping: Dict[str, Iterable[Any]] = {}
+    _bad_urls: dict[str, BadUrl] = dict()
+    _url_container_mapping: dict[str, Iterable[Any]] = {}
 
     def __init__(self) -> None:
         from isisdl.utils import path
@@ -65,6 +65,7 @@ class DatabaseHelper:
         self._url_container_mapping.update(self.get_containers())
 
         self.maybe_insert_database_version()
+        self.maybe_insert_salt()
 
         self.know_url("uwu.com", 123)
 
@@ -72,7 +73,7 @@ class DatabaseHelper:
         with self.lock:
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS fileinfo
-                
+
                 (
                 name text,
                 url text,
@@ -88,16 +89,16 @@ class DatabaseHelper:
 
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS config
-                
+
                 (
-                key text primary key unique, 
+                key text primary key unique,
                 value text
                 )
             """)
 
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS bad_url_cache
-                
+
                 (
                 url text primary key unique,
                 last_checked int,
@@ -207,12 +208,12 @@ class DatabaseHelper:
             """, (key, json.dumps(value)))
             self.con.commit()
 
-    def get_config_key(self, key: str) -> Union[bool, str, int, None, Dict[int, str]]:
+    def get_config_key(self, key: str) -> bool | str | int | None | dict[int, str]:
         with self.lock:
             it = self.cur.execute("SELECT value from config WHERE key=?", (key,)).fetchone()
             assert len(it) == 1
 
-            return json.loads(it[0])
+            return cast(Union[bool, str, int, None, dict[int, str]], json.loads(it[0]))
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None, Dict[int, str]]]:
         with self.lock:
@@ -238,9 +239,6 @@ class DatabaseHelper:
     def get_bad_urls(self) -> Dict[str, BadUrl]:
         with self.lock:
             data = self.cur.execute("SELECT * FROM bad_url_cache").fetchall()
-            if data is None:
-                return {}
-
             return dict(map(lambda it: (it[0], BadUrl(*it)), data))
 
     def get_containers(self) -> Dict[str, Iterable[Any]]:

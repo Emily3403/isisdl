@@ -17,7 +17,9 @@ last_username: Optional[str] = None
 
 def generate_key(password: str) -> bytes:
     # TODO: Discuss with Carsten if storing the master password in the data base is a good idea.
-    salt = database_helper.get_config_key("salt").encode()
+    _salt = database_helper.get_config_key("salt")
+    assert isinstance(_salt, str)
+    salt = _salt.encode()
 
     kdf = PBKDF2HMAC(algorithm=password_hash_algorithm(), length=password_hash_length, salt=salt, iterations=password_hash_iterations)
 

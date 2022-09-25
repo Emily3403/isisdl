@@ -43,10 +43,10 @@ def print_log_messages(strings: List[str], last_num: int) -> int:
 
 
 class Status(Thread):
-    total: Optional[int]
+    total: int | None
     message: str
 
-    count: Optional[int] = None
+    count: int | None = None
     _show_progress_bar: bool = True
     _show_eta: bool = True
     _eta_start_time: datetime = datetime.now()
@@ -126,7 +126,7 @@ class StatusOptions(enum.Enum):
 
 class RequestHelperStatus(Status):
     status: StatusOptions
-    files: List[PreMediaContainer]
+    files: list[PreMediaContainer]
 
     def __init__(self) -> None:
         self.set_status(StatusOptions.startup)
@@ -181,7 +181,7 @@ class CompressStatusUwU(Status):
     _show_progress_bar = False
     _show_eta = False
 
-    files: List[MediaContainer]
+    files: list[MediaContainer]
     helper: RequestHelper
 
     def __init__(self, files: List[MediaContainer], helper: RequestHelper) -> None:

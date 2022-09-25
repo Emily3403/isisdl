@@ -154,9 +154,9 @@ class SessionWithKey(Session):
 
 class PreMediaContainer:
     url: str
-    _name: Optional[str]
-    time: Optional[int]
-    size: Optional[int]
+    _name: str | None
+    time: int | None
+    size: int | None
     course: Course
     media_type: MediaType
     is_cached: bool
@@ -199,9 +199,9 @@ class MediaContainer:
     course: Course
     media_type: MediaType
     size: int
-    _links: List[MediaContainer]  # Links can only be to files in the same course
-    checksum: Optional[str]
-    current_size: Optional[int]
+    _links: list[MediaContainer]  # Links can only be to files in the same course
+    checksum: str | None
+    current_size: int | None
     _stop: bool
     _done: bool
     _newly_downloaded: bool
@@ -760,15 +760,15 @@ class Course:
 class RequestHelper:
     user: User
     session: SessionWithKey
-    courses: List[Course]
-    _courses: List[Course]
-    _meta_info: Dict[str, str]
-    course_id_mapping: Dict[int, Course] = {}
-    _instance: Optional[RequestHelper] = None
+    courses: list[Course]
+    _courses: list[Course]
+    _meta_info: dict[str, str]
+    course_id_mapping: dict[int, Course] = {}
+    _instance: RequestHelper | None = None
     _instance_init: bool = False
     _lock = Lock()
 
-    def __init__(self, user: User, status: Optional[RequestHelperStatus] = None):
+    def __init__(self, user: User, status: RequestHelperStatus | None = None):
         if self._instance_init:
             return
 
@@ -1064,7 +1064,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
 class Downloader(Thread):
     q: Queue[MediaContainer]
-    ret_q: Queue[Tuple[int, bool]]
+    ret_q: Queue[tuple[int, bool]]
     thread_id: int
     status: DownloadStatus
     throttler: DownloadThrottler
@@ -1102,7 +1102,7 @@ class Downloader(Thread):
 
 
 class CourseDownloader:
-    containers: Dict[MediaType, List[MediaContainer]] = {}
+    containers: dict[MediaType, List[MediaContainer]] = {}
     _did_message: bool = False
 
     def start(self) -> None:
