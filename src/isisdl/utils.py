@@ -91,6 +91,7 @@ class Config:
     password_encrypted: Optional[bool]
     username: Optional[str]
     password: Optional[str]
+    salt: str
 
     whitelist: Optional[List[int]]
     blacklist: Optional[List[int]]
@@ -116,6 +117,7 @@ class Config:
         "password_encrypted": False,
         "username": None,
         "password": None,
+        "salt": "Salty~Salt",
 
         "whitelist": None,
         "blacklist": None,
@@ -439,7 +441,6 @@ def startup() -> None:
 
         except Exception as ex:
             generate_error_message(ex, should_exit=False)
-
 
 
 def clear() -> None:
@@ -1481,12 +1482,10 @@ class HumanBytes:
         return f"{f'{n:.2f}'.rjust(6)} {unit}"
 
 
-def generate_error_message(ex: Exception, should_exit: bool = True) -> NoReturn:
-    if is_testing:
-        raise ex
-
+def format_exception(ex: Exception) -> None:
     print("\nI have encountered the following Exception. I'm sorry this happened 😔\n")
     print(traceback.format_exc())
+    print(f"\n\n{ex}\n\n")
 
     file_location = path(error_directory_location, f"{int(datetime.now().timestamp())}.txt")
     print(f"I have logged this error to the file\n{file_location}")
@@ -1495,8 +1494,13 @@ def generate_error_message(ex: Exception, should_exit: bool = True) -> NoReturn:
     with open(file_location, "w") as f:
         f.write(traceback.format_exc())
 
-    if should_exit:
-        os._exit(1)
+
+def generate_error_message(ex: Exception, should_exit: bool = True) -> NoReturn:
+    if is_testing:
+        raise ex
+
+    format_exception(ex)
+    os._exit(1)
 
 
 # Don't create startup files

@@ -23,7 +23,7 @@ class Data:
     username: str
     OS: str
     OS_spec: str
-    version: Union[LegacyVersion, Version]
+    version: LegacyVersion | Version
 
     time: datetime
     is_first_time: bool
@@ -32,7 +32,7 @@ class Data:
     total_g_bytes: int
     total_c_bytes: int
     course_ids: List[int]
-    config: Dict[str, Union[bool, str, int, None, Dict[int, str]]]
+    config: dict[str, bool | str | int | None | dict[int, str]]
 
     @classmethod
     def from_json(cls, info: Dict[str, Any]) -> Data:
@@ -94,7 +94,7 @@ def get_data() -> List[Data]:
             with file.open() as f:
                 text = f.read()
 
-                for data_type in sorted(get_Data_subclasses(), key=lambda it: it.__doc__[:6]):
+                for data_type in sorted(get_Data_subclasses(), key=lambda it: it.__doc__[:6]):  # type: ignore[no-any-return]
                     try:
                         data = data_type.from_json(json.loads(text))
                         break
@@ -210,7 +210,7 @@ def analyze_config() -> None:
 
     for dat in data:
         if not isinstance(dat, DataV3):
-           pass
+            pass
 
         counted.add(dat.username)
         for k, v in dat.config.items():
@@ -222,6 +222,7 @@ def analyze_config() -> None:
 
     final = {k: v for k, v in sorted(users.items(), key=lambda item: item[0])}
 
+    print(final)
     pass
 
 

@@ -511,7 +511,7 @@ def main() -> None:
     print("Unfortunately, breaking changes to the database have broken this program and it is not yet fixed ...")
     sys.exit(1)
 
-    if is_first_time:
+    if is_first_time:  # type: ignore
         print("\nAttention: Dont rename your video files please!")
         print("Press enter to continue ...\n")
         input()
