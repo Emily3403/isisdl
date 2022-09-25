@@ -213,7 +213,7 @@ class DatabaseHelper:
             it = self.cur.execute("SELECT value from config WHERE key=?", (key,)).fetchone()
             assert len(it) == 1
 
-            return cast(Union[bool, str, int, None, dict[int, str]], json.loads(it[0]))
+            return cast(Union[bool, str, int, None, Dict[int, str]], json.loads(it[0]))
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None, Dict[int, str]]]:
         with self.lock:
