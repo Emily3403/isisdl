@@ -26,8 +26,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict, get_type_hints
-from typing import Optional, Union
+from typing import Callable, List, Dict, Any, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict, get_type_hints, Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
 
 import colorama
@@ -88,6 +87,18 @@ def get_args() -> argparse.Namespace:
 
 
 class Config:
+    """
+    Note that here no new python annotation syntax is used.
+    It is possible to use `int | None` instead of `Optional[int]` due to the statement `from __future__ import annotations`.
+
+    Because of this line, the python interpreter will store all annotations, including the type hints for classes, as strings.
+    This enables the new syntax since the code is never evaluated.
+
+    This is possible everywhere _except_ here because of the function `typing.get_type_hints()`.
+    It parses and evaluates the type hints and because of that it isn't possible to use the new syntax here.
+    """
+    # Note that here no new python annotation syntax is used.
+    # Using t
     password_encrypted: Optional[bool]
     username: Optional[str]
     password: Optional[str]
@@ -143,7 +154,7 @@ class Config:
     _backup: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {}  # Extra backup to maintain for tests
     _in_backup: bool = False
 
-    def __init__(self, _prev_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, _prev_config: dict[str, Any] | None = None) -> None:
         config_file_data = parse_config_file()
         stored_config = database_helper.get_config()
         prev_config = _prev_config or {}
@@ -188,7 +199,7 @@ class Config:
         for name in self.__slots__:
             super().__setattr__(name, Config.state[name])
 
-    def __setattr__(self, key: str, value: Union[bool, str, int, None, Dict[int, str]]) -> None:
+    def __setattr__(self, key: str, value: bool | str | int | None | dict[int, str]) -> None:
         super().__setattr__(key, value)
 
         if not self._in_backup:
@@ -214,10 +225,10 @@ class Config:
         return Config.default_config[attr]
 
     @staticmethod
-    def user(attr: str) -> Optional[Any]:
+    def user(attr: str) -> Any | None:
         return Config._stored.get(attr, None)
 
-    def to_dict(self) -> Dict[str, Union[bool, str, int, None, Dict[int, str]]]:
+    def to_dict(self) -> dict[str, bool | str | int | None | dict[int, str]]:
         return {name: getattr(self, name) for name in self.__slots__}
 
     def start_backup(self) -> None:
@@ -230,7 +241,7 @@ class Config:
             super().__setattr__(name, self._backup[name])
 
 
-def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
+def encode_yaml(st: bool | str | int | None | dict[int, str]) -> str:
     if st is None:
         return "null"
     elif st is True:
@@ -241,9 +252,9 @@ def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
 
 
 def generate_config_str(
-        working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
-        throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
-        status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: Optional[str], make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
+        working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: list[int] | None, blacklist: list[int] | None,
+        throttle_rate: int | None, throttle_rate_autorun: int | None, update_policy: str | None, telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
+        status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: str | None, make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
 ) -> str:
     return f"""---
 
@@ -509,7 +520,7 @@ Please confirm that this is okay. [y/n]""")
     return True
 
 
-def parse_google_drive_url(url: str) -> Optional[str]:
+def parse_google_drive_url(url: str) -> str | None:
     """
     Copied from https://github.com/wkentaro/gdown
 
@@ -536,7 +547,7 @@ def parse_google_drive_url(url: str) -> Optional[str]:
     return drive_id
 
 
-def get_url_from_gdrive_confirmation(contents: str) -> Optional[str]:
+def get_url_from_gdrive_confirmation(contents: str) -> str | None:
     """
     Copied from https://github.com/wkentaro/gdown
     """
@@ -569,7 +580,7 @@ def get_url_from_gdrive_confirmation(contents: str) -> Optional[str]:
     return url
 
 
-def run_cmd_with_error(args: List[str]) -> None:
+def run_cmd_with_error(args: list[str]) -> None:
     result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
     if result.returncode:
@@ -579,7 +590,7 @@ def run_cmd_with_error(args: List[str]) -> None:
         input()
 
 
-def do_ffprobe(file: Path) -> Optional[Dict[str, Any]]:
+def do_ffprobe(file: Path) -> dict[str, Any] | None:
     # This function is copied and adapted from ffmpeg-python: https://github.com/kkroening/ffmpeg-python
     args = ["ffprobe", "-show_format", "-show_streams", "-of", "json", "-show_data_hash", "sha256", "-i", str(file)]
 
@@ -591,7 +602,7 @@ def do_ffprobe(file: Path) -> Optional[Dict[str, Any]]:
     return cast(Dict[str, Any], json.loads(out.decode('utf-8')))
 
 
-def is_h265(file: Path) -> Optional[bool]:
+def is_h265(file: Path) -> bool | None:
     probe = do_ffprobe(file)
     if probe is None:
         return None
@@ -607,7 +618,7 @@ def is_h265(file: Path) -> Optional[bool]:
     return bool(video_stream["codec_name"] == "hevc")
 
 
-def check_pypi_for_version() -> Optional[Union[LegacyVersion, Version]]:
+def check_pypi_for_version() -> LegacyVersion | Version | None:
     # Inspired from https://pypi.org/project/pypi-search
     to_search = requests.get("https://pypi.org/project/isisdl/").text
     found_version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
@@ -622,7 +633,7 @@ def check_pypi_for_version() -> Optional[Union[LegacyVersion, Version]]:
     return version.parse(groups[0].split()[1])
 
 
-def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
+def check_github_for_version() -> LegacyVersion | Version | None:
     if is_static:
         latest_release = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()
         if "tag_name" not in latest_release:
@@ -646,7 +657,7 @@ def check_github_for_version() -> Optional[Union[LegacyVersion, Version]]:
         return version.parse(found_version.group(1))
 
 
-def print_changelog_for_version(new_version: Union[LegacyVersion, Version]) -> None:
+def print_changelog_for_version(new_version: LegacyVersion | Version) -> None:
     current_version = version.parse(__version__)
     assert not isinstance(current_version, LegacyVersion)
     assert not isinstance(new_version, LegacyVersion)
@@ -857,7 +868,7 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     return final_str.encode()[:255].decode()
 
 
-def get_input(allowed: Set[str]) -> str:
+def get_input(allowed: set[str]) -> str:
     while True:
         choice = input()
         if choice in allowed:
@@ -869,10 +880,10 @@ def get_input(allowed: Set[str]) -> str:
 
 
 class OnKill:
-    _funcs: PriorityQueue[Tuple[int, Callable[[], None]]] = PriorityQueue()
+    _funcs: PriorityQueue[tuple[int, Callable[[], None]]] = PriorityQueue()
     _min_priority = 0
     _already_killed = False
-    _pids_to_kill: List[int] = []
+    _pids_to_kill: list[int] = []
 
     def __init__(self) -> None:
         signal.signal(signal.SIGINT, OnKill.exit)
@@ -888,7 +899,7 @@ class OnKill:
             signal.signal(signal.SIGHUP, OnKill.exit)
 
     @staticmethod
-    def add(func: Any, priority: Optional[int] = None) -> None:
+    def add(func: Any, priority: int | None = None) -> None:
         if priority is None:
             # Generate a new priority → max priority
             priority = OnKill._min_priority - 1
@@ -899,7 +910,7 @@ class OnKill:
 
     @staticmethod
     @atexit.register
-    def exit(sig: Optional[int] = None, frame: Any = None) -> None:
+    def exit(sig: int | None = None, frame: Any = None) -> None:
         if sig is None:
             OnKill.do_funcs()
             return
@@ -933,7 +944,7 @@ class OnKill:
         OnKill._pids_to_kill.append(pid)
 
 
-def on_kill(priority: Optional[int] = None) -> Callable[[Any], Any]:
+def on_kill(priority: int | None = None) -> Callable[[Any], Any]:
     def decorator(function: Any) -> Any:
         # Expects the method to have *no* args
         @wraps(function)
@@ -1006,7 +1017,7 @@ class User:
         self.password = password
 
     @staticmethod
-    def sanitize_name(name: Optional[str]) -> Optional[str]:
+    def sanitize_name(name: str | None) -> str | None:
         if name is None:
             return None
 
@@ -1055,7 +1066,7 @@ def compare_download_diff() -> None:
         status.add(file.stat().st_size)
         return checksum
 
-    def calc_checksums(p: Path, extra_forbidden_paths: Set[Path]) -> Dict[str, Path]:
+    def calc_checksums(p: Path, extra_forbidden_paths: set[Path]) -> dict[str, Path]:
         files = list(p.rglob("*"))
         total_file_size = sum(it.stat().st_size for it in files)
 
@@ -1114,7 +1125,7 @@ def subscribe_to_all_courses() -> None:
 
     possible = possible[:choice]
 
-    def enrol_course(id: int, status: Status) -> Optional[int]:
+    def enrol_course(id: int, status: Status) -> int | None:
         res = helper.post_REST("enrol_self_enrol_user", {"courseid": id})
         status.done()
         if res is None or "status" not in res or res["status"] is False:
@@ -1151,7 +1162,7 @@ def subscribe_to_all_courses() -> None:
           f"Make sure to backup this file. If the database is deleted and you don't have this file,\nyou will not be able to unsubscribe from the courses.")
 
 
-def check_can_unsub_from_course(course_id: int, status: Status, helper: RequestHelper) -> Optional[Tuple[int, bool]]:
+def check_can_unsub_from_course(course_id: int, status: Status, helper: RequestHelper) -> tuple[int, bool | None]:
     res = helper.session.get_("https://isis.tu-berlin.de/course/view.php", params={"id": course_id})
     if res is None:
         return None
@@ -1200,7 +1211,7 @@ def unsubscribe_from_courses() -> None:
         if _possible_ids is None or "warnings" not in _possible_ids:
             return False
 
-        possible_ids: List[Dict[str, Any]] = _possible_ids["warnings"]
+        possible_ids: list[dict[str, Any]] = _possible_ids["warnings"]
 
         res = None
         for id in possible_ids:
@@ -1246,9 +1257,9 @@ class DataLogger(Thread):
     """
 
     s: Session
-    messages: Queue[Union[str, Dict[str, Any]]]
+    messages: Queue[str | dict[str, Any]]
     done: Queue[None]  # Used to communicate
-    generic_msg: Dict[str, Any]
+    generic_msg: dict[str, Any]
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
@@ -1286,7 +1297,7 @@ class DataLogger(Thread):
         except Exception as ex:
             generate_error_message(ex)
 
-    def message(self, msg: Union[str, Dict[str, Any]]) -> None:
+    def message(self, msg: str | dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:
             return
 
@@ -1297,7 +1308,7 @@ class DataLogger(Thread):
     def assert_fail(self, msg: str) -> None:
         self.message(f"Assertion failed: {msg}")
 
-    def post(self, msg: Dict[str, Any]) -> None:
+    def post(self, msg: dict[str, Any]) -> None:
         if config.telemetry_policy is False or is_testing:
             return
 
@@ -1330,8 +1341,8 @@ class DownloadThrottler(Thread):
     __slots__ = tuple(__annotations__)  # type: ignore
 
     token = Token()
-    timestamps: List[float] = []
-    _streaming_loc: Optional[Path] = None
+    timestamps: list[float] = []
+    _streaming_loc: Path | None = None
 
     def __init__(self) -> None:
         self.download_queue, self.used_tokens = Queue(), Queue()
@@ -1443,7 +1454,7 @@ class MediaType(enum.Enum):
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
-    def format(num: float) -> Tuple[float, str]:
+    def format(num: float) -> tuple[float, str]:
         """
         Human-readable formatting of bytes, using binary (powers of 1024) representation.
 
@@ -1466,7 +1477,7 @@ class HumanBytes:
         return num, unit
 
     @staticmethod
-    def format_str(num: Optional[float]) -> str:
+    def format_str(num: float | None) -> str:
         if num is None:
             return "?"
 
@@ -1474,7 +1485,7 @@ class HumanBytes:
         return f"{n:.2f} {unit}"
 
     @staticmethod
-    def format_pad(num: Optional[float]) -> str:
+    def format_pad(num: float | None) -> str:
         if num is None:
             return "   ?"
 
