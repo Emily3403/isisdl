@@ -1510,7 +1510,7 @@ OnKill()
 
 args = get_args()
 database_helper = DatabaseHelper()
-bad_urls = database_helper.get_bad_urls()
+# bad_urls = database_helper.get_bad_urls()
 config = Config()
 created_lock_file = False
 

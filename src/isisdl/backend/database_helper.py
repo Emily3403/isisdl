@@ -32,7 +32,7 @@ class DatabaseHelper:
         # This leads to *way* better performance on slow drives with high latency.
         self.cur.execute("PRAGMA synchronous = OFF")
 
-        self._bad_urls.update(self.get_bad_urls())
+        # self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
 
         self.maybe_insert_database_version()
@@ -58,6 +58,8 @@ class DatabaseHelper:
                 CREATE TABLE IF NOT EXISTS config
                 (key text primary key unique, value text)
             """)
+
+            self.con.commit()
 
     def close_connection(self) -> None:
         self.cur.close()
@@ -89,10 +91,9 @@ class DatabaseHelper:
             from isisdl.utils import Config
             return int(Config.default("database_version"))
 
-        with self.lock:
-            version = self.cur.execute("SELECT value from config WHERE key='database_version'").fetchone()
+        version = self.get_config_key("database_version")
 
-        if version is None or len(version) != 1:
+        if version is None:
             return default_version()
 
         if type(version) != int:
@@ -150,14 +151,21 @@ class DatabaseHelper:
         with self.lock:
             self.cur.execute("""
                 INSERT OR REPLACE INTO config VALUES (?, ?)
-            """, (key, value))
+            """, (key, json.dumps(value)))
             self.con.commit()
+
+    def get_config_key(self, key: str) -> Union[bool, str, int, None, Dict[int, str]]:
+        with self.lock:
+            it = self.cur.execute("SELECT value from config WHERE key=?", (key,)).fetchone()
+            assert len(it) == 1
+
+            return json.loads(it[0])
 
     def get_config(self) -> DefaultDict[str, Union[bool, str, int, None, Dict[int, str]]]:
         with self.lock:
             data = self.cur.execute("SELECT * from config").fetchall()
 
-            return defaultdict(lambda: None, data)
+            return defaultdict(lambda: None, map(lambda it: (it[0], json.loads(it[1])), data))
 
     def add_bad_url(self, url: str) -> None:
         with self.lock:
