@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import os
 import random
 import re
@@ -14,9 +13,10 @@ from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Union, Iterable, DefaultDict, Tuple
+from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse
 
+import math
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from requests.exceptions import InvalidSchema
@@ -164,7 +164,7 @@ class PreMediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: int | None = None, time: int | None = None):
         relative_location = (relative_location or media_type.dir_name).strip("/")
         if config.make_subdirs is False:
             relative_location = ""
@@ -194,12 +194,10 @@ class MediaContainer:
     _name: str
     url: str
     download_url: str
-    path: Path
     time: int
     course: Course
     media_type: MediaType
-    size: int
-    _links: list[MediaContainer]  # Links can only be to files in the same course
+    size: int | None
     checksum: str | None
     current_size: int | None
     _stop: bool
@@ -209,13 +207,12 @@ class MediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, _name: str, url: str, download_url: str, path: Path, time: int, course: Course, media_type: MediaType, size: int,
+    def __init__(self, _name: str, url: str, download_url: str, time: int, course: Course, media_type: MediaType, size: int,
                  checksum: Optional[str] = None, _links: Optional[List[MediaContainer]] = None,
                  _newly_downloaded: bool = False, _newly_discovered: bool = False) -> None:
         self._name = _name
         self.url = url
         self.download_url = download_url
-        self.path = path
         self.time = time
         self.course = course
         self.media_type = media_type
@@ -229,7 +226,7 @@ class MediaContainer:
         self._newly_discovered = _newly_discovered
 
     @classmethod
-    def from_dump(cls, url: str, course: Course) -> Union[bool, MediaContainer]:
+    def from_dump(cls, url: str, course: Course) -> bool | MediaContainer:
         """
         The `bool` return value indicates if the container should be downloaded.
         """
@@ -239,9 +236,8 @@ class MediaContainer:
 
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
-        container.path = Path(container.path)
-
         course_id: int = container.course  # type: ignore
+
         if course_id not in RequestHelper.course_id_mapping:
             return True
 
@@ -256,7 +252,7 @@ class MediaContainer:
         return container
 
     @classmethod
-    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: Optional[RequestHelperStatus] = None) -> Optional[MediaContainer]:
+    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: RequestHelperStatus | None = None) -> MediaContainer | None:
         con: Optional[Response] = None
         try:
             if is_testing and container.url in testing_bad_urls:
@@ -335,7 +331,7 @@ class MediaContainer:
 
             if container.is_ready:
                 assert container._name is not None and container.time is not None and container.size is not None
-                return cls(container._name, container.url, container.url, container.parent_path.joinpath(sanitize_name(container._name, False)),
+                return cls(container._name, container.url, container.url,
                            container.time, container.course, container.media_type, container.size, _newly_discovered=True).dump()
 
             con = session.get_(download_url or container.url, params={"token": session.token}, stream=True)
@@ -385,8 +381,7 @@ class MediaContainer:
                 else:
                     assert size != 0 and size != -1
 
-            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size,
-                       _newly_discovered=True).dump()
+            return cls(name, container.url, download_url or container.url, time, container.course, media_type, size, _newly_discovered=True).dump()
 
         finally:
             container.is_cached = True
@@ -448,6 +443,10 @@ class MediaContainer:
     def string_dump(self) -> str:
         return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size)}\n" \
                f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
+
+    @property
+    def path(self):
+        return self.course.path(self.media_type.dir_name, sanitize_name(self._name, False))
 
     def __str__(self) -> str:
         if config.absolute_path_filename:
@@ -624,7 +623,7 @@ class Course:
         self.course_id = course_id
 
     @classmethod
-    def from_dict(cls, info: Dict[str, Any]) -> Course:
+    def from_dict(cls, info: dict[str, Any]) -> Course:
         displayname = cast(str, info["displayname"])
         _name = cast(str, info["shortname"] or info["displayname"])
         id = cast(int, info["id"])
@@ -649,7 +648,7 @@ class Course:
                 for item in MediaType.list_dirs():
                     os.makedirs(self.path(item), exist_ok=True)
 
-    def download_documents(self, helper: RequestHelper) -> List[PreMediaContainer]:
+    def download_documents(self, helper: RequestHelper) -> list[PreMediaContainer]:
         content = helper.post_REST("core_course_get_contents", {"courseid": self.course_id})
         if content is None or isinstance(content, dict) and "exception" in content:
             return []
@@ -1035,7 +1034,6 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
             for i, file in enumerate(conflict):
                 basename, ext = os.path.splitext(file._name)
                 file._name = basename + f".{i}" + ext
-                file.path = file.path.parent.joinpath(sanitize_name(file._name, False))
                 file.dump()
                 final_list.append(file)
 
@@ -1325,9 +1323,6 @@ Newly discovered files:
         def eval_spawn_next_thread() -> Optional[bool]:
             # TODO
             # 2. Predict in which direction to 'jump'
-
-            num_times_counted
-            bandwidths
 
             weights: Dict[Optional[bool], float] = {False: 0.0, True: 0.0, None: 0.0}
 
