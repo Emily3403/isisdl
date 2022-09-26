@@ -1427,6 +1427,9 @@ class MediaType(enum.Enum):
 
     @property
     def dir_name(self) -> str:
+        if config.make_subdirs is False:
+            return ""
+
         if self == MediaType.video:
             return "Videos"
         if self == MediaType.extern:

@@ -161,6 +161,11 @@ def main() -> None:
 #           → Achieved by generating a random master password + random salt and store it in the database.
 #             This enables for greater security since 1 table is all that is needed in order to crack multiple passwords
 #
+#       Add a new MediaType Link
+#           → There has to be a property that is the same across the links
+#               Could download_url be good for this?
+#           After the introduction it could be checked if all checksums are unique
+#
 #       Verify the database state on every startup by iterating over all files + sizes and raising an error if the size and checksum don't match
 #
 #       These changes imply the following
