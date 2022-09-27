@@ -101,7 +101,7 @@ def restore_file(
         # First heuristic: File path
         possible = filename_mapping.get(file, None)
         if possible is not None and possible.size == file_size:
-            possible.path = file
+            # possible.path = file
             possible.checksum = checksum
 
             return FileStatus.to_dump, possible
@@ -121,7 +121,7 @@ def restore_file(
             possible = next((item for item in possible_files if sanitize_name(item._name, False) == file.name), None)
 
         if possible is not None and possible.size == file_size:
-            possible.path = file
+            # possible.path = file
             possible.checksum = checksum
 
             return FileStatus.to_dump, possible
@@ -139,13 +139,13 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
     checksums = database_helper.get_checksums()
     files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]] = {course.path(): defaultdict(list) for course in helper.courses}
 
-    course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
+    # course_id_path_mapping = {course.course_id: course.path() for course in helper.courses}
 
-    for container in content:
-        files_for_course[course_id_path_mapping[container.course.course_id]][container.size].append(container)
-        for link in container._links:
-            files_for_course[course_id_path_mapping[container.course.course_id]][link.size].append(container)
-            filename_mapping[link.path] = link
+    # for container in content:
+    # files_for_course[course_id_path_mapping[container.course.course_id]][container.size].append(container)
+    # for link in container._links:
+    #     files_for_course[course_id_path_mapping[container.course.course_id]][link.size].append(container)
+    #     filename_mapping[link.path] = link
 
     _files = list(path().rglob("*"))
     random.shuffle(_files)
@@ -177,15 +177,15 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
             num_recovered += 1
             if isinstance(item[1], Path):
                 size_recovered += item[1].stat().st_size
-            else:
-                size_recovered += item[1].size
+            # else:
+            #     size_recovered += item[1].size
 
         elif item[0] == FileStatus.unchanged:
             num_unchanged += 1
             if isinstance(item[1], Path):
                 size_unchanged += item[1].stat().st_size
-            else:
-                size_unchanged += item[1].size
+            # else:
+            #     size_unchanged += item[1].size
 
         else:
             assert False

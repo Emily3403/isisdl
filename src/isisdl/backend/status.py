@@ -226,13 +226,13 @@ class DownloadStatus(Status):
 
             if item.current_size is not None:
                 self.total_downloaded += item.current_size
-            elif item._stop:
+            elif item._stop and item.size is not None:
                 self.total_downloaded += item.size
 
     def generate_log_message(self) -> List[str]:
         log_strings = []
 
-        total_size = sum(item.size for item in self.files if item.size != -1)
+        # total_size = sum(item.size for item in self.files if item.size != -1)
         downloaded_bytes = self.total_downloaded + sum(item.current_size for item in self.thread_files.values() if item is not None and item.current_size is not None)
         curr_bandwidth = HumanBytes.format_str(self.throttler.bandwidth_used)
 
@@ -243,9 +243,9 @@ class DownloadStatus(Status):
         )
 
         # General meta-info
-        log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)} / {HumanBytes.format_str(total_size)}")
+        log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)}")   # / {HumanBytes.format_str(total_size)}
         log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
-        log_strings.append(f"Done in: {timedelta(seconds=int((total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
+        # log_strings.append(f"Done in: {timedelta(seconds=int((total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
         log_strings.append("")
 
         # Now determine the already downloaded amount and display it

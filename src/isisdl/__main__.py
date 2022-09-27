@@ -142,7 +142,7 @@ def main() -> None:
 #           → MediaContainer can't be compared with __gt__ → TODO: what does this cause? → Tests start failing in chop_down_size
 #           → Loose the ability to _always_ check if a file exists → if a file does not have a size, it is not downloaded
 #           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?
-#           → DownloadStatus won't have an ETA
+#           → DownloadStatus won't have an ETA, Not necessarily: One could average bitrates from videos and estimate _a_ ETA. It, however will not be really good.
 #           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
 #           → If we don't know the file size but have to know if to download do it iff `online_file_size === disk_file_size`
 #
