@@ -264,6 +264,10 @@ class DatabaseHelper:
 
         return info
 
+    def hardlink_stuff(self, container: MediaContainer) -> None:
+        # TODO
+        pass
+
     # TODO: Fix this
 
     def update_inefficient_videos(self, file: MediaContainer, estimated_efficiency: float) -> None:

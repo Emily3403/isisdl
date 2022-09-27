@@ -49,7 +49,7 @@ class SessionWithKey(Session):
         self.mount("https://", HTTPAdapter(pool_maxsize=discover_num_threads // 2, pool_block=False))
 
     @classmethod
-    def from_scratch(cls, user: User) -> Optional[SessionWithKey]:
+    def from_scratch(cls, user: User) -> SessionWithKey | None:
         try:
             s = cls("", "")
             s.headers.update({"User-Agent": "isisdl (Python Requests)"})
@@ -120,7 +120,7 @@ class SessionWithKey(Session):
             generate_error_message(ex)
 
     @staticmethod
-    def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: Dict[Any, Any]) -> Any:
+    def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: dict[Any, Any]) -> Any:
         if "tubcloud.tu-berlin.de" in url:
             # The tubcloud is *really* slow
             _download_timeout = 20
@@ -165,7 +165,7 @@ class PreMediaContainer:
     __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: int | None = None, time: int | None = None):
-        relative_location = (relative_location or media_type.dir_name).strip("/")
+        relative_location = (relative_location or media_type.dir_name).strip("/")  # TODO: Check if when no make dirs also applies to the exercises
         if config.make_subdirs is False:
             relative_location = ""
 
@@ -207,8 +207,8 @@ class MediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, _name: str, url: str, download_url: str, time: int, course: Course, media_type: MediaType, size: int,
-                 checksum: Optional[str] = None, _links: Optional[List[MediaContainer]] = None,
+    def __init__(self, _name: str, url: str, download_url: str, time: int, course: Course,
+                 media_type: MediaType, size: int, checksum: Optional[str] = None,
                  _newly_downloaded: bool = False, _newly_discovered: bool = False) -> None:
         self._name = _name
         self.url = url
@@ -220,7 +220,6 @@ class MediaContainer:
         self.checksum = checksum
         self.current_size = None
         self._stop = False
-        self._links = _links or []
         self._done = False
         self._newly_downloaded = _newly_downloaded
         self._newly_discovered = _newly_discovered
@@ -253,7 +252,7 @@ class MediaContainer:
 
     @classmethod
     def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: RequestHelperStatus | None = None) -> MediaContainer | None:
-        con: Optional[Response] = None
+        con: Response | None = None
         try:
             if is_testing and container.url in testing_bad_urls:
                 return None
@@ -416,7 +415,7 @@ class MediaContainer:
         if maybe_container.checksum is None:
             return True
 
-        if self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum):
+        if self.size is not None and self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum):
             return False
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
@@ -445,7 +444,7 @@ class MediaContainer:
                f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
 
     @property
-    def path(self):
+    def path(self) -> Path:
         return self.course.path(self.media_type.dir_name, sanitize_name(self._name, False))
 
     def __str__(self) -> str:
@@ -455,11 +454,12 @@ class MediaContainer:
         return sanitize_name(self._name, False)
 
     def render_progress_bar(self) -> str:
-        if self.size in {0, -1}:
+        if self.size in {0, -1, None}:
             percent: float = 0.
         elif self.current_size is None:
             percent = 0.
         else:
+            assert self.size is not None
             percent = self.current_size / self.size
 
         # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
@@ -499,8 +499,8 @@ class MediaContainer:
 
         return acc
 
-    def __gt__(self, other: MediaContainer) -> bool:
-        return int.__gt__(self.size, other.size)
+    # def __gt__(self, other: MediaContainer) -> bool:
+    #     return int.__gt__(self.size, other.size)
 
     def stop(self) -> None:
         self._stop = True
@@ -545,10 +545,7 @@ class MediaContainer:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
 
-            for link in self._links:
-                if link.should_download:
-                    link.hardlink(self)
-
+            database_helper.hardlink_stuff(self)
             self.dump()
             return False
 
@@ -587,6 +584,7 @@ class MediaContainer:
 
         # Only register the file after successfully downloading it.
         if is_testing and self.media_type != MediaType.corrupted:
+            assert self.size is not None
             assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
 
         self.size = self.path.stat().st_size
@@ -594,14 +592,7 @@ class MediaContainer:
         self.dump()
 
         # Resolve hard links
-        for link in self._links:
-            if is_testing:
-                assert link.size == self.size
-                assert link._links == []
-
-            if link.should_download:
-                link.hardlink(self)
-
+        database_helper.hardlink_stuff(self)
         self._newly_downloaded = True
         self._done = True
 
@@ -1007,7 +998,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for conflict in hard_link_conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
-            conflict[0]._links.extend(conflict[1:])
+            # conflict[0]._links.extend(conflict[1:])  # TODO
             final_list.append(conflict[0])
         else:
             new_files.append(conflict[0])
@@ -1050,7 +1041,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     for conflict in hard_link_conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
-            conflict[0]._links.extend(conflict[1:])
+            # conflict[0]._links.extend(conflict[1:])  # TODO
             # conflict_urls.add(conflict[0].url)
             final_list.append(conflict[0])
 
@@ -1071,7 +1062,7 @@ class Downloader(Thread):
     is_downloading: bool = False
     _lock = Lock()
 
-    def __init__(self, q: Queue[MediaContainer], ret_q: Queue[Tuple[int, bool]], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
+    def __init__(self, q: Queue[MediaContainer], ret_q: Queue[tuple[int, bool]], thread_id: int, status: DownloadStatus, throttler: DownloadThrottler, session: SessionWithKey):
         self.q = q
         self.ret_q = ret_q
         self.thread_id = thread_id
@@ -1115,12 +1106,14 @@ class CourseDownloader:
                 if container.should_download:
                     container.path.open("w").close()
                 else:
-                    for con in container._links:
-                        if con.should_download:
-                            if not container.path.exists():
-                                container.path.open("w").close()
-
-                            con.hardlink(container)
+                    pass
+                    # TODO
+                    # for con in container._links:
+                    #     if con.should_download:
+                    #         if not container.path.exists():
+                    #             container.path.open("w").close()
+                    #
+                    #         con.hardlink(container)
 
         CourseDownloader.containers = containers
 
