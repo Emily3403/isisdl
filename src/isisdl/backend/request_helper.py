@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import os
 import random
 import re
@@ -152,11 +153,23 @@ class SessionWithKey(Session):
         return "~Session~"
 
 
+class MediaContainerSize(enum.Enum):
+    in_bytes = 1
+    in_minutes = 2
+    no_size = 3
+
+    val: int | None
+
+    def __init__(self, value: int | None = None):
+        self.val = value
+        super().__init__()
+
+
 class PreMediaContainer:
     url: str
     _name: str | None
     time: int | None
-    size: int | None
+    size: MediaContainerSize
     course: Course
     media_type: MediaType
     is_cached: bool
@@ -164,7 +177,8 @@ class PreMediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: int | None = None, time: int | None = None):
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: MediaContainerSize = MediaContainerSize.no_size,
+                 time: int | None = None):
         relative_location = (relative_location or media_type.dir_name).strip("/")  # TODO: Check if when no make dirs also applies to the exercises
         if config.make_subdirs is False:
             relative_location = ""
@@ -197,7 +211,7 @@ class MediaContainer:
     time: int
     course: Course
     media_type: MediaType
-    size: int | None
+    size: MediaContainerSize
     checksum: str | None
     current_size: int | None
     _stop: bool
@@ -208,7 +222,7 @@ class MediaContainer:
     __slots__ = tuple(__annotations__)  # type: ignore
 
     def __init__(self, _name: str, url: str, download_url: str, time: int, course: Course,
-                 media_type: MediaType, size: int, checksum: Optional[str] = None,
+                 media_type: MediaType, size: MediaContainerSize, checksum: Optional[str] = None,
                  _newly_downloaded: bool = False, _newly_discovered: bool = False) -> None:
         self._name = _name
         self.url = url
@@ -351,8 +365,8 @@ class MediaContainer:
                     name = os.path.basename(container.url)
 
             if media_type == MediaType.corrupted:
-                size = 0
-            elif container.size is not None:
+                size = MediaContainerSize.no_size
+            elif container.size != MediaContainerSize.no_size:
                 size = container.size
             else:
                 if "Content-Length" not in con.headers:
