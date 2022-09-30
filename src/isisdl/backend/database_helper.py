@@ -173,8 +173,8 @@ class DatabaseHelper:
 
         DatabaseHelper._url_container_mapping = self.get_containers()
 
-    def add_pre_container(self, file: MediaContainer) -> None:
-        tup = (file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size, file.checksum)
+    def add_container(self, file: MediaContainer) -> None:
+        tup = (file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size.dump(), file.checksum)
 
         with self.lock:
             self.cur.execute("""
@@ -184,11 +184,11 @@ class DatabaseHelper:
 
         self._url_container_mapping[f"{file.url} {file.course.course_id}"] = tup
 
-    def add_pre_containers(self, files: List[MediaContainer]) -> None:
+    def add_containers(self, files: List[MediaContainer]) -> None:
         with self.lock:
             self.cur.executemany("""
-                INSERT OR REPLACE INTO fileinfo VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [(file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size, file.checksum) for file in files])
+                INSERT OR REPLACE INTO fileinfo VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, [(file._name, file.url, file.download_url, file.time, file.course.course_id, file.media_type.value, file.size.dump(), file.checksum) for file in files])
             self.con.commit()
 
         self._url_container_mapping.update(self.get_containers())

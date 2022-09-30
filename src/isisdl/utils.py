@@ -19,6 +19,7 @@ import time
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import datetime
 from functools import wraps
 from itertools import repeat
@@ -48,7 +49,7 @@ from isisdl.version import __version__
 
 if TYPE_CHECKING:
     from isisdl.backend.status import Status
-    from isisdl.backend.request_helper import RequestHelper
+    from isisdl.backend.request_helper import RequestHelper, SessionWithKey
 
 
 def get_args() -> argparse.Namespace:
@@ -576,6 +577,78 @@ def get_url_from_gdrive_confirmation(contents: str) -> str | None:
 
     if not url:
         return None
+
+    return url
+
+
+def get_download_url_from_url(url: str, session: SessionWithKey) -> str | None:
+    # TODO: Verify all stuff works
+    hostname = urlparse(url).hostname
+
+    if "tu-berlin.hosted.exlibrisgroup.com" == hostname:
+        return url
+
+    elif "drive.google.com" == hostname:
+        drive_id = parse_google_drive_url(url)
+        if drive_id is None:
+            database_helper.add_bad_url(url)
+            return None
+
+        confirm_url = f"https://drive.google.com/uc?id={drive_id}"
+
+        with ExitStack() as defer:
+            con = session.get_(confirm_url, stream=True)
+
+            if con is None:
+                database_helper.add_bad_url(url)
+                return None
+
+            defer.callback(con.close)
+
+            if "Content-Disposition" in con.headers:
+                # This is the file
+                return confirm_url
+
+            else:
+                # Confirm google drive
+                _url = get_url_from_gdrive_confirmation(con.text)
+
+                if _url is None:
+                    database_helper.add_bad_url(url)
+                    return None
+
+                return _url
+
+    elif "tubcloud.tu-berlin.de" == hostname:
+        if url.endswith("/download"):
+            return url
+        else:
+            return url + "/download"
+
+    # TODO: More content
+    elif "youtube.com" == hostname or "youtu.be" == hostname:
+        pass
+
+    elif "link.springer.com" == hostname:
+        pass
+
+    elif 'prezi.com' == hostname:
+        pass
+
+    elif "docs.google.com/document" == hostname:
+        pass
+
+    elif 'doi.org' == hostname:
+        pass
+
+    elif 'video.isis.tu-berlin.de' == hostname:
+        pass
+
+    elif 'www.sciencedirect.com' == hostname:
+        pass
+
+    elif 'onlinelibrary.wiley.com' == hostname:
+        pass
 
     return url
 

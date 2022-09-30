@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import math
 import os
 import random
 import re
@@ -9,7 +10,6 @@ from base64 import standard_b64decode
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from email.utils import parsedate_to_datetime
 from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
@@ -17,7 +17,6 @@ from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse
 
-import math
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from requests.exceptions import InvalidSchema
@@ -27,8 +26,8 @@ from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperSt
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
     log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
-from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, parse_google_drive_url, get_url_from_gdrive_confirmation, \
-    DownloadThrottler, MediaType, HumanBytes, normalize_url
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, DownloadThrottler, MediaType, HumanBytes, normalize_url, \
+    get_download_url_from_url
 from isisdl.utils import calculate_local_checksum
 from isisdl.version import __version__
 
@@ -155,14 +154,26 @@ class SessionWithKey(Session):
 
 class MediaContainerSize(enum.Enum):
     in_bytes = 1
-    in_minutes = 2
+    in_seconds = 2
     no_size = 3
 
-    val: int | None
+    val: int | None = None
 
-    def __init__(self, value: int | None = None):
-        self.val = value
-        super().__init__()
+    def new(self, val: int) -> MediaContainerSize:
+        self.val = val
+        return self
+
+    def dump(self) -> str:
+        return f"{self.value} {self.val}"
+
+    def parse(self, it: str) -> MediaContainerSize:
+        _value, _val = it.split(" ")
+        value, val = int(_value), int(_val)
+
+        cls = MediaContainerSize(value)
+        cls.val = val
+
+        return cls
 
 
 class PreMediaContainer:
@@ -201,14 +212,14 @@ class PreMediaContainer:
 
     @property
     def is_ready(self) -> bool:
-        return self._name is not None and self.time is not None and self.size is not None
+        return self._name is not None and self.time is not None
 
 
 class MediaContainer:
     _name: str
     url: str
     download_url: str
-    time: int
+    time: int | None
     course: Course
     media_type: MediaType
     size: MediaContainerSize
@@ -221,9 +232,10 @@ class MediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, _name: str, url: str, download_url: str, time: int, course: Course,
+    def __init__(self, _name: str, url: str, download_url: str, time: int | None, course: Course,
                  media_type: MediaType, size: MediaContainerSize, checksum: Optional[str] = None,
                  _newly_downloaded: bool = False, _newly_discovered: bool = False) -> None:
+
         self._name = _name
         self.url = url
         self.download_url = download_url
@@ -249,6 +261,7 @@ class MediaContainer:
 
         container = cls(*info)
         container.media_type = MediaType(container.media_type)
+        container.size = MediaContainerSize.parse(container.size)  # type: ignore
         course_id: int = container.course  # type: ignore
 
         if course_id not in RequestHelper.course_id_mapping:
@@ -265,144 +278,24 @@ class MediaContainer:
         return container
 
     @classmethod
-    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey, status: RequestHelperStatus | None = None) -> MediaContainer | None:
-        con: Response | None = None
-        try:
-            if is_testing and container.url in testing_bad_urls:
-                return None
+    def from_pre_container(cls, container: PreMediaContainer, session: SessionWithKey) -> MediaContainer | None:
+        # First check if the url should be downloaded
+        if is_testing and container.url in testing_bad_urls:
+            return None
 
-            maybe_container = MediaContainer.from_dump(container.url, container.course)
-            if isinstance(maybe_container, MediaContainer):
-                return maybe_container
+        # Now check if we already know the url
+        maybe_container = MediaContainer.from_dump(container.url, container.course)
+        if isinstance(maybe_container, MediaContainer):
+            return maybe_container
 
-            elif maybe_container is False:
-                return None
+        elif maybe_container is False:
+            return None
 
-            # If there was not enough information to determine name, size and time for the container, get it.
-            download_url = None
-            if "tu-berlin.hosted.exlibrisgroup.com" in container.url:
-                pass
+        download_url = get_download_url_from_url(container.url, session)
 
-            elif "https://drive.google.com/" in container.url:
-                drive_id = parse_google_drive_url(container.url)
-                if drive_id is None:
-                    database_helper.add_bad_url(container.url)
-                    return None
-
-                temp_url = "https://drive.google.com/uc?id={id}".format(id=drive_id)
-
-                try:
-                    con = session.get_(temp_url, stream=True)
-                    if con is None:
-                        raise ValueError
-                except Exception:
-                    database_helper.add_bad_url(container.url)
-                    return None
-
-                if "Content-Disposition" in con.headers:
-                    # This is the file
-                    download_url = temp_url
-                else:
-                    _url = get_url_from_gdrive_confirmation(con.text)
-                    if _url is None:
-                        database_helper.add_bad_url(container.url)
-                        return None
-                    download_url = _url
-
-                con.close()
-
-            elif "tubcloud.tu-berlin.de" in container.url:
-                if container.url.endswith("/download"):
-                    download_url = container.url
-                else:
-                    download_url = container.url + "/download"
-
-            # TODO: More content
-            elif "youtube.com" in container.url or "youtu.be" in container.url:
-                pass
-
-            elif "link.springer.com" in container.url:
-                pass
-
-            elif 'prezi.com' in container.url:
-                pass
-
-            elif "docs.google.com/document" in container.url:
-                pass
-
-            elif 'doi.org' in container.url:
-                pass
-
-            elif 'video.isis.tu-berlin.de' in container.url:
-                pass
-
-            elif 'www.sciencedirect.com' in container.url:
-                pass
-
-            elif 'onlinelibrary.wiley.com' in container.url:
-                pass
-
-            if container.is_ready:
-                assert container._name is not None and container.time is not None and container.size is not None
-                return cls(container._name, container.url, container.url,
-                           container.time, container.course, container.media_type, container.size, _newly_discovered=True).dump()
-
-            con = session.get_(download_url or container.url, params={"token": session.token}, stream=True)
-            if con is None:
-                database_helper.add_bad_url(container.url)
-                return None
-
-            media_type = container.media_type
-            if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
-                media_type = MediaType.corrupted
-
-            if container._name is not None:
-                name = container._name
-            else:
-                if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
-                    name = maybe_names[0]
-                else:
-                    name = os.path.basename(container.url)
-
-            if media_type == MediaType.corrupted:
-                size = MediaContainerSize.no_size
-            elif container.size != MediaContainerSize.no_size:
-                size = container.size
-            else:
-                if "Content-Length" not in con.headers:
-                    size = -1
-                    media_type = MediaType.corrupted
-                else:
-                    size = int(con.headers["Content-Length"])
-
-            if container.time is not None:
-                time = container.time
-            elif "Last-Modified" in con.headers:
-                try:
-                    time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
-                except Exception:
-                    time = int(datetime.now().timestamp())
-            else:
-                time = int(datetime.now().timestamp())
-
-            if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
-                media_type = MediaType.corrupted
-
-            if is_testing:
-                if media_type == MediaType.corrupted:
-                    assert size == 0
-                else:
-                    assert size != 0 and size != -1
-
-            return cls(name, container.url, download_url or container.url, time, container.course, media_type, size, _newly_discovered=True).dump()
-
-        finally:
-            container.is_cached = True
-            if con is not None:
-                con.close()
-
-            if not container.is_ready and status is not None and status.status == StatusOptions.building_cache:
-                status.done()
+        # TODO: Is this too intensive with the database lock?
+        return cls(container._name or os.path.basename(urlparse(container.url).path), container.url,
+                   download_url or container.url, container.time, container.course, container.media_type, container.size, _newly_discovered=True)
 
     @property
     def should_download(self) -> bool:
@@ -450,7 +343,7 @@ class MediaContainer:
         self._done = True
 
     def dump(self) -> MediaContainer:
-        database_helper.add_pre_container(self)
+        database_helper.add_container(self)
         return self
 
     def string_dump(self) -> str:
@@ -612,6 +505,55 @@ class MediaContainer:
 
         return True
 
+        # con = session.get_(download_url or container.url, params={"token": session.token}, stream=True)
+        # if con is None:
+        #     database_helper.add_bad_url(container.url)
+        #     return None
+        #
+        # media_type = container.media_type
+        # if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+        #     media_type = MediaType.corrupted
+        #
+        # if container._name is not None:
+        #     name = container._name
+        # else:
+        #     if maybe_names := re.findall("filename=\"(.*?)\"", str(con.headers)):
+        #         name = maybe_names[0]
+        #     else:
+        #         name = os.path.basename(container.url)
+        #
+        # if media_type == MediaType.corrupted:
+        #     size = MediaContainerSize.no_size
+        # elif container.size != MediaContainerSize.no_size:
+        #     size = container.size
+        # else:
+        #     if "Content-Length" not in con.headers:
+        #         size = -1
+        #         media_type = MediaType.corrupted
+        #     else:
+        #         size = int(con.headers["Content-Length"])
+        #
+        # if container.time is not None:
+        #     time = container.time
+        # elif "Last-Modified" in con.headers:
+        #     try:
+        #         time = int(parsedate_to_datetime(con.headers["Last-Modified"]).timestamp())
+        #     except Exception:
+        #         time = int(datetime.now().timestamp())
+        # else:
+        #     time = int(datetime.now().timestamp())
+        #
+        # if not (con.ok and "Content-Type" in con.headers and (con.headers["Content-Type"].startswith("application/") or con.headers["Content-Type"].startswith("video/"))):
+        #     media_type = MediaType.corrupted
+        #
+        # if is_testing:
+        #     if media_type == MediaType.corrupted:
+        #         assert size == 0
+        #     else:
+        #         assert size != 0 and size != -1
+        #
+        # return cls(name, container.url, download_url or container.url, time, container.course, media_type, size, _newly_discovered=True).dump()
+
 
 class Course:
     displayname: str
@@ -696,7 +638,8 @@ class Course:
                                 and isis_ignore.match(file["fileurl"]) is None:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
-                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], MediaContainerSize.in_bytes.new(file["filesize"]),
+                                                                 file["timemodified"]))
 
         if config.follow_links is False:
             return all_content
@@ -883,25 +826,11 @@ class RequestHelper:
 
         self.analyze_most_common_urls(pre_containers)
 
-        if (num_cached := sum(pre_container.is_cached for pre_container in pre_containers)) != len(pre_containers):
-            if status is not None:
-                status.set_total(len([item for item in pre_containers if not item.is_ready]))
-                status.count = num_cached
-                status.set_build_cache_files(pre_containers)
-                status.set_status(StatusOptions.building_cache)
-                status._eta_start_time = datetime.now()
+        _containers = [MediaContainer.from_pre_container(pre_container, self.session) for pre_container in pre_containers]
+        containers = [item for item in _containers if item is not None]
 
-            # Only multithread if there are actual requests going to be made.
-            if enable_multithread:
-                with ThreadPoolExecutor(discover_num_threads) as ex:
-                    _containers = list(ex.map(MediaContainer.from_pre_container, pre_containers, repeat(self.session), repeat(status)))
-            else:
-                _containers = [MediaContainer.from_pre_container(pre_container, self.session, status) for pre_container in pre_containers]
-
-        else:
-            _containers = [MediaContainer.from_pre_container(pre_container, self.session, None) for pre_container in pre_containers]
-
-        containers = check_for_conflicts_in_files([item for item in _containers if item is not None])
+        database_helper.add_containers(containers)
+        containers = check_for_conflicts_in_files(containers)
         mapping: Dict[MediaType, List[MediaContainer]] = {typ: [] for typ in MediaType}
 
         for container in containers:
@@ -930,7 +859,7 @@ class RequestHelper:
                             all_content.append(
                                 PreMediaContainer(
                                     file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                    file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                                    file["filename"], file["filepath"], MediaContainerSize.in_bytes.new(file["filesize"]), file["timemodified"])
                             )
 
             return all_content
@@ -966,8 +895,10 @@ class RequestHelper:
                 videos_json = video["data"]["videos"]
                 video_urls = [item["url"] for item in videos_json]
                 video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
+                video_durations = [item["duration"] for item in videos_json]
 
-                res.extend([PreMediaContainer(url, course, MediaType.video, name) for url, name in zip(video_urls, video_names)])
+                res.extend(
+                    [PreMediaContainer(url, course, MediaType.video, name, size=MediaContainerSize.in_seconds.new(duration)) for url, name, duration in zip(video_urls, video_names, video_durations)])
 
             return res
 
