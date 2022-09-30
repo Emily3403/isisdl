@@ -156,7 +156,7 @@ def restore_database_state(_content: Dict[MediaType, List[MediaContainer]], help
     else:
         files = [restore_file(file, filename_mapping, files_for_course, checksums, status) for file in _files]
 
-    database_helper.add_pre_containers([file[1] for file in files if file[0] == FileStatus.to_dump and isinstance(file[1], MediaContainer)])
+    database_helper.add_containers([file[1] for file in files if file[0] == FileStatus.to_dump and isinstance(file[1], MediaContainer)])
 
     if status is not None:
         status.stop()
