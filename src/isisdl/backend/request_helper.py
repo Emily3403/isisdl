@@ -14,7 +14,7 @@ from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
+from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple, Set
 from urllib.parse import urlparse
 
 from requests import Session, Response
@@ -388,7 +388,7 @@ class MediaContainer:
         return self.__str__()
 
     def __hash__(self) -> int:
-        return self.url.__hash__()
+        return f"{self.course} {self.url}".__hash__()
 
     def __eq__(self, other: Any) -> bool:
         if self.__class__ != other.__class__:
@@ -797,6 +797,7 @@ class RequestHelper:
 
     @staticmethod
     def analyze_most_common_urls(pre_containers: List[PreMediaContainer]) -> None:
+        # This is a debugging method to figure out which url's to further filter.
         urls: DefaultDict[Optional[str], int] = defaultdict(int)
         for container in pre_containers:
             urls[urlparse(container.url).hostname] += 1
@@ -820,17 +821,17 @@ class RequestHelper:
             _video_containers = iter([self._download_videos(0)])
             _document_containers = iter([self._download_documents(course, status) for course in self.courses])
 
-        pre_containers = [item for row in filter(lambda x: x is not None, chain(_document_containers, _video_containers, _mod_assign)) for item in row]
-        pre_containers = list({f"{item.course} {item.url}": item for item in pre_containers}.values())
-        random.shuffle(pre_containers)
+        pre_containers = [item for row in chain(_document_containers, _video_containers, _mod_assign) for item in row]
 
         self.analyze_most_common_urls(pre_containers)
 
         _containers = [MediaContainer.from_pre_container(pre_container, self.session) for pre_container in pre_containers]
         containers = [item for item in _containers if item is not None]
 
-        database_helper.add_containers(containers)
+
         containers = check_for_conflicts_in_files(containers)
+        database_helper.add_containers(containers)
+
         mapping: Dict[MediaType, List[MediaContainer]] = {typ: [] for typ in MediaType}
 
         for container in containers:
@@ -919,39 +920,38 @@ class RequestHelper:
                 status.done()
 
 
-def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaContainer]:
+def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[MediaContainer]:
     # TODO: Check for case insensitive filesystem and implement the fix here
-    final_list: List[MediaContainer] = []
-    new_files: List[MediaContainer] = []
 
-    file: MediaContainer
-    for file in files:
-        if file.media_type == MediaType.corrupted:
-            final_list.append(file)
-        else:
-            new_files.append(file)
+    # Corrupted files
+    # Same size in a course
+    #
 
-    files = new_files
+    # First filter out all corrupted files
+    temp_files: List[MediaContainer] = []
+    final_files: List[MediaContainer] = [it for it in original_files if it.media_type == MediaType.corrupted or temp_files.append(it)]  # type: ignore[func-returns-value]
+
+    original_files = temp_files
 
     # Now check for files with the same size in each course
     hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
 
-    for file in {file.path: file for file in files}.values():
+    for file in {file.path: file for file in original_files}.values():
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
-    new_files = []
+    temp_files = []
     for conflict in hard_link_conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
             # conflict[0]._links.extend(conflict[1:])  # TODO
-            final_list.append(conflict[0])
+            final_files.append(conflict[0])
         else:
-            new_files.append(conflict[0])
+            temp_files.append(conflict[0])
 
-    files = new_files
+    original_files = temp_files
 
     conflicts: DefaultDict[Path, List[MediaContainer]] = defaultdict(list)
-    for file in set(files):
+    for file in set(original_files):
         conflicts[file.path].append(file)
 
     for typ, conflict in conflicts.items():
@@ -963,7 +963,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
         elif all(item.size == conflict[0].size for item in conflict):
             # Only same sizes
-            final_list.append(conflict[0])
+            final_files.append(conflict[0])
 
         elif len(set(item.size for item in conflict)) == len(conflict):
             # Only unique sizes
@@ -971,7 +971,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
                 basename, ext = os.path.splitext(file._name)
                 file._name = basename + f".{i}" + ext
                 file.dump()
-                final_list.append(file)
+                final_files.append(file)
 
         else:
             logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
@@ -980,7 +980,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     # Finally filter the remaining files based on the url
     hard_link_conflicts = defaultdict(list)
 
-    for file in {file.path: file for file in files}.values():
+    for file in {file.path: file for file in original_files}.values():
         hard_link_conflicts[file.download_url].append(file)
 
     for conflict in hard_link_conflicts.values():
@@ -988,12 +988,12 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
             conflict.sort(key=lambda x: x.time)
             # conflict[0]._links.extend(conflict[1:])  # TODO
             # conflict_urls.add(conflict[0].url)
-            final_list.append(conflict[0])
+            final_files.append(conflict[0])
 
         else:
-            final_list.append(conflict[0])
+            final_files.append(conflict[0])
 
-    return final_list
+    return final_files
 
 
 class Downloader(Thread):
