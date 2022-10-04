@@ -37,7 +37,7 @@ datetime_str = "%Y-%m-%d %H:%M:%S"
 
 # Settings for the lock
 lock_file_location = os.path.join(intern_dir_location, ".lock")
-enable_lock = True
+enable_lock = False
 
 # Options for the `--subscribe` feature
 subscribed_courses_file_location = os.path.join(intern_dir_location, "subscribed_courses.json")

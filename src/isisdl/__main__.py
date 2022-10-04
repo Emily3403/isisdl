@@ -168,6 +168,8 @@ def main() -> None:
 #
 #       Verify the database state on every startup by iterating over all files + sizes and raising an error if the size and checksum don't match
 #
+#       Database Sync: Don't delete files from a course where they cant be downloaded anymore.
+#
 #       These changes imply the following
 #           → Don't check any URL's that are not extern
 #           →
@@ -202,6 +204,9 @@ def main() -> None:
 #   Fix bug when first starting then it looks like stream
 #
 #   In Windows one could also create a `~/.config/` directory. Since the typical windows user never views their home directory, this could be fine.
+#
+#   Download zip files
+
 
 
 # Maybe TODO
