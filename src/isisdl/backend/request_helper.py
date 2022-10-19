@@ -293,7 +293,6 @@ class MediaContainer:
 
         download_url = get_download_url_from_url(container.url, session)
 
-        # TODO: Is this too intensive with the database lock?
         return cls(container._name or os.path.basename(urlparse(container.url).path), container.url,
                    download_url or container.url, container.time, container.course, container.media_type, container.size, _newly_discovered=True)
 
@@ -341,6 +340,10 @@ class MediaContainer:
 
         self.dump()
         self._done = True
+
+    def set_hardlink(self, other: MediaContainer) -> None:
+        # TODO
+        pass
 
     def dump(self) -> MediaContainer:
         database_helper.add_container(self)
@@ -927,39 +930,51 @@ def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[M
     # Same size in a course
     #
 
-    # First filter out all corrupted files
+    # First filter out all corrupted files. This is the fastest way to do this in python # TODO: stackoverflow link
     temp_files: List[MediaContainer] = []
     final_files: List[MediaContainer] = [it for it in original_files if it.media_type == MediaType.corrupted or temp_files.append(it)]  # type: ignore[func-returns-value]
 
     original_files = temp_files
-
-    # Now check for files with the same size in each course
-    hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
-
-    for file in {file.path: file for file in original_files}.values():
-        hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
-
     temp_files = []
-    for conflict in hard_link_conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            # conflict[0]._links.extend(conflict[1:])  # TODO
-            final_files.append(conflict[0])
-        else:
+    conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
+
+    # Now check for files with the same size + name in each course and collapse them into a single container.
+    for file in original_files:
+        conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
+
+    for conflict in conflicts.values():
+        if len(conflict) == 1:
             temp_files.append(conflict[0])
+            continue
+
+        conflict.sort(key=lambda it: str(it.path))
+        base_container = conflict[0]
+
+        for item in conflict:
+            if item.path == base_container.path:
+                assert item == base_container
+
+        for item in conflict[1:]:
+            item.set_hardlink(base_container)
+
+        temp_files.append(base_container)
 
     original_files = temp_files
+    temp_files = []
+    conflicts = defaultdict(list)
 
-    conflicts: DefaultDict[Path, List[MediaContainer]] = defaultdict(list)
-    for file in set(original_files):
-        conflicts[file.path].append(file)
+    # Now check for the same path and rename conflicting files
+    for file in original_files:
+        conflicts[str(file.path)].append(file)
 
-    for typ, conflict in conflicts.items():
-        conflict.sort(key=lambda x: x.time)
+    for conflict in conflicts.values():
+        conflict.sort(key=lambda it: it.download_url)
 
         if len(conflict) == 1:
             # Don't handle the conflict here
             continue
+
+
 
         elif all(item.size == conflict[0].size for item in conflict):
             # Only same sizes
@@ -978,12 +993,12 @@ def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[M
             continue
 
     # Finally filter the remaining files based on the url
-    hard_link_conflicts = defaultdict(list)
+    conflicts = defaultdict(list)
 
     for file in {file.path: file for file in original_files}.values():
-        hard_link_conflicts[file.download_url].append(file)
+        conflicts[file.download_url].append(file)
 
-    for conflict in hard_link_conflicts.values():
+    for conflict in conflicts.values():
         if len(conflict) > 1:
             conflict.sort(key=lambda x: x.time)
             # conflict[0]._links.extend(conflict[1:])  # TODO

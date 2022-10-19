@@ -185,6 +185,8 @@ def main() -> None:
 #
 #   Check what isisdl is doing after building request cache → why is it so slow in valgrind?
 #
+#   Auto-detect archived courses and not download them
+#
 #   Argcomplete
 #       https://pypi.org/project/argcomplete/
 #       qmk can also do this
