@@ -141,10 +141,10 @@ def main() -> None:
 #           → Logger looses the ability to report total number of bytes available  (Done)
 #           → MediaContainer can't be compared with __gt__ → TODO: what does this cause? → Tests start failing in chop_down_size
 #           → Loose the ability to _always_ check if a file exists → if a file does not have a size, it is not downloaded
-#           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?
-#           → DownloadStatus won't have an ETA, Not necessarily: One could average bitrates from videos and estimate _a_ ETA. It, however will not be really good.
+#           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?  (Done)
+#           → DownloadStatus won't have an ETA, Not necessarily: One could average bitrates from videos and estimate _a_ ETA. It, however will not be really good.  (Done)
 #           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
-#           → If we don't know the file size but have to know if to download do it iff `online_file_size === disk_file_size`
+#           → If we don't know the file size but have to know if to download, do it iff `online_file_size === disk_file_size`
 #
 #       is_corrupted attribute change  (Done)
 #           → Note the last time checked and retry the url based on an exponential backoff strategy
@@ -161,7 +161,7 @@ def main() -> None:
 #           → Achieved by generating a random master password + random salt and store it in the database.
 #             This enables for greater security since 1 table is all that is needed in order to crack multiple passwords
 #
-#       Add a new MediaType Link
+#       Add a new MediaType Link  (Done)
 #           → There has to be a property that is the same across the links
 #               Could download_url be good for this?
 #           After the introduction it could be checked if all checksums are unique
