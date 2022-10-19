@@ -9,7 +9,7 @@ from colorama import Style
 
 from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.request_helper import RequestHelper, SessionWithKey
-from isisdl.settings import is_online, error_text
+from isisdl.settings import is_online, error_text, forbidden_chars
 from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
 from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, database_helper, sanitize_name
 
@@ -126,10 +126,6 @@ def authentication_prompt() -> None:
 
 def filename_prompt() -> None:
     clear()
-    if is_windows:
-        forbidden_chars = "<>:\"/\\|?*"
-    else:
-        forbidden_chars = "/"
 
     print(f"""Some programs / programming languages have restrictions or
 inconveniences when it comes to working with special characters.
@@ -143,9 +139,10 @@ the next character after a whitespace is capitalized.
 For example:
 "I am / a \\ wierd 🐧 [filename].png" → "IAmAWierdFilename.png"
 
+Would you like to enable this option?
 
 --- Note ---
-The character{'s' if is_windows else ''} `{forbidden_chars}` {'are' if is_windows else 'is'} always replaced (not supported on a filesystem level).
+The character{'s' if len(forbidden_chars) > 1 else ''} `{forbidden_chars}` {'are' if len(forbidden_chars) > 1 else 'is'} always replaced (not supported on a filesystem level).
 
 Changing this option after initial configuration is not supported (yet).
 ------------
