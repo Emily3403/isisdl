@@ -1497,6 +1497,7 @@ class MediaType(enum.Enum):
     extern = 2
     video = 3
     corrupted = 4
+    hardlink = 5
 
     @property
     def dir_name(self) -> str:

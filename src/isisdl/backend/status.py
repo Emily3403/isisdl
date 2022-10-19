@@ -192,8 +192,8 @@ class DownloadStatus(Status):
     _show_progress_bar = False
     _show_eta = False
 
-    def __init__(self, files: Dict[MediaType, List[MediaContainer]], num_threads: int, throttler: DownloadThrottler):
-        self.files = [item for row in list(files.values()) for item in row]
+    def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler):
+        self.files = files
         self.finished_files = 0
         self.total_size = sum(item.size for item in self.files if item.size != -1)
         self.total_downloaded = 0
