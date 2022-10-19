@@ -5,6 +5,7 @@ import math
 import os
 import random
 import re
+import string
 import time
 from base64 import standard_b64decode
 from collections import defaultdict
@@ -174,6 +175,13 @@ class MediaContainerSize(enum.Enum):
         cls.val = val
 
         return cls
+
+    def __str__(self) -> str:
+        if self == MediaContainerSize.no_size:
+            # If the size is not known they shall not collide
+            return "".join(random.choice(string.ascii_letters) for _ in range(16))
+
+        return str(self.val)
 
 
 class PreMediaContainer:
@@ -926,17 +934,35 @@ class RequestHelper:
 def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[MediaContainer]:
     # TODO: Check for case insensitive filesystem and implement the fix here
 
-    # Corrupted files
-    # Same size in a course
-    #
-
-    # First filter out all corrupted files. This is the fastest way to do this in python # TODO: stackoverflow link
+    # First filter out all corrupted files. This is the fastest way to do this in python: https://stackoverflow.com/a/57976307
     temp_files: List[MediaContainer] = []
     final_files: List[MediaContainer] = [it for it in original_files if it.media_type == MediaType.corrupted or temp_files.append(it)]  # type: ignore[func-returns-value]
 
     original_files = temp_files
     temp_files = []
     conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
+
+    # First filter out the same download urls. If they are the same, the file _has_ to be identical.
+    for file in original_files:
+        conflicts[file.download_url].append(file)
+
+    for conflict in conflicts.values():
+        if len(conflict) == 1:
+            temp_files.append(conflict[0])
+            continue
+
+        conflict.sort(key=lambda x: x.path)
+        base_container = conflict[0]
+
+        for item in conflict[1:]:
+            item.set_hardlink(base_container)
+
+        temp_files.append(base_container)
+
+    num_filtered_by_download_url = len(original_files) - len(temp_files)
+    original_files = temp_files
+    temp_files = []
+    conflicts = defaultdict(list)
 
     # Now check for files with the same size + name in each course and collapse them into a single container.
     for file in original_files:
@@ -947,20 +973,16 @@ def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[M
             temp_files.append(conflict[0])
             continue
 
-        conflict.sort(key=lambda it: str(it.path))
+        conflict.sort(key=lambda it: str(it.download_url))
         base_container = conflict[0]
-
-        for item in conflict:
-            if item.path == base_container.path:
-                assert item == base_container
 
         for item in conflict[1:]:
             item.set_hardlink(base_container)
 
         temp_files.append(base_container)
 
+    num_filtered_by_size_and_name = len(original_files) - len(temp_files)
     original_files = temp_files
-    temp_files = []
     conflicts = defaultdict(list)
 
     # Now check for the same path and rename conflicting files
@@ -968,45 +990,21 @@ def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[M
         conflicts[str(file.path)].append(file)
 
     for conflict in conflicts.values():
-        conflict.sort(key=lambda it: it.download_url)
-
         if len(conflict) == 1:
-            # Don't handle the conflict here
+            final_files.append(conflict[0])
             continue
 
+        conflict.sort(key=lambda it: it.download_url)
+        base_container = conflict[0]
 
+        assert not any(str(item.size) == str(base_container.size) for item in conflict[1:])
+        for i, file in enumerate(conflict):
+            basename, ext = os.path.splitext(file._name)
+            file._name = basename + f".{i}" + ext
+            final_files.append(file)
 
-        elif all(item.size == conflict[0].size for item in conflict):
-            # Only same sizes
-            final_files.append(conflict[0])
-
-        elif len(set(item.size for item in conflict)) == len(conflict):
-            # Only unique sizes
-            for i, file in enumerate(conflict):
-                basename, ext = os.path.splitext(file._name)
-                file._name = basename + f".{i}" + ext
-                file.dump()
-                final_files.append(file)
-
-        else:
-            logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
-            continue
-
-    # Finally filter the remaining files based on the url
-    conflicts = defaultdict(list)
-
-    for file in {file.path: file for file in original_files}.values():
-        conflicts[file.download_url].append(file)
-
-    for conflict in conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            # conflict[0]._links.extend(conflict[1:])  # TODO
-            # conflict_urls.add(conflict[0].url)
-            final_files.append(conflict[0])
-
-        else:
-            final_files.append(conflict[0])
+    assert len({it.path for it in final_files}) == len(final_files)
+    assert len({it.download_url for it in final_files}) == len(final_files)
 
     return final_files
 
