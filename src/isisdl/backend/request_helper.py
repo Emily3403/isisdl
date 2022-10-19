@@ -11,12 +11,13 @@ from base64 import standard_b64decode
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple, Set
-from urllib.parse import urlparse
+from urllib.parse import urlparse, ParseResultBytes
 
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
@@ -302,24 +303,30 @@ class MediaContainer:
 
         download_url = get_download_url_from_url(container.url, session)
 
-        if not container._name:
-            parsed = urlparse(download_url)
-            if parsed.path.rstrip("/"):
-                new_name = os.path.basename(parsed.path.rstrip("/"))
-            elif parsed.hostname:
-                new_name = os.path.basename(parsed.hostname)
-            else:
-                new_name = checksum_algorithm(download_url)[:10]
-                
-        else:
-            new_name = container._name
+        ret = partial(
+            cls, url=container.url, download_url=download_url or container.url, time=container.time,
+            course=container.course, media_type=container.media_type, size=container.size, _newly_discovered=True
+        )
 
-        return cls(new_name, container.url, download_url or container.url, container.time, container.course, container.media_type, container.size, _newly_discovered=True)
+        if container._name:
+            return ret(_name=container._name)
+
+        parsed = urlparse(download_url)
+        parsed_path = (parsed.path.decode() if isinstance(parsed, ParseResultBytes) else parsed.path).rstrip("/")
+        parsed_hostname = parsed.hostname.decode() if isinstance(parsed, ParseResultBytes) and parsed.hostname is not None else parsed.hostname
+
+        if parsed_path:
+            return ret(_name=os.path.basename(parsed_path))
+
+        if parsed_hostname:
+            return ret(_name=os.path.basename(parsed_hostname))
+
+        return ret(_name=checksum_algorithm((download_url or container.url).encode()).hexdigest()[:10])
 
     @property
     def should_download(self) -> bool:
         # raise ValueError
-        if self._done or self.media_type == MediaType.corrupted:
+        if self._done or self.media_type == MediaType.corrupted or self.media_type == MediaType.hardlink:
             return False
 
         if not self.path.exists():
@@ -335,14 +342,11 @@ class MediaContainer:
         if actual_size == 0:
             return True
 
-        if self.size == actual_size:
+        if self.size == MediaContainerSize.in_bytes and self.size.val == actual_size:
             return False
 
         if maybe_container.checksum is None:
             return True
-
-        if self.size is not None and self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum):
-            return False
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
 
@@ -376,8 +380,8 @@ class MediaContainer:
         return self
 
     def string_dump(self) -> str:
-        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size)}\n" \
-               f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
+        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size.val)}\n" \
+               f"Time: {datetime.fromtimestamp(self.time or -1).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
 
     @property
     def path(self) -> Path:
@@ -390,13 +394,13 @@ class MediaContainer:
         return sanitize_name(self._name, False)
 
     def render_progress_bar(self) -> str:
-        if self.size in {0, -1, None}:
+        if self.size != MediaContainerSize.in_bytes or self.size.val in {0, -1, None}:
             percent: float = 0.
         elif self.current_size is None:
             percent = 0.
         else:
-            assert self.size is not None
-            percent = self.current_size / self.size
+            assert self.size.val is not None
+            percent = self.current_size / self.size.val
 
         # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
         if percent > 1:
@@ -408,7 +412,7 @@ class MediaContainer:
     def render_status(self, course_pad: int = 0, hostname_pad: int = 0, stream: bool = False) -> str:
         return \
             f"{'Stream:  ' if stream else ''}{self.render_progress_bar()} " \
-            f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size)} ]" \
+            f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size.val)} ]" \
             f" - {str(self.course):<{course_pad}}" \
             f" - {urlparse(self.url).hostname:<{hostname_pad}}" \
             f" - {self}"
@@ -459,7 +463,7 @@ class MediaContainer:
         self.current_size = 0
 
         if not self.should_download and self.url != 'https://www.eecs.tu-berlin.de/fileadmin/f4/fkIVdokumente/studium/Plagiate/Merkblatt_Plagiate_Fak.IV_05-2020.pdf':
-            self.current_size = self.size
+            self.current_size = self.size.val
             self._done = True
             return False
 
@@ -472,7 +476,7 @@ class MediaContainer:
             if download is not None:
                 download.close()
 
-            self.size = 0
+            self.size.val = 0
             self.current_size = None
             self.media_type = MediaType.corrupted
             self._done = True
@@ -481,7 +485,7 @@ class MediaContainer:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
 
-            database_helper.set_hardlink(self)
+            # database_helper.set_hardlink(self)
             self.dump()
             return False
 
@@ -520,15 +524,16 @@ class MediaContainer:
 
         # Only register the file after successfully downloading it.
         if is_testing and self.media_type != MediaType.corrupted:
-            assert self.size is not None
-            assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
+            assert self.size == MediaContainerSize.in_bytes
+            assert self.size.val is not None
+            assert self.size.val * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size.val * (1 + perc_diff_for_checksum), self.path
 
-        self.size = self.path.stat().st_size
+        self.size.val = self.path.stat().st_size
         self.checksum = calculate_local_checksum(self.path)
         self.dump()
 
         # Resolve hard links
-        database_helper.set_hardlink(self)
+        # database_helper.set_hardlink(self)
         self._newly_downloaded = True
         self._done = True
 
@@ -1063,7 +1068,7 @@ class Downloader(Thread):
 
 
 class CourseDownloader:
-    containers: dict[MediaType, List[MediaContainer]] = {}
+    containers: List[MediaContainer] = []
     _did_message: bool = False
 
     def start(self) -> None:
@@ -1081,7 +1086,7 @@ class CourseDownloader:
                     assert container.path != link.path
 
                     link.path.unlink(missing_ok=True)
-                    link.path.hardlink_to(container.path)
+                    os.link(container.path, link.path)
 
         CourseDownloader.containers = containers
 
@@ -1092,10 +1097,6 @@ class CourseDownloader:
         logger.post({
             "num_g_files": len(containers),
             "num_c_files": len(containers),
-
-            "total_g_bytes": sum((item.size for item in containers)),
-            "total_c_bytes": sum((item.size for item in containers)),
-
             "course_ids": sorted([course.course_id for course in helper._courses]),
 
             "config": conf,
@@ -1349,12 +1350,11 @@ Newly discovered files:
         if args.stream:
             return
 
-        for row in CourseDownloader.containers.values():
-            for item in row:
-                item.stop()
+        for item in CourseDownloader.containers:
+            item.stop()
 
         # Now wait for the downloads to finish
-        containers = [item for row in CourseDownloader.containers.values() for item in row]
+        containers = CourseDownloader.containers
 
         while not all(item._done for item in containers):
             time.sleep(status_time)

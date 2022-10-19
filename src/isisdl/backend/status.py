@@ -12,7 +12,7 @@ from isisdl.settings import status_chop_off, is_windows, status_time, status_pro
 from isisdl.utils import clear, HumanBytes, args, MediaType, DownloadThrottler
 
 if TYPE_CHECKING:
-    from isisdl.backend.request_helper import MediaContainer, PreMediaContainer, RequestHelper
+    from isisdl.backend.request_helper import MediaContainer, PreMediaContainer, RequestHelper, MediaContainerSize
 
 
 def maybe_chop_off_str(st: str, width: int) -> str:
@@ -195,7 +195,6 @@ class DownloadStatus(Status):
     def __init__(self, files: List[MediaContainer], num_threads: int, throttler: DownloadThrottler):
         self.files = files
         self.finished_files = 0
-        self.total_size = sum(item.size for item in self.files if item.size != -1)
         self.total_downloaded = 0
 
         self.num_threads = num_threads
@@ -226,8 +225,8 @@ class DownloadStatus(Status):
 
             if item.current_size is not None:
                 self.total_downloaded += item.current_size
-            elif item._stop and item.size is not None:
-                self.total_downloaded += item.size
+            elif item._stop and item.size == MediaContainerSize.in_bytes and item.size.val is not None:
+                self.total_downloaded += item.size.val
 
     def generate_log_message(self) -> List[str]:
         log_strings = []
