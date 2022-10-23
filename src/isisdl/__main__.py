@@ -144,7 +144,6 @@ def main() -> None:
 #           → checking for conflict will be _way_ harder → TODO: How to solve? Videos at least have a video length size → Maybe use that?  (Done)
 #           → DownloadStatus won't have an ETA, Not necessarily: One could average bitrates from videos and estimate _a_ ETA. It, however will not be really good.  (Done)
 #           → Syncing the Database will be of lower quality: Ignore all Documents and only restore the videos: Their name / url is the SHA-Sum of their content.
-#           → If we don't know the file size but have to know if to download, do it iff `online_file_size === disk_file_size`
 #
 #       is_corrupted attribute change  (Done)
 #           → Note the last time checked and retry the url based on an exponential backoff strategy
@@ -208,7 +207,6 @@ def main() -> None:
 #   In Windows one could also create a `~/.config/` directory. Since the typical windows user never views their home directory, this could be fine.
 #
 #   Download zip files
-
 
 
 # Maybe TODO
