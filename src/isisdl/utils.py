@@ -857,6 +857,10 @@ def sanitize_name(name: str, is_dir: bool) -> str:
 
     final_str = "".join(item for item in final if item not in forbidden_chars)
 
+    # If the final name is ".." and it is interpreted as a directory this leads to a directory traversal vulnerability.
+    if is_dir and final_str == "..":
+        final_str = "DotDot"
+
     # All supported filesystems have a limit of 255 bytes for the filename. Enforce it.
     return final_str.encode()[:255].decode()
 
