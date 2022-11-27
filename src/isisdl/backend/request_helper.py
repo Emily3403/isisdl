@@ -16,7 +16,7 @@ from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
-from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple, Set
+from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse, ParseResultBytes
 
 from requests import Session, Response
@@ -155,6 +155,7 @@ class SessionWithKey(Session):
         return "~Session~"
 
 
+# TODO: This implementation is flawed. There only ever exists one object from every type.
 class MediaContainerSize(enum.Enum):
     in_bytes = 1
     in_seconds = 2

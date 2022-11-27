@@ -64,7 +64,7 @@ class DatabaseHelper:
 
         self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
-        self._hardlinks.update((self.produce_hardlinks()))
+        # self._hardlinks.update((self.produce_hardlinks()))
 
         self.maybe_insert_database_version()
         self.maybe_insert_salt()
