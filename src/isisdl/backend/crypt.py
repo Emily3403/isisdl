@@ -16,7 +16,6 @@ last_username: Optional[str] = None
 
 
 def generate_key(password: str) -> bytes:
-    # TODO: Discuss with Carsten if storing the master password in the database is a good idea.
     _salt = database_helper.get_config_key("salt")
     assert isinstance(_salt, str)
     salt = _salt.encode()

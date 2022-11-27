@@ -5,17 +5,19 @@ import math
 import os
 import random
 import re
+import string
 import time
 from base64 import standard_b64decode
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
 from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple, Set
-from urllib.parse import urlparse
+from urllib.parse import urlparse, ParseResultBytes
 
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
@@ -24,7 +26,8 @@ from requests.exceptions import InvalidSchema
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
 from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
-    log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc
+    log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc, \
+    checksum_algorithm
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
 from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, DownloadThrottler, MediaType, HumanBytes, normalize_url, \
     get_download_url_from_url
@@ -159,7 +162,7 @@ class MediaContainerSize(enum.Enum):
 
     val: int | None = None
 
-    def new(self, val: int) -> MediaContainerSize:
+    def new(self, val: int | None = None) -> MediaContainerSize:
         self.val = val
         return self
 
@@ -175,6 +178,13 @@ class MediaContainerSize(enum.Enum):
 
         return cls
 
+    def __str__(self) -> str:
+        if self == MediaContainerSize.no_size:
+            # If the size is not known they shall not collide
+            return "".join(random.choice(string.ascii_letters) for _ in range(16))
+
+        return str(self.val)
+
 
 class PreMediaContainer:
     url: str
@@ -188,7 +198,7 @@ class PreMediaContainer:
 
     __slots__ = tuple(__annotations__)  # type: ignore
 
-    def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: MediaContainerSize = MediaContainerSize.no_size,
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: MediaContainerSize = MediaContainerSize.no_size.new(),
                  time: int | None = None):
         relative_location = (relative_location or media_type.dir_name).strip("/")  # TODO: Check if when no make dirs also applies to the exercises
         if config.make_subdirs is False:
@@ -293,14 +303,30 @@ class MediaContainer:
 
         download_url = get_download_url_from_url(container.url, session)
 
-        # TODO: Is this too intensive with the database lock?
-        return cls(container._name or os.path.basename(urlparse(container.url).path), container.url,
-                   download_url or container.url, container.time, container.course, container.media_type, container.size, _newly_discovered=True)
+        ret = partial(
+            cls, url=container.url, download_url=download_url or container.url, time=container.time,
+            course=container.course, media_type=container.media_type, size=container.size, _newly_discovered=True
+        )
+
+        if container._name:
+            return ret(_name=container._name)
+
+        parsed = urlparse(download_url)
+        parsed_path = (parsed.path.decode() if isinstance(parsed, ParseResultBytes) else parsed.path).rstrip("/")
+        parsed_hostname = parsed.hostname.decode() if isinstance(parsed, ParseResultBytes) and parsed.hostname is not None else parsed.hostname
+
+        if parsed_path:
+            return ret(_name=os.path.basename(parsed_path))
+
+        if parsed_hostname:
+            return ret(_name=os.path.basename(parsed_hostname))
+
+        return ret(_name=checksum_algorithm((download_url or container.url).encode()).hexdigest()[:10])
 
     @property
     def should_download(self) -> bool:
         # raise ValueError
-        if self._done or self.media_type == MediaType.corrupted:
+        if self._done or self.media_type == MediaType.corrupted or self.media_type == MediaType.hardlink:
             return False
 
         if not self.path.exists():
@@ -316,14 +342,11 @@ class MediaContainer:
         if actual_size == 0:
             return True
 
-        if self.size == actual_size:
+        if self.size == MediaContainerSize.in_bytes and self.size.val == actual_size:
             return False
 
         if maybe_container.checksum is None:
             return True
-
-        if self.size is not None and self.size * (1 - perc_diff_for_checksum) <= actual_size <= self.size * (1 + perc_diff_for_checksum):
-            return False
 
         return calculate_local_checksum(self.path) == maybe_container.checksum
 
@@ -342,13 +365,23 @@ class MediaContainer:
         self.dump()
         self._done = True
 
+    def set_hardlink(self, other: MediaContainer) -> None:
+        self.checksum = other.checksum
+        self.media_type = MediaType.hardlink
+        self.size = other.size
+        self.time = other.time
+        self._newly_downloaded = other._newly_downloaded
+        self._newly_discovered = other._newly_discovered
+
+        database_helper.set_hardlink(other, self)
+
     def dump(self) -> MediaContainer:
         database_helper.add_container(self)
         return self
 
     def string_dump(self) -> str:
-        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size)}\n" \
-               f"Time: {datetime.fromtimestamp(self.time).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
+        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size.val)}\n" \
+               f"Time: {datetime.fromtimestamp(self.time or -1).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
 
     @property
     def path(self) -> Path:
@@ -361,13 +394,13 @@ class MediaContainer:
         return sanitize_name(self._name, False)
 
     def render_progress_bar(self) -> str:
-        if self.size in {0, -1, None}:
+        if self.size != MediaContainerSize.in_bytes or self.size.val in {0, -1, None}:
             percent: float = 0.
         elif self.current_size is None:
             percent = 0.
         else:
-            assert self.size is not None
-            percent = self.current_size / self.size
+            assert self.size.val is not None
+            percent = self.current_size / self.size.val
 
         # Sometimes this bug happens… I don't know why and I don't feel like debugging it.
         if percent > 1:
@@ -379,7 +412,7 @@ class MediaContainer:
     def render_status(self, course_pad: int = 0, hostname_pad: int = 0, stream: bool = False) -> str:
         return \
             f"{'Stream:  ' if stream else ''}{self.render_progress_bar()} " \
-            f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size)} ]" \
+            f"[ {HumanBytes.format_pad(self.current_size)} | {HumanBytes.format_pad(self.size.val)} ]" \
             f" - {str(self.course):<{course_pad}}" \
             f" - {urlparse(self.url).hostname:<{hostname_pad}}" \
             f" - {self}"
@@ -430,7 +463,7 @@ class MediaContainer:
         self.current_size = 0
 
         if not self.should_download and self.url != 'https://www.eecs.tu-berlin.de/fileadmin/f4/fkIVdokumente/studium/Plagiate/Merkblatt_Plagiate_Fak.IV_05-2020.pdf':
-            self.current_size = self.size
+            self.current_size = self.size.val
             self._done = True
             return False
 
@@ -443,7 +476,7 @@ class MediaContainer:
             if download is not None:
                 download.close()
 
-            self.size = 0
+            self.size.val = 0
             self.current_size = None
             self.media_type = MediaType.corrupted
             self._done = True
@@ -452,7 +485,7 @@ class MediaContainer:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
 
-            database_helper.hardlink_stuff(self)
+            # database_helper.set_hardlink(self)
             self.dump()
             return False
 
@@ -491,15 +524,16 @@ class MediaContainer:
 
         # Only register the file after successfully downloading it.
         if is_testing and self.media_type != MediaType.corrupted:
-            assert self.size is not None
-            assert self.size * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size * (1 + perc_diff_for_checksum), self.path
+            assert self.size == MediaContainerSize.in_bytes
+            assert self.size.val is not None
+            assert self.size.val * (1 - perc_diff_for_checksum) <= self.path.stat().st_size <= self.size.val * (1 + perc_diff_for_checksum), self.path
 
-        self.size = self.path.stat().st_size
+        self.size.val = self.path.stat().st_size
         self.checksum = calculate_local_checksum(self.path)
         self.dump()
 
         # Resolve hard links
-        database_helper.hardlink_stuff(self)
+        # database_helper.set_hardlink(self)
         self._newly_downloaded = True
         self._done = True
 
@@ -804,7 +838,7 @@ class RequestHelper:
 
         pass
 
-    def download_content(self, status: Optional[RequestHelperStatus] = None) -> Dict[MediaType, List[MediaContainer]]:
+    def download_content(self, status: Optional[RequestHelperStatus] = None) -> List[MediaContainer]:
         if status is not None:
             status.set_total(len(self.courses))
 
@@ -828,16 +862,10 @@ class RequestHelper:
         _containers = [MediaContainer.from_pre_container(pre_container, self.session) for pre_container in pre_containers]
         containers = [item for item in _containers if item is not None]
 
-
         containers = check_for_conflicts_in_files(containers)
         database_helper.add_containers(containers)
 
-        mapping: Dict[MediaType, List[MediaContainer]] = {typ: [] for typ in MediaType}
-
-        for container in containers:
-            mapping[container.media_type].append(container)
-
-        return {typ: sorted(item, key=lambda x: x.time, reverse=True) for typ, item in mapping.items()}
+        return containers
 
     def _download_mod_assign(self, _: Any = None) -> List[PreMediaContainer]:
         try:
@@ -923,75 +951,79 @@ class RequestHelper:
 def check_for_conflicts_in_files(original_files: List[MediaContainer]) -> List[MediaContainer]:
     # TODO: Check for case insensitive filesystem and implement the fix here
 
-    # Corrupted files
-    # Same size in a course
-    #
-
-    # First filter out all corrupted files
+    # First filter out all corrupted files. This is the fastest way to do this in python: https://stackoverflow.com/a/57976307
     temp_files: List[MediaContainer] = []
     final_files: List[MediaContainer] = [it for it in original_files if it.media_type == MediaType.corrupted or temp_files.append(it)]  # type: ignore[func-returns-value]
 
     original_files = temp_files
-
-    # Now check for files with the same size in each course
-    hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
-
-    for file in {file.path: file for file in original_files}.values():
-        hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
-
     temp_files = []
-    for conflict in hard_link_conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            # conflict[0]._links.extend(conflict[1:])  # TODO
-            final_files.append(conflict[0])
-        else:
-            temp_files.append(conflict[0])
+    conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
 
-    original_files = temp_files
+    # First filter out the same download urls. If they are the same, the file _has_ to be identical.
+    for file in original_files:
+        conflicts[file.download_url].append(file)
 
-    conflicts: DefaultDict[Path, List[MediaContainer]] = defaultdict(list)
-    for file in set(original_files):
-        conflicts[file.path].append(file)
-
-    for typ, conflict in conflicts.items():
-        conflict.sort(key=lambda x: x.time)
-
+    for conflict in conflicts.values():
         if len(conflict) == 1:
-            # Don't handle the conflict here
+            temp_files.append(conflict[0])
             continue
 
-        elif all(item.size == conflict[0].size for item in conflict):
-            # Only same sizes
-            final_files.append(conflict[0])
+        conflict.sort(key=lambda x: x.path)
+        base_container = conflict[0]
 
-        elif len(set(item.size for item in conflict)) == len(conflict):
-            # Only unique sizes
-            for i, file in enumerate(conflict):
-                basename, ext = os.path.splitext(file._name)
-                file._name = basename + f".{i}" + ext
-                file.dump()
-                final_files.append(file)
+        for item in conflict[1:]:
+            if item.path != base_container.path:
+                item.set_hardlink(base_container)
 
-        else:
-            logger.assert_fail(f"conflict: {[{x: getattr(item, x) for x in item.__slots__} for item in conflict]}")
+        temp_files.append(base_container)
+
+    num_filtered_by_download_url = len(original_files) - len(temp_files)
+    original_files = temp_files
+    temp_files = []
+    conflicts = defaultdict(list)
+
+    # Now check for files with the same size + name in each course and collapse them into a single container.
+    for file in original_files:
+        conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
+
+    for conflict in conflicts.values():
+        if len(conflict) == 1:
+            temp_files.append(conflict[0])
             continue
 
-    # Finally filter the remaining files based on the url
-    hard_link_conflicts = defaultdict(list)
+        conflict.sort(key=lambda it: str(it.download_url))
+        base_container = conflict[0]
 
-    for file in {file.path: file for file in original_files}.values():
-        hard_link_conflicts[file.download_url].append(file)
+        for item in conflict[1:]:
+            if item.path != base_container.path:
+                item.set_hardlink(base_container)
 
-    for conflict in hard_link_conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            # conflict[0]._links.extend(conflict[1:])  # TODO
-            # conflict_urls.add(conflict[0].url)
+        temp_files.append(base_container)
+
+    num_filtered_by_size_and_name = len(original_files) - len(temp_files)
+    original_files = temp_files
+    conflicts = defaultdict(list)
+
+    # Now check for the same path and rename conflicting files
+    for file in original_files:
+        conflicts[str(file.path)].append(file)
+
+    for conflict in conflicts.values():
+        if len(conflict) == 1:
             final_files.append(conflict[0])
+            continue
 
-        else:
-            final_files.append(conflict[0])
+        conflict.sort(key=lambda it: it.download_url)
+        base_container = conflict[0]
+
+        assert not any(str(item.size) == str(base_container.size) for item in conflict[1:])
+        for i, file in enumerate(conflict):
+            basename, ext = os.path.splitext(file._name)
+            file._name = basename + f".{i}" + ext
+            final_files.append(file)
+
+    assert len({it.path for it in final_files}) == len(final_files)
+    assert len({it.download_url for it in final_files}) == len(final_files)
 
     return final_files
 
@@ -1036,7 +1068,7 @@ class Downloader(Thread):
 
 
 class CourseDownloader:
-    containers: dict[MediaType, List[MediaContainer]] = {}
+    containers: List[MediaContainer] = []
     _did_message: bool = False
 
     def start(self) -> None:
@@ -1044,21 +1076,17 @@ class CourseDownloader:
         with RequestHelperStatus() as status:
             helper = RequestHelper(user, status)
             containers = helper.download_content(status)
-            collapsed_containers = [item for row in containers.values() for item in row]
-            collapsed_containers.sort(reverse=True, key=lambda x: x.time)
 
-            for container in collapsed_containers:
+            for container in containers:
                 if container.should_download:
                     container.path.open("w").close()
-                else:
-                    pass
-                    # TODO
-                    # for con in container._links:
-                    #     if con.should_download:
-                    #         if not container.path.exists():
-                    #             container.path.open("w").close()
-                    #
-                    #         con.hardlink(container)
+
+                for link in database_helper.get_hardlinks(container):
+                    assert container.path.exists()
+                    assert container.path != link.path
+
+                    link.path.unlink(missing_ok=True)
+                    os.link(container.path, link.path)
 
         CourseDownloader.containers = containers
 
@@ -1067,26 +1095,21 @@ class CourseDownloader:
         del conf["password"]
 
         logger.post({
-            "num_g_files": len(collapsed_containers),
-            "num_c_files": len(collapsed_containers),
-
-            "total_g_bytes": sum((item.size for item in collapsed_containers)),
-            "total_c_bytes": sum((item.size for item in collapsed_containers)),
-
+            "num_g_files": len(containers),
+            "num_c_files": len(containers),
             "course_ids": sorted([course.course_id for course in helper._courses]),
 
             "config": conf,
         })
 
-        if not any(item.should_download for row in containers.values() for item in row):
-            for row in containers.values():
-                for item in row:
-                    item._done = True
+        if not any(item.should_download for item in containers):
+            for item in containers:
+                item._done = True
 
             if not (config.telemetry_policy is False or is_testing):
                 logger.done.get()
 
-            self.message_what_did_i_do(collapsed_containers)
+            self.message_what_did_i_do(containers)
             return
 
         # Make the runner a thread in case of a user needing to exit the program → downloading is done in the main thread
@@ -1103,16 +1126,16 @@ class CourseDownloader:
 
             downloader.join()
 
-        self.message_what_did_i_do(collapsed_containers)
+        self.message_what_did_i_do(containers)
 
     @staticmethod
-    def message_what_did_i_do(collapsed_containers: List[MediaContainer]) -> None:
+    def message_what_did_i_do(containers: List[MediaContainer]) -> None:
         if CourseDownloader._did_message:
             return
 
         CourseDownloader._did_message = True
 
-        if not any(item._newly_downloaded or item._newly_discovered for item in collapsed_containers):
+        if not any(item._newly_downloaded or item._newly_discovered for item in containers):
             print("No new files to download ... (cricket sounds)")
             return
 
@@ -1127,12 +1150,12 @@ Running isisdl version {__version__}
 
 Newly downloaded files:
 
-{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_downloaded) or "None"}
+{chr(10).join(item.string_dump() for item in containers if item._newly_downloaded) or "None"}
 
 
 Newly discovered files:
 
-{chr(10).join(item.string_dump() for item in collapsed_containers if item._newly_discovered) or "None"}
+{chr(10).join(item.string_dump() for item in containers if item._newly_discovered) or "None"}
 
 
 
@@ -1142,7 +1165,7 @@ Newly discovered files:
                 f.write(now_msg)
                 f.write(prev_msg)
 
-            if len([item for item in collapsed_containers if item._newly_downloaded or item._newly_discovered]) < 50:
+            if len([item for item in containers if item._newly_downloaded or item._newly_discovered]) < 50:
                 print("".join(now_msg.splitlines(keepends=True)[4:]))
             else:
                 print(f"Downloaded / Discovered too many files to list here. If you are interested please look at\n`{path(log_file_location)}`")
@@ -1327,17 +1350,16 @@ Newly discovered files:
         if args.stream:
             return
 
-        for row in CourseDownloader.containers.values():
-            for item in row:
-                item.stop()
+        for item in CourseDownloader.containers:
+            item.stop()
 
         # Now wait for the downloads to finish
-        collapsed_containers = [item for row in CourseDownloader.containers.values() for item in row]
+        containers = CourseDownloader.containers
 
-        while not all(item._done for item in collapsed_containers):
+        while not all(item._done for item in containers):
             time.sleep(status_time)
 
-        CourseDownloader.message_what_did_i_do(collapsed_containers)
+        CourseDownloader.message_what_did_i_do(containers)
 
 
 def maybe_create_log_file() -> None:

@@ -51,6 +51,7 @@ class DatabaseHelper:
     lock = Lock()
     _bad_urls: dict[str, BadUrl] = dict()
     _url_container_mapping: dict[str, Iterable[Any]] = {}
+    _hardlinks: DefaultDict[MediaContainer, list[MediaContainer]] = defaultdict(list)
 
     def __init__(self) -> None:
         from isisdl.utils import path
@@ -63,6 +64,7 @@ class DatabaseHelper:
 
         self._bad_urls.update(self.get_bad_urls())
         self._url_container_mapping.update(self.get_containers())
+        self._hardlinks.update((self.produce_hardlinks()))
 
         self.maybe_insert_database_version()
         self.maybe_insert_salt()
@@ -264,7 +266,13 @@ class DatabaseHelper:
 
         return info
 
-    def hardlink_stuff(self, container: MediaContainer) -> None:
+    def set_hardlink(self, master: MediaContainer, container: MediaContainer) -> None:
+        self._hardlinks[master].append(container)
+
+    def get_hardlinks(self, container: MediaContainer) -> list[MediaContainer]:
+        return self._hardlinks[container]
+
+    def produce_hardlinks(self) -> dict[MediaContainer, list[MediaContainer]]:
         # TODO
         pass
 
