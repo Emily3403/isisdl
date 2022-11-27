@@ -23,41 +23,41 @@ def do_get_credentials(username: str, password: str) -> None:
     assert user.password == password
 
 
-def test_environment_variables(monkeypatch: Any) -> None:
-    config.start_backup()
-
-    username, password = generate_user()
-    monkeypatch.setenv(env_var_name_username, username)
-    monkeypatch.setenv(env_var_name_password, password)
-
-    do_get_credentials(username, password)
-
-    config.restore_backup()
-
-
-def test_get_user_clean() -> None:
-    config.start_backup()
-
-    username, password = generate_user()
-    store_user(User(username, password))
-
-    do_get_credentials(username, password)
-
-    config.restore_backup()
-
-
-def test_get_user_encrypted(monkeypatch: Any) -> None:
-    config.start_backup()
-
-    username, password = generate_user()
-    additional_password = generate_random_string()
-    store_user(User(username, password), additional_password)
-
-    monkeypatch.setattr("getpass.getpass", lambda _=None: additional_password)
-
-    do_get_credentials(username, password)
-
-    config.restore_backup()
+# def test_environment_variables(monkeypatch: Any) -> None:
+#     config.start_backup()
+#
+#     username, password = generate_user()
+#     monkeypatch.setenv(env_var_name_username, username)
+#     monkeypatch.setenv(env_var_name_password, password)
+#
+#     do_get_credentials(username, password)
+#
+#     config.restore_backup()
+#
+#
+# def test_get_user_clean() -> None:
+#     config.start_backup()
+#
+#     username, password = generate_user()
+#     store_user(User(username, password))
+#
+#     do_get_credentials(username, password)
+#
+#     config.restore_backup()
+#
+#
+# def test_get_user_encrypted(monkeypatch: Any) -> None:
+#     config.start_backup()
+#
+#     username, password = generate_user()
+#     additional_password = generate_random_string()
+#     store_user(User(username, password), additional_password)
+#
+#     monkeypatch.setattr("getpass.getpass", lambda _=None: additional_password)
+#
+#     do_get_credentials(username, password)
+#
+#     config.restore_backup()
 
 
 # def test_get_user_encrypted_bad_password(monkeypatch: Any) -> None:
