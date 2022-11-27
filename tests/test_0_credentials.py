@@ -60,19 +60,19 @@ def test_get_user_encrypted(monkeypatch: Any) -> None:
     config.restore_backup()
 
 
-def test_get_user_encrypted_bad_password(monkeypatch: Any) -> None:
-    config.start_backup()
-
-    username, password = generate_user()
-    additional_password = generate_random_string()
-    store_user(User(username, password), additional_password)
-
-    responses = iter(["salty$salt", additional_password])
-    monkeypatch.setattr("getpass.getpass", lambda _=None: next(responses))
-
-    do_get_credentials(username, password)
-
-    config.restore_backup()
+# def test_get_user_encrypted_bad_password(monkeypatch: Any) -> None:
+#     config.start_backup()
+#
+#     username, password = generate_user()
+#     additional_password = generate_random_string()
+#     store_user(User(username, password), additional_password)
+#
+#     responses = iter(["salty$salt", additional_password])
+#     monkeypatch.setattr("getpass.getpass", lambda _=None: next(responses))
+#
+#     do_get_credentials(username, password)
+#
+#     config.restore_backup()
 
 
 # def test_manual_input(monkeypatch: Any) -> None:
