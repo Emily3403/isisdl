@@ -381,7 +381,7 @@ class MediaContainer:
 
             if is_testing:
                 if media_type == MediaType.corrupted:
-                    assert size == 0
+                    assert size == 0 or size is None
                 else:
                     assert size != 0 and size != -1
 
