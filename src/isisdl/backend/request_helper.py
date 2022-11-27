@@ -1001,7 +1001,7 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
     # Now check for files with the same size in each course
     hard_link_conflicts: DefaultDict[str, List[MediaContainer]] = defaultdict(list)
 
-    for file in {file.path: file for file in files}.values():
+    for file in new_files:
         hard_link_conflicts[f"{file.course.course_id} {file._name} {file.size}"].append(file)
 
     new_files = []
