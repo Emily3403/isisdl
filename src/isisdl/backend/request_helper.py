@@ -381,12 +381,11 @@ class MediaContainer:
 
             if is_testing:
                 if media_type == MediaType.corrupted:
-                    assert size == 0 or size is None
+                    assert size == 0 or size == -1 or size is None
                 else:
                     assert size != 0 and size != -1
 
-            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size,
-                       _newly_discovered=True).dump()
+            return cls(name, container.url, download_url or container.url, container.parent_path.joinpath(sanitize_name(name, False)), time, container.course, media_type, size, _newly_discovered=True).dump()
 
         finally:
             container.is_cached = True
