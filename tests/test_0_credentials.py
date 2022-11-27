@@ -75,10 +75,10 @@ def test_get_user_encrypted_bad_password(monkeypatch: Any) -> None:
     config.restore_backup()
 
 
-def test_manual_input(monkeypatch: Any) -> None:
-    username, password = generate_user()
-
-    monkeypatch.setattr("builtins.input", lambda _=None: username)
-    monkeypatch.setattr("getpass.getpass", lambda _=None: password)
-
-    do_get_credentials(username, password)
+# def test_manual_input(monkeypatch: Any) -> None:
+#     username, password = generate_user()
+#
+#     monkeypatch.setattr("builtins.input", lambda _=None: username)
+#     monkeypatch.setattr("getpass.getpass", lambda _=None: password)
+#
+#     do_get_credentials(username, password)
