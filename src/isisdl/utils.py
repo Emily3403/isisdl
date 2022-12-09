@@ -894,14 +894,11 @@ def sanitize_name(name: str, is_dir: bool) -> str:
         name = name.replace(a, b)
         name = name.replace(a.upper(), b.upper())
 
-    # Now start to add chars that don't fit.
-    char_string = ""
-
     # Now replace any remaining funny symbols with a `?`
     name = name.encode("ascii", errors="replace").decode()
 
     if config.filename_replacing:
-        char_string += r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
+        char_string = r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
         name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
 
     # This is probably a suboptimal solution, but it works…
@@ -909,9 +906,13 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     final = []
 
     if config.filename_replacing:
+        final = str_list
+
+    else:
         whitespaces = set(string.whitespace + "_-")
         i = 0
         next_upper = False
+
         while i < len(str_list):
             char = str_list[i]
 
@@ -928,8 +929,6 @@ def sanitize_name(name: str, is_dir: bool) -> str:
                     final.append(char)
 
             i += 1
-    else:
-        final = str_list
 
     # Folder names cannot end with a period in Windows ... why does this limitation exist??
     while is_dir and replace_dot_at_end_of_dir_name and final and (final[-1] == "." or final[-1] == " "):
