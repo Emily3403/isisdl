@@ -1,10 +1,8 @@
 import random
 import string
-from typing import Tuple, Any
+from typing import Tuple
 
-from isisdl.backend.crypt import get_credentials, store_user
-from isisdl.utils import config, User
-from isisdl.settings import env_var_name_username, env_var_name_password
+from isisdl.backend.crypt import get_credentials
 
 
 def generate_random_string() -> str:

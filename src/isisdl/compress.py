@@ -116,7 +116,7 @@ def calculate_efficiency(now: float, prev: float) -> float:
 def calculate_average(lst: List[Any]) -> float:
     if not lst:
         return 0
-    return sum(lst) / len(lst)
+    return float(sum(lst) / len(lst))
 
 
 # Copied from https://stackabuse.com/covariance-and-correlation-in-python/
