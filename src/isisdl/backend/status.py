@@ -172,9 +172,9 @@ class RequestHelperStatus(Status):
         max_len = max(len(str(item[1])) for item in counts.values())
 
         return [
-                   f"{str(cached).rjust(max_len)} / {str(total).rjust(max_len)} {typ}{'s' if total != 1 else ''}"
-                   for typ, (cached, total) in counts.items() if typ != MediaType.corrupted
-               ] + ["", "(will be cached)"]
+            f"{str(cached).rjust(max_len)} / {str(total).rjust(max_len)} {typ}{'s' if total != 1 else ''}"
+            for typ, (cached, total) in counts.items() if typ != MediaType.corrupted
+        ] + ["", "(will be cached)"]
 
 
 class CompressStatusUwU(Status):
@@ -242,7 +242,7 @@ class DownloadStatus(Status):
         )
 
         # General meta-info
-        log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)}")   # / {HumanBytes.format_str(total_size)}
+        log_strings.append(f"Downloaded {HumanBytes.format_str(downloaded_bytes)}")  # / {HumanBytes.format_str(total_size)}
         log_strings.append(f"Finished:  {self.finished_files} / {len(self.files)} files")
         # log_strings.append(f"Done in: {timedelta(seconds=int((total_size - downloaded_bytes) / max(self.throttler.bandwidth_used, 1)))}")
         log_strings.append("")

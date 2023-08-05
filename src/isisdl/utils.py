@@ -34,7 +34,7 @@ import colorama
 import distro as distro
 import requests
 from packaging import version
-from packaging.version import Version, LegacyVersion
+from packaging.version import Version
 from requests import Session
 
 from isisdl import settings
@@ -452,7 +452,7 @@ def startup() -> None:
                 shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
 
         except Exception as ex:
-            generate_error_message(ex, should_exit=False)
+            generate_error_message(ex)
 
 
 def clear() -> None:
@@ -691,7 +691,7 @@ def is_h265(file: Path) -> bool | None:
     return bool(video_stream["codec_name"] == "hevc")
 
 
-def check_pypi_for_version() -> LegacyVersion | Version | None:
+def check_pypi_for_version() -> Version | None:
     # Inspired from https://pypi.org/project/pypi-search
     to_search = requests.get("https://pypi.org/project/isisdl/").text
     found_version = re.search("<h1 class=\"package-header__name\">\n *(.*)?\n *</h1>", to_search)
@@ -706,7 +706,7 @@ def check_pypi_for_version() -> LegacyVersion | Version | None:
     return version.parse(groups[0].split()[1])
 
 
-def check_github_for_version() -> LegacyVersion | Version | None:
+def check_github_for_version() -> Version | None:
     if is_static:
         latest_release = requests.get("https://api.github.com/repos/Emily3403/isisdl/releases/latest").json()
         if "tag_name" not in latest_release:
@@ -730,10 +730,8 @@ def check_github_for_version() -> LegacyVersion | Version | None:
         return version.parse(found_version.group(1))
 
 
-def print_changelog_for_version(new_version: LegacyVersion | Version) -> None:
+def print_changelog_for_version(new_version: Version) -> None:
     current_version = version.parse(__version__)
-    assert not isinstance(current_version, LegacyVersion)
-    assert not isinstance(new_version, LegacyVersion)
 
     for i in range(current_version.micro + 1, new_version.micro + 1):
         con = requests.get(f"https://raw.githubusercontent.com/Emily3403/isisdl/main/src/isisdl/resources/changelog/"
@@ -1582,7 +1580,7 @@ def format_exception(ex: Exception) -> None:
         f.write(traceback.format_exc())
 
 
-def generate_error_message(ex: Exception, should_exit: bool = True) -> NoReturn:
+def generate_error_message(ex: Exception) -> NoReturn:
     if is_testing:
         raise ex
 

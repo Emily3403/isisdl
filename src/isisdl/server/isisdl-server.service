@@ -1,0 +1,17 @@
+[Unit]
+Description=isisdl-server
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=isisdl-server
+ExecStart=/home/isisdl-server/venv/bin/uwsgi --ini /home/isisdl-server/isisdl/src/isisdl/server/app.ini --chdir /home/isisdl-server/isisdl/src/isisdl/server/
+Restart=always
+KillSignal=SIGQUIT
+Type=notify
+StandardError=syslog
+NotifyAccess=all
+
+[Install]
+WantedBy=multi-user.target

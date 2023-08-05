@@ -6,3 +6,5 @@ colorama
 distro
 psutil
 pyinotify; platform_system=="Linux"
+sqlalchemy[mypy]~=2.0.19
+sqlalchemy-utils~=0.41.1

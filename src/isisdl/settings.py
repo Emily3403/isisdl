@@ -12,7 +12,7 @@ from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
 from pathlib import Path
-from typing import Any, DefaultDict, Dict, Optional, Set
+from typing import Any, DefaultDict, Dict, Optional, Set, Callable, NoReturn
 
 import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
@@ -54,6 +54,12 @@ course_ids_cant_unsub_from = {
 error_directory_location = os.path.join(intern_dir_location, ".errors")
 error_text = "\033[1;91mError:\033[0m"
 
+
+def error_exit(code: int, reason: str) -> NoReturn:
+    print(f"{error_text} {reason}", flush=True)
+    os._exit(code)
+
+
 # Static settings
 is_static = False
 
@@ -79,6 +85,21 @@ is_autorun = sys.argv[0] == isisdl.autorun.__file__
 # The location of the source code on disk
 source_code_location = Path(isisdl.__file__).parent
 
+# The path to the user-configuration directory.
+if is_windows:
+    if (_appdata_path := os.getenv("APPDATA")) is None:
+        error_exit(1, "The %APPDATA% environment variable was not set ... why?")
+
+    config_dir_location = os.path.join(_appdata_path, "isisdl")
+else:
+    config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "isisdl")
+
+# The paths to the individual config files
+config_file_location = os.path.join(config_dir_location, "config.yaml")
+example_config_file_location = os.path.join(config_dir_location, "example.yaml")
+export_config_file_location = os.path.join(config_dir_location, "export.yaml")
+
+
 # Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
@@ -96,7 +117,6 @@ else:
 # Yes, this is a windows thing...
 replace_dot_at_end_of_dir_name = is_windows
 
-
 # Caching strategy
 
 bad_url_cache_reeval_times_mul = 5
@@ -104,6 +124,15 @@ bad_url_cache_reeval_exp = 3
 bad_url_cache_reeval_static_mul = 60
 
 # -/- Options for this executable ---
+
+# --- Database Configuration ---
+
+database_url_location = os.path.join(config_dir_location, "database_url")
+fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
+
+database_connect_args = {"check_same_thread": False}
+
+# -/- Database Configuration
 
 
 # --- Checksum options ---
@@ -218,14 +247,6 @@ compress_duration_for_insta_kill = 0
 
 
 # --- Linux only feature options ---
-
-# The path to the user-configuration directory. Linux only feature
-config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "isisdl")
-
-# The paths to the individual config files
-config_file_location = os.path.join(config_dir_location, "config.yaml")
-example_config_file_location = os.path.join(config_dir_location, "example.yaml")
-export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
 # The path to the systemd timer files. (Only supported on systemd-based linux)
 systemd_dir_location = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user")
