@@ -61,7 +61,6 @@ class MediaContainer(DataBase):  # type:ignore[valid-type, misc]
     url: Mapped[str] = mapped_column(Text, primary_key=True)
     download_url: Mapped[str] = mapped_column(Text, primary_key=True)
     media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
-    parent_path: Mapped[Path] = mapped_column(nullable=False)
     _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"))
 
     name: Mapped[str] = mapped_column(nullable=False)
