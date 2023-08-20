@@ -12,7 +12,7 @@ from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
 from pathlib import Path
-from typing import Any, DefaultDict, Dict, Optional, Set, Callable, NoReturn
+from typing import Any, DefaultDict, Dict, Optional, Set, NoReturn
 
 import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
@@ -99,7 +99,6 @@ config_file_location = os.path.join(config_dir_location, "config.yaml")
 example_config_file_location = os.path.join(config_dir_location, "example.yaml")
 export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
-
 # Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
@@ -157,7 +156,7 @@ perc_diff_for_checksum = 0.1  # 10% ± is allowed
 
 # This is what Django recommends as of January 2021
 password_hash_algorithm = SHA3_512
-password_hash_iterations = 390_000
+password_hash_iterations = 420_000
 password_hash_length = 32
 
 # The password used to encrypt if no password is provided
@@ -200,10 +199,10 @@ discover_num_threads = 32
 # Will fail a download if ISIS is not responding in
 """
 for i in range(num_tries_download):
-    download_timeout + download_timeout_multiplier ** (0.5 * i)
+    download_timeout + download_timeout_multiplier ** (1.7 * i)
 """
-num_tries_download = 4
-download_timeout = 10
+num_tries_download = 3
+download_base_timeout = 5
 download_timeout_multiplier = 2
 
 # If a download fails (`except Exception`) will wait ↓ and retry.

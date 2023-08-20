@@ -4,7 +4,6 @@ from typing import Type
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, DeclarativeMeta, sessionmaker, Session as DatabaseSession
-from sqlalchemy_utils import database_exists, create_database
 
 from isisdl.settings import error_exit, database_url_location, fallback_database_url
 

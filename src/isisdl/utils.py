@@ -27,7 +27,7 @@ from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Callable, List, Dict, Any, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict, get_type_hints, Optional, Union
+from typing import Callable, List, Dict, Any, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict, get_type_hints, Optional, Union, TypeVar
 from urllib.parse import unquote, parse_qs, urlparse
 
 import colorama
@@ -1597,6 +1597,7 @@ colorama.init()
 startup()
 OnKill()
 
+T = TypeVar("T")
 args = get_args()
 database_helper = DatabaseHelper()
 # bad_urls = database_helper.get_bad_urls()

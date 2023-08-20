@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import math
 import os
 import random
 import re
@@ -19,13 +18,14 @@ from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse, ParseResultBytes
 
+import math
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
+from isisdl.settings import download_base_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
     log_file_location, datetime_str, regex_is_isis_document, token_queue_download_refresh_rate, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc, \
     checksum_algorithm
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
@@ -125,10 +125,10 @@ class SessionWithKey(Session):
     @staticmethod
     def _timeouter(func: Any, url: str, *args: Iterable[Any], **kwargs: dict[Any, Any]) -> Any:
         if "tubcloud.tu-berlin.de" in url:
-            # The tubcloud is *really* slow
+            # The tubcloud can be *really* slow
             _download_timeout = 20
         else:
-            _download_timeout = download_timeout
+            _download_timeout = download_base_timeout
 
         i = 0
         while i < num_tries_download:

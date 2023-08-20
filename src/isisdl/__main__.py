@@ -2,16 +2,15 @@
 import sys
 
 import isisdl.compress as compress
-from isisdl.api.models import Course
+from isisdl.api.crud import authenticate_new_session
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
-from isisdl.backend.models import UpdatePolicy
+from isisdl.backend.crud import read_config, read_user
 from isisdl.backend.request_helper import CourseDownloader
-from isisdl.db_conf import init_database
+from isisdl.db_conf import init_database, DatabaseSessionMaker
 from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff
 from isisdl.version import __version__
-
 
 
 def print_version() -> None:
@@ -32,8 +31,6 @@ database_version = {Config.default("database_version")}
 
 def _main() -> None:
     init_database()
-    Course
-    UpdatePolicy
 
     if is_first_time:
         print("""
@@ -88,7 +85,17 @@ Please press enter to continue.
         print("I cannot establish an internet connection.")
         sys.exit(1)
 
-    install_latest_version()
+    with DatabaseSessionMaker() as db:
+        other_config = read_config(db)
+        user = read_user(db)
+        if user is None:
+            return
+
+        session = authenticate_new_session(user, other_config)
+        if session is None:
+            return
+
+        install_latest_version()
 
     if args.update:
         print("No new update available ... (cricket sounds)")

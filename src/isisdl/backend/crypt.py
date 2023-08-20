@@ -108,7 +108,7 @@ You can either enter your password manually or rerun me with `isisdl --init` to 
 
             # Prompt for a password
             user_password = getpass.getpass("Please enter the passphrase: ")
-            actual_password = decryptor(user_password, config.password)
+            actual_password = decryptor(user_password, config.ßpassword)
             if actual_password is None:
                 print("Your password is incorrect. Try again\n")
             else:
