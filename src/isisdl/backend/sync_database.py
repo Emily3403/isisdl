@@ -64,7 +64,7 @@ not_considered_files = {
 
 
 def restore_file(
-        file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[Status] = None
+    file: Path, filename_mapping: Dict[Path, MediaContainer], files_for_course: Dict[Path, DefaultDict[int, List[MediaContainer]]], checksums: Set[str], status: Optional[Status] = None
 ) -> Tuple[Optional[FileStatus], Union[Path, MediaContainer]]:
     try:
         if file in not_considered_files:

@@ -670,7 +670,7 @@ class Course:
                 if "contents" in module:
                     for file in module["contents"]:
                         if config.follow_links and "type" in file and file["type"] == "url" and "fileurl" in file and extern_ignore.match(file["fileurl"]) is None \
-                                and isis_ignore.match(file["fileurl"]) is None:
+                            and isis_ignore.match(file["fileurl"]) is None:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], MediaContainerSize.in_bytes.new(file["filesize"]),

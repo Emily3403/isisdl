@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import asyncio
 import sys
 
 import isisdl.compress as compress
 from isisdl.api.crud import authenticate_new_session
+from isisdl.api.endpoints import CourseContentsAPI, UserCourseListAPI
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.crud import read_config, read_user
@@ -27,6 +29,26 @@ database_version = {Config.default("database_version")}
 {forbidden_chars = }
 {fstype = }
 """)
+
+
+async def _new_main() -> None:
+    with DatabaseSessionMaker() as db:
+        config = read_config(db)
+        user = read_user(db)
+        if user is None:
+            return
+
+        session = await authenticate_new_session(user, config)
+        if session is None:
+            return
+
+        courses = await UserCourseListAPI.get(db, session, user, config)
+        if courses is None:
+            return
+
+        contents = await CourseContentsAPI.get(db, session, courses)
+
+        print()
 
 
 def _main() -> None:
@@ -85,17 +107,9 @@ Please press enter to continue.
         print("I cannot establish an internet connection.")
         sys.exit(1)
 
-    with DatabaseSessionMaker() as db:
-        other_config = read_config(db)
-        user = read_user(db)
-        if user is None:
-            return
+    asyncio.run(_new_main())
 
-        session = authenticate_new_session(user, other_config)
-        if session is None:
-            return
-
-        install_latest_version()
+    install_latest_version()
 
     if args.update:
         print("No new update available ... (cricket sounds)")

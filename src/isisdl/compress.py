@@ -350,7 +350,7 @@ class CompressStatus(Thread):
                                             self.num_under_efficiency_limit += 1
 
                                         if (compression_score > compress_insta_kill_score and len(self.curr_scores_with_time) >= compress_duration_for_insta_kill / status_time) \
-                                                or self.num_under_efficiency_limit * status_time > compress_duration_for_to_low_efficiency:
+                                            or self.num_under_efficiency_limit * status_time > compress_duration_for_to_low_efficiency:
                                             database_helper.update_inefficient_videos(cur_file, estimated_file_perc)
                                             self.inefficient_videos[database_helper.make_inefficient_file_name(cur_file)] = estimated_file_perc
                                             self.inefficient_videos_size += prev_size

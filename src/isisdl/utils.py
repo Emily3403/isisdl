@@ -253,9 +253,9 @@ def encode_yaml(st: bool | str | int | None | dict[int, str]) -> str:
 
 
 def generate_config_str(
-        working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: list[int] | None, blacklist: list[int] | None,
-        throttle_rate: int | None, throttle_rate_autorun: int | None, update_policy: str | None, telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
-        status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: str | None, make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
+    working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: list[int] | None, blacklist: list[int] | None,
+    throttle_rate: int | None, throttle_rate_autorun: int | None, update_policy: str | None, telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
+    status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: str | None, make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
 ) -> str:
     return f"""---
 

@@ -272,7 +272,7 @@ testing_bad_urls: Set[str] = {
 isis_ignore = re.compile(
     r".*isis\.tu-berlin\.de/(?:"
         "mod/(?:"  # noqa:E131
-            "forum|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
+            "forum|course|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
             "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
             "|organizer|registration|journal|workshop|survey|"
         ")"
@@ -340,7 +340,7 @@ if not is_windows:
 
 def check_online() -> bool:
     # Copied from https://stackoverflow.com/a/29854274
-    conn = HTTPSConnection("8.8.8.8", timeout=5)
+    conn = HTTPSConnection("isis.tu-berlin.de", timeout=5)
     try:
         conn.request("HEAD", "/")
         return True

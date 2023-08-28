@@ -41,6 +41,7 @@ class Config(DataBase):  # type:ignore[valid-type, misc]
     pw_salt: Mapped[str] = mapped_column(Text, default="".join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=32)))
 
     # File saving options
+    fs_course_default_shortname: Mapped[bool] = mapped_column(default=True)
     fs_make_subdirs: Mapped[bool] = mapped_column(default=True)
     fs_sanitize_filenames: Mapped[bool] = mapped_column(default=False)
     # If enabled, isisdl will only maintain one copy of the file, even when it changes. Otherwise, a backup of the file will be created with the timestamp of when it was created.
@@ -71,7 +72,9 @@ class BadUrl(DataBase):  # type:ignore[valid-type, misc]
 class User(DataBase):  # type:ignore[valid-type, misc]
     __tablename__ = "users"
 
-    username: Mapped[str] = mapped_column(String(255), primary_key=True)
+    # The User ID according to ISIS
+    user_id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(Text)
     encrypted_password: Mapped[str] = mapped_column(Text)
 
     @cache

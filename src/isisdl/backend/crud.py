@@ -9,7 +9,7 @@ from isisdl.backend.models import User, Config, generate_key
 from isisdl.settings import master_password, error_exit
 
 
-def store_user(db: DatabaseSession, username: str, password: str, password_to_encrypt: str | None, config: Config) -> User | None:
+def store_user(db: DatabaseSession, username: str, password: str, user_id: int, password_to_encrypt: str | None, config: Config) -> User | None:
     the_password_to_encrypt = password_to_encrypt if config.pw_encrypt_password else master_password
     if the_password_to_encrypt is None:
         return None
@@ -17,7 +17,7 @@ def store_user(db: DatabaseSession, username: str, password: str, password_to_en
     key = generate_key(the_password_to_encrypt, config)
     encrypted_password = Fernet(key).encrypt(password.encode()).decode()
 
-    return add_object_to_database(db, User(username=username, encrypted_password=encrypted_password))
+    return add_object_to_database(db, User(username=username, encrypted_password=encrypted_password, user_id=user_id))
 
 
 def create_default_config(db: DatabaseSession) -> Config | None:

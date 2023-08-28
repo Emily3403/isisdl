@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import re
 import time
-from base64 import standard_b64decode
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping
+from types import TracebackType
+from typing import Any, Type
 
-from requests import Session as InternetSession, Response, PreparedRequest, RequestException
-from requests.adapters import HTTPAdapter
+from aiohttp import ClientSession as InternetSession
+from aiohttp.client import _RequestContextManager
 from sqlalchemy import Text, Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,8 +20,18 @@ class Course(DataBase):  # type:ignore[valid-type, misc]
     __tablename__ = "courses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    displayname: Mapped[str] = mapped_column(Text, nullable=False)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
+
+    preferred_name: Mapped[str | None] = mapped_column(Text, nullable=True)  # TODO: When merging, does the null update also get merged?
+    short_name: Mapped[str] = mapped_column(Text, nullable=False)
+    full_name: Mapped[str] = mapped_column(Text, nullable=False)
+
+    number_users: Mapped[int] = mapped_column(nullable=False)
+    is_favorite: Mapped[bool] = mapped_column(nullable=False)
+
+    time_of_last_access: Mapped[datetime] = mapped_column(nullable=False)
+    time_of_last_modification: Mapped[datetime] = mapped_column(nullable=False)
+    time_of_start: Mapped[datetime] = mapped_column(nullable=False)
+    time_of_end: Mapped[datetime] = mapped_column(nullable=False)
 
 
 class MediaType(Enum):
@@ -40,8 +49,9 @@ class DownloadableMediaContainer(DataBase):  # type:ignore[valid-type, misc]
     __tablename__ = "downloadable_media_containers"
 
     url: Mapped[str] = mapped_column(String(420), primary_key=True)
-    download_url: Mapped[str] = mapped_column(Text)
+    download_url: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
 
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
     size: Mapped[int | None] = mapped_column(nullable=True)
@@ -49,7 +59,7 @@ class DownloadableMediaContainer(DataBase):  # type:ignore[valid-type, misc]
     time_modified: Mapped[datetime | None] = mapped_column(nullable=True)
 
     _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
-    _link_id: Mapped[str] = mapped_column(ForeignKey("downloadable_media_containers.url"))
+    _link_id: Mapped[str | None] = mapped_column(ForeignKey("downloadable_media_containers.url"), nullable=True)
 
     course: Mapped[Course] = relationship("Course")
     link: Mapped[DownloadableMediaContainer | None] = relationship("DownloadableMediaContainer")
@@ -62,41 +72,32 @@ class MediaContainer(DataBase):  # type:ignore[valid-type, misc]
     __tablename__ = "media_containers"
 
     url: Mapped[str] = mapped_column(String(420), primary_key=True)
-    download_url: Mapped[str] = mapped_column(Text)
+    download_url: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
-    _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
     size: Mapped[int] = mapped_column(nullable=False)
     time_created: Mapped[datetime] = mapped_column(nullable=False)
-    time_modified: Mapped[datetime | None] = mapped_column(nullable=True)
+    time_modified: Mapped[datetime] = mapped_column(nullable=False)
     checksum: Mapped[str] = mapped_column(Text)
+
+    _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
 
     course: Mapped[Course] = relationship("Course")
 
 
-class MoodleMobileAdapter(HTTPAdapter):
-    def send(
-            self,
-            request: PreparedRequest,
-            stream: bool = False,
-            timeout: None | float | tuple[float, float] | tuple[float, None] = None,
-            verify: bool | str = True,
-            cert: None | bytes | str | tuple[bytes | str, bytes | str] = None,
-            proxies: Mapping[str, str] | None = None,
-    ) -> Response:
-        url = request.url
+class Error:
+    """
+    This class acts as an async None type. Its purpose is, as the name implies, to signalize that an error has occurred.
+    This can't be done by returning None as it does not define `__aenter__` and `__aexit__`.
+    """
 
-        encoded_token = re.search("token=(.*)", url or "")
-        if encoded_token is None:
-            raise RequestException(f"Token not found as part of the URL: {url}")
+    async def __aenter__(self) -> Error:
+        return self
 
-        decoded_token = standard_b64decode(encoded_token.group(1)).decode().split(":::")[1]
-
-        response = Response()
-        response.status_code = 200
-        response._content = bytes(decoded_token, 'utf-8')  # This sets the content that will be returned by response.text
-        return response
+    async def __aexit__(self, exc_type: Type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> bool:
+        return False
 
 
 @dataclass(slots=True)
@@ -106,16 +107,23 @@ class AuthenticatedSession:
     api_token: str
 
     @staticmethod
-    def calculate_timeout(url: str, times_retried: int) -> float:
-        if "tubcloud.tu-berlin.de" in url:
+    def calculate_timeout(url: str, times_retried: int) -> float | None:
+        from isisdl.api.endpoints import APIEndpoint
+
+        if url == APIEndpoint.url:
+            # The API is reliable and may take a long time to complete the request. So don't timeout it.
+            return None
+
+        elif "tubcloud.tu-berlin.de" in url:
             # The tubcloud can be *really* slow
             timeout = 25
+
         else:
             timeout = download_base_timeout
 
         return float(timeout + download_timeout_multiplier ** (1.7 * times_retried))
 
-    def get(self, url: str, **kwargs: Any) -> Response | None:
+    def get(self, url: str, **kwargs: Any) -> _RequestContextManager | Error:
         for i in range(num_tries_download):
             try:
                 return self.session.get(url, timeout=self.calculate_timeout(url, i), **kwargs)
@@ -123,9 +131,9 @@ class AuthenticatedSession:
             except Exception:
                 time.sleep(download_static_sleep_time)
 
-        return None
+        return Error()
 
-    def post(self, url: str, data: dict[str, Any], **kwargs: Any) -> Response | None:
+    def post(self, url: str, data: dict[str, Any], **kwargs: Any) -> _RequestContextManager | Error:
         for i in range(num_tries_download):
             try:
                 return self.session.post(url, data=data, timeout=self.calculate_timeout(url, i), **kwargs)
@@ -133,14 +141,14 @@ class AuthenticatedSession:
             except Exception:
                 time.sleep(download_static_sleep_time)
 
-        return None
+        return Error()
 
-    def head(self, url: str, **kwargs: Any) -> Response | None:
+    def head(self, url: str, **kwargs: Any) -> _RequestContextManager | Error:
         for i in range(num_tries_download):
             try:
-                return self.session.post(url, timeout=self.calculate_timeout(url, i), **kwargs)
+                return self.session.head(url, timeout=self.calculate_timeout(url, i), **kwargs)
 
             except Exception:
                 time.sleep(download_static_sleep_time)
 
-        return None
+        return Error()
