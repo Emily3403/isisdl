@@ -4,8 +4,8 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.crud import add_object_to_database
 from isisdl.backend.models import User, Config, generate_key
+from isisdl.db_conf import add_object_to_database
 from isisdl.settings import master_password, error_exit
 
 

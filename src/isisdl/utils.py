@@ -84,7 +84,7 @@ def get_args() -> argparse.Namespace:
     try:
         return parser.parse_args()
     except SystemExit as ex:
-        os._exit(ex.code)
+        os._exit(int(ex.code or 1))
 
 
 class Config:
@@ -1525,6 +1525,13 @@ class MediaType(enum.Enum):
         return "Videos", "Extern"
 
 
+def datetime_fromtimestamp_with_None(it: int | None) -> datetime | None:
+    if it is None:
+        return None
+
+    return datetime.fromtimestamp(it)
+
+
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
@@ -1598,6 +1605,8 @@ startup()
 OnKill()
 
 T = TypeVar("T")
+KT = TypeVar("KT")
+
 args = get_args()
 database_helper = DatabaseHelper()
 # bad_urls = database_helper.get_bad_urls()

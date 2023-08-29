@@ -44,12 +44,13 @@ class MediaType(Enum):
 
 class DownloadableMediaContainer(DataBase):  # type:ignore[valid-type, misc]
     """
-    This class represent a piece of media that can be downloaded
+    This class is a glorified URL with some metadata associated with it.
     """
     __tablename__ = "downloadable_media_containers"
 
     url: Mapped[str] = mapped_column(String(420), primary_key=True)
-    download_url: Mapped[str] = mapped_column(Text, nullable=False)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+
     media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
     relative_path: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -58,11 +59,7 @@ class DownloadableMediaContainer(DataBase):  # type:ignore[valid-type, misc]
     time_created: Mapped[datetime | None] = mapped_column(nullable=True)
     time_modified: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
-    _link_id: Mapped[str | None] = mapped_column(ForeignKey("downloadable_media_containers.url"), nullable=True)
-
     course: Mapped[Course] = relationship("Course")
-    link: Mapped[DownloadableMediaContainer | None] = relationship("DownloadableMediaContainer")
 
 
 class MediaContainer(DataBase):  # type:ignore[valid-type, misc]
@@ -82,7 +79,7 @@ class MediaContainer(DataBase):  # type:ignore[valid-type, misc]
     time_modified: Mapped[datetime] = mapped_column(nullable=False)
     checksum: Mapped[str] = mapped_column(Text)
 
-    _course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
 
     course: Mapped[Course] = relationship("Course")
 

@@ -3,51 +3,16 @@ from __future__ import annotations
 import re
 from base64 import standard_b64decode
 from datetime import datetime
-from logging import error
 from typing import Any
 
 from aiohttp import ClientSession as InternetSession
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.models import AuthenticatedSession, Course
+from isisdl.api.models import AuthenticatedSession, Course, DownloadableMediaContainer
 from isisdl.backend.models import User, Config
-from isisdl.settings import is_testing
-from isisdl.utils import T
+from isisdl.db_conf import add_or_update_objects_to_database
 from isisdl.version import __version__
-
-
-def add_object_to_database(db: DatabaseSession, it: T) -> T | None:
-    try:
-        db.add(it)
-        db.commit()
-    except SQLAlchemyError as e:
-        error(f"Inserting into the database failed: \"{e}\"")
-
-        db.rollback()
-        if is_testing:
-            raise
-
-        return None
-
-    return it
-
-
-def add_objects_to_database(db: DatabaseSession, it: list[T]) -> list[T] | None:
-    try:
-        db.add_all(it)
-        db.commit()
-    except SQLAlchemyError as e:
-        error(f"Inserting into the database failed: \"{e}\"")
-
-        db.rollback()
-        if is_testing:
-            raise
-
-        return None
-
-    return it
 
 
 async def authenticate_new_session(user: User, config: Config) -> AuthenticatedSession | None:
@@ -101,48 +66,20 @@ async def authenticate_new_session(user: User, config: Config) -> AuthenticatedS
 
 
 def parse_courses_from_API(db: DatabaseSession, courses: list[dict[str, Any]], config: Config) -> list[Course] | None:
-    existing_courses = read_courses(db)
-    all_courses = []
+    existing_courses = {it.id: it for it in read_courses(db)}
 
-    for course in courses:
-        maybe_course = existing_courses.get(course["id"])
-
-        if maybe_course is None:
-            the_course = Course(
-                id=course["id"], preferred_name=course["shortname"] if config.fs_course_default_shortname else course["fullname"],
-                short_name=course["shortname"], full_name=course["fullname"], number_users=course["enrolledusercount"], is_favorite=course["isfavourite"],
-                time_of_last_access=datetime.fromtimestamp(course["lastaccess"]), time_of_last_modification=datetime.fromtimestamp(course["timemodified"]),
-                time_of_start=datetime.fromtimestamp(course["startdate"]), time_of_end=datetime.fromtimestamp(course["enddate"]),
-            )
-
-            db.add(the_course)
-            all_courses.append(the_course)
-
-        else:
-            maybe_course.short_name = course["shortname"]
-            maybe_course.full_name = course["fullname"]
-            maybe_course.number_users = course["enrolledusercount"]
-            maybe_course.is_favorite = course["isfavourite"]
-            maybe_course.time_of_last_access = datetime.fromtimestamp(course["lastaccess"])
-            maybe_course.time_of_last_modification = datetime.fromtimestamp(course["timemodified"])
-            maybe_course.time_of_start = datetime.fromtimestamp(course["startdate"])
-            maybe_course.time_of_end = datetime.fromtimestamp(course["enddate"])
-            db.add(maybe_course)
-            all_courses.append(maybe_course)
-
-    try:
-        db.commit()
-    except SQLAlchemyError as e:
-        error(f"Inserting into the database failed: \"{e}\"")
-
-        db.rollback()
-        if is_testing:
-            raise
-
-        return None
-
-    return all_courses
+    return add_or_update_objects_to_database(
+        db, existing_courses, courses, Course, lambda course: course["id"],
+        {"id": "id", "preferred_name": "shortname" if config.fs_course_default_shortname else "fullname", "short_name": "shortname", "full_name": "fullname",
+         "number_users": "enrolledusercount", "is_favorite": "isfavourite", "time_of_last_access": "lastaccess", "time_of_last_modification": "timemodified", "time_of_start": "startdate", "time_of_end": "enddate"},
+        {"time_of_last_access": datetime.fromtimestamp, "time_of_last_modification": datetime.fromtimestamp, "time_of_start": datetime.fromtimestamp, "time_of_end": datetime.fromtimestamp},
+        {"preferred_name"}
+    )
 
 
-def read_courses(db: DatabaseSession) -> dict[int, Course]:
-    return {it.id: it for it in db.execute(select(Course)).scalars().all()}
+def read_courses(db: DatabaseSession) -> list[Course]:
+    return list(db.execute(select(Course)).scalars().all())
+
+
+def read_downloadable_media_containers(db: DatabaseSession) -> list[DownloadableMediaContainer]:
+    return list(db.execute(select(DownloadableMediaContainer)).scalars().all())
