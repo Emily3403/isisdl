@@ -269,21 +269,22 @@ testing_bad_urls: Set[str] = {
 # @formatter:off
 
 # Regex to ignore a url depending on if there is some content
+# TODO: Think about if I want mod/folder
 isis_ignore = re.compile(
     r".*isis\.tu-berlin\.de/(?:"
         "mod/(?:"  # noqa:E131
             "forum|course|choicegroup|assign|feedback|choice|quiz|glossary|questionnaire|scorm"  # noqa:E131
             "|etherpadlite|lti|h5pactivity|page|data|ratingallocate|book|videoservice|lesson|wiki"
-            "|organizer|registration|journal|workshop|survey|"
+            "|organizer|registration|journal|workshop|survey|folder|bigbluebuttonbn"
         ")"
     "|"
-        "availability/condition/shibboleth2fa"
+        "availability/condition/shibboleth2fa|course|user|enrol"
     "|"
         "h5p"
     "|"
-        "theme/image.php"
+        "theme/image.php|local/isis"
     "|"
-    ")/.*"
+    ")/.*", re.IGNORECASE
 )
 # @formatter:on
 
@@ -291,12 +292,26 @@ regex_is_isis_document = re.compile(
     r".*isis\.tu-berlin\.de/(?:webservice/|)pluginfile\.php/.*"
 )
 
+# @formatter:off
 extern_ignore = re.compile(
-    ".*(?:"
-    "tu-berlin.zoom.us|moseskonto.tu-berlin.de|befragung.tu-berlin.de|tu-berlin.webex.com|git.tu-berlin.de|tubmeeting.tu-berlin.de"
-    "|wikipedia.org|github.com|gitlab.tubit.tu-berlin.de|kahoot.it|www.python.org|www.anaconda.com|miro.com"
-    ").*"
+    "(?:"
+        "(?:https://)?(:?"
+        # Full urls
+        "berlin.de|tu-berlin.de|archive.org|b.sc|m.sc|nebula.stream"
+        # Spam urls
+        "|zmeu.us|69n.de|4-5.FM|6cin.de|6e.de|6e.de|6e.de|9.FM|10.FM|s.th|lin.de|flinga.fi|ICUnet.AG"
+    "))"
+        # Python files
+        "|\w+\.py"
+    "|"
+        # Match part of url's
+        ".*(?:"
+        "tu-berlin.zoom.us|moseskonto.tu-berlin.de|befragung.tu-berlin.de|tu-berlin.webex.com|git.tu-berlin.de|tubmeeting.tu-berlin.de"
+        "|wikipedia.org|github.com|gitlab.tubit.tu-berlin.de|kahoot.it|www.python.org|www.anaconda.com|miro.com|teams.microsoft.com|cryptpad.fr"
+        ").*",
+    re.IGNORECASE
 )
+# @formatter:on
 
 
 # -/- Regex stuff ---

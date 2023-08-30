@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import sys
+import time
 
 import isisdl.compress as compress
 from isisdl.api.crud import authenticate_new_session
@@ -46,9 +47,9 @@ async def _new_main() -> None:
         if courses is None:
             return
 
+        s = time.perf_counter()
         contents = await CourseContentsAPI.get(db, session, courses)
-
-        print()
+        print(f"{time.perf_counter() - s:.3f}s")
 
 
 def _main() -> None:

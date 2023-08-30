@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import enum
+import itertools
 import json
 import os
 import platform
@@ -1532,6 +1533,10 @@ def datetime_fromtimestamp_with_None(it: int | None) -> datetime | None:
     return datetime.fromtimestamp(it)
 
 
+def flat_map(func: Callable[[T], Iterable[U]], it: Iterable[T]) -> Iterable[U]:
+    return itertools.chain.from_iterable(map(func, it))
+
+
 # Copied and adapted from https://stackoverflow.com/a/63839503
 class HumanBytes:
     @staticmethod
@@ -1605,6 +1610,7 @@ startup()
 OnKill()
 
 T = TypeVar("T")
+U = TypeVar("U")
 KT = TypeVar("KT")
 
 args = get_args()
