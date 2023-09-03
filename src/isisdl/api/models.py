@@ -149,3 +149,6 @@ class AuthenticatedSession:
                 time.sleep(download_static_sleep_time)
 
         return Error()
+
+    async def close(self) -> None:
+        await self.session.close()

@@ -128,6 +128,9 @@ bad_url_cache_reeval_static_mul = 60
 
 database_url_location = os.path.join(config_dir_location, "database_url")
 fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
+# "postgresql+psycopg2://isisdl:isisdl@localhost:5432/isisdl"
+# "mariadb+mariadbconnector://isisdl:isisdl@localhost:3306/isisdl_prod"
+# f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
 
 database_connect_args = {"check_same_thread": False}
 
@@ -218,13 +221,15 @@ bandwidth_download_files_mavg_perc = 0.6
 
 # --- Throttler options ---
 # DownloadThrottler refresh rate in s
-token_queue_refresh_rate = 0.01
+token_queue_refresh_rate = 0.1
 
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
-token_queue_download_refresh_rate = 3
+token_queue_bandwidths_save_for = 3
 
 # When streaming, threads poll with this sleep time.
 throttler_low_prio_sleep_time = 0.1
+
+debug_cycle_time_deviation_allowed = 1.5
 
 # -/- Throttler options ---
 
@@ -398,6 +403,7 @@ env_var_name_password = "ISISDL_PASSWORD"
 enable_multithread = True
 
 global_vars = globals()
+DEBUG_ASSERTS = bool(sys.flags.debug) or is_testing
 
 testing_download_sizes = {
     1: 1_000_000_000,  # Video

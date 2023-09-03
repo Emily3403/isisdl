@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import atexit
 import enum
 import itertools
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import time
 import traceback
+from asyncio import BaseEventLoop, get_event_loop, AbstractEventLoop
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
@@ -34,13 +36,14 @@ from urllib.parse import unquote, parse_qs, urlparse
 import colorama
 import distro as distro
 import requests
+from math import isclose
 from packaging import version
 from packaging.version import Version
 from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
-from isisdl.settings import download_chunk_size, token_queue_download_refresh_rate, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location, \
+from isisdl.settings import download_chunk_size, token_queue_bandwidths_save_for, forbidden_chars, replace_dot_at_end_of_dir_name, force_filesystem, has_ffmpeg, fstype, log_file_location, \
     source_code_location, intern_dir_location
 from isisdl.settings import working_dir_location, is_windows, checksum_algorithm, checksum_num_bytes, example_config_file_location, config_dir_location, database_file_location, status_time, \
     discover_num_threads, status_progress_bar_resolution, download_progress_bar_resolution, config_file_location, is_first_time, is_autorun, parse_config_file, lock_file_location, \
@@ -54,6 +57,7 @@ if TYPE_CHECKING:
 
 
 def get_args() -> argparse.Namespace:
+    # TODO: Add option to trigger debug mode
     parser = argparse.ArgumentParser(prog="isisdl", formatter_class=argparse.RawTextHelpFormatter, description="""
     This program downloads and synchronizes all of your ISIS content.""")
 
@@ -1438,7 +1442,7 @@ class DownloadThrottler(Thread):
 
             # Clear old timestamps
             while self.timestamps:
-                if self.timestamps[0] < start - token_queue_download_refresh_rate:
+                if self.timestamps[0] < start - token_queue_bandwidths_save_for:
                     self.timestamps.pop(0)
                 else:
                     break
@@ -1460,7 +1464,7 @@ class DownloadThrottler(Thread):
         """
         Returns the bandwidth used in bytes / second
         """
-        return float(len(self.timestamps) * download_chunk_size / token_queue_download_refresh_rate)
+        return float(len(self.timestamps) * download_chunk_size / token_queue_bandwidths_save_for)
 
     def get(self, location: Path) -> Token:
         try:
@@ -1535,6 +1539,21 @@ def datetime_fromtimestamp_with_None(it: int | None) -> datetime | None:
 
 def flat_map(func: Callable[[T], Iterable[U]], it: Iterable[T]) -> Iterable[U]:
     return itertools.chain.from_iterable(map(func, it))
+
+
+def normalize(it: dict[T, int]) -> dict[T, float]:
+    total = sum(it.values())
+    return {k: v / total if not isclose(total, 0) else 0 for k, v in it.items()}
+
+def get_async_time(event_loop: AbstractEventLoop | None = None) -> float:
+    return (event_loop or get_event_loop()).time()
+
+
+def queue_get_nowait(q: asyncio.Queue[T]) -> T | None:
+    try:
+        return q.get_nowait()
+    except Exception:
+        return None
 
 
 # Copied and adapted from https://stackoverflow.com/a/63839503

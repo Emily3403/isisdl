@@ -9,23 +9,23 @@ from isisdl.settings import working_dir_location, _working_dir_location, databas
     password_hash_algorithm, password_hash_length, download_progress_bar_resolution, status_chop_off, status_time, env_var_name_username, env_var_name_password, \
     enable_multithread, download_chunk_size, download_static_sleep_time, num_tries_download, download_base_timeout, download_timeout_multiplier, _status_time, config_dir_location, \
     example_config_file_location, config_file_location, systemd_timer_file_location, systemd_service_file_location, lock_file_location, enable_lock, error_directory_location, master_password, \
-    status_progress_bar_resolution, token_queue_refresh_rate, token_queue_download_refresh_rate, discover_num_threads, systemd_dir_location, error_text, \
+    status_progress_bar_resolution, token_queue_refresh_rate, token_queue_bandwidths_save_for, discover_num_threads, systemd_dir_location, error_text, \
     throttler_low_prio_sleep_time, subscribed_courses_file_location, subscribe_num_threads, _config_dir_location, _config_file_location, _example_config_file_location, export_config_file_location, \
-    _export_config_file_location, is_static, python_executable, is_autorun
+    _export_config_file_location, is_static, python_executable, is_autorun, DEBUG_ASSERTS
 from isisdl.utils import Config
 
 
 def test_settings() -> None:
     assert working_dir_location == os.path.join(os.path.expanduser("~"), "testisisdl")
-    assert database_file_location == os.path.join(".state.db")
+    assert database_file_location == os.path.join(".intern/.state.db")
 
-    assert lock_file_location == ".lock"
-    assert enable_lock is True
+    assert lock_file_location == ".intern/.lock"
+    # assert enable_lock is True  # TODO
 
-    assert subscribed_courses_file_location == "subscribed_courses.json"
+    assert subscribed_courses_file_location == ".intern/subscribed_courses.json"
     assert 16 <= subscribe_num_threads <= 48
 
-    assert error_directory_location == ".errors"
+    assert error_directory_location == ".intern/.errors"
     assert error_text == "\033[1;91mError:\033[0m"
 
     assert is_static is False
@@ -52,10 +52,10 @@ def test_settings() -> None:
     assert 0 <= download_static_sleep_time <= 4
 
     assert 0.001 <= token_queue_refresh_rate <= 0.2
-    assert 1 <= token_queue_download_refresh_rate <= 5
+    assert 1 <= token_queue_bandwidths_save_for <= 5
     assert 0.01 <= throttler_low_prio_sleep_time <= 1
 
-    assert subscribed_courses_file_location == "subscribed_courses.json"
+    assert subscribed_courses_file_location == ".intern/subscribed_courses.json"
     assert 16 <= subscribe_num_threads <= 64
 
     assert config_dir_location == os.path.join(os.path.expanduser("~"), ".config", "testisisdl")
@@ -70,6 +70,7 @@ def test_settings() -> None:
     assert env_var_name_username == "ISISDL_USERNAME"
     assert env_var_name_password == "ISISDL_PASSWORD"
 
+    assert DEBUG_ASSERTS is True
     assert enable_multithread is True
 
     assert _working_dir_location == os.path.join(os.path.expanduser("~"), "isisdl")

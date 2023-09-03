@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import defaultdict
 from json import JSONDecodeError
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from sqlalchemy.orm import Session as DatabaseSession
 
@@ -58,6 +57,15 @@ class APIEndpoint:
 
 class UserIDAPI(APIEndpoint):
     function = "core_webservice_get_site_info"
+
+    @classmethod
+    async def get(cls, session: AuthenticatedSession) -> int | None:
+        response = await cls._get(session)
+
+        if response is None:
+            return None
+
+        return cast(int, response["userid"])
 
 
 class UserCourseListAPI(APIEndpoint):
@@ -206,10 +214,10 @@ class CourseContentsAPI(APIEndpoint):
 
         files = cls._filter_duplicates_from_files(normalized_files_with_duplicates)
 
-        existing_containers = {(it.course_id, it.url): it for it in read_downloadable_media_containers(db)}
+        existing_containers = {(it.course_id, normalize_url(it.url)): it for it in read_downloadable_media_containers(db)}
 
         return add_or_update_objects_to_database(
-            db, existing_containers, files, DownloadableMediaContainer, lambda x: (x["course_id"], x["fileurl"]),
+            db, existing_containers, files, DownloadableMediaContainer, lambda x: (x["course_id"], normalize_url(x["fileurl"])),
             {"url": "fileurl", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path",
              "name": "filename", "size": "filesize", "time_created": "timecreated", "time_modified": "timemodified"},
             {"url": normalize_url, "time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None}
@@ -228,8 +236,7 @@ class CourseContentsAPI(APIEndpoint):
             if response is None:
                 continue
 
-            course_id: int = response["course_id"]
-            course_contents: list[dict[str, Any]] = response["it"]
+            course_contents, course_id = response
 
             # Unfortunately, it doesn't seam as if python supports matching of nested dicts / lists
             for week in course_contents:
@@ -237,10 +244,7 @@ class CourseContentsAPI(APIEndpoint):
                     case {"modules": modules}:
                         for module in modules:
                             match module:
-                                case {"url": url, "contents": files}:
-                                    if isis_ignore.match(url) is not None:
-                                        continue
-
+                                case {"contents": files}:
                                     for file in files:
                                         match file:
                                             case {"fileurl": url, "type": file_type, "filepath": relative_path}:

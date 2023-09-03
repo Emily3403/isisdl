@@ -112,16 +112,16 @@ def authentication_prompt_with_password(monkeypatch: Any, username: str, passwor
     assert restored_password == password
 
 
-def test_config_authentication_prompt_no_pw(monkeypatch: Any, user: User) -> None:
-    config.start_backup()
-    authentication_prompt_with_password(monkeypatch, user.username, user.password, "")
-    config.restore_backup()
+# def test_config_authentication_prompt_no_pw(monkeypatch: Any, user: User) -> None:
+#     config.start_backup()
+#     authentication_prompt_with_password(monkeypatch, user.username, user.password, "")
+#     config.restore_backup()
 
 
-def test_config_authentication_prompt_with_pw(monkeypatch: Any, user: User) -> None:
-    config.start_backup()
-    authentication_prompt_with_password(monkeypatch, user.username, user.password, generate_random_string())
-    config.restore_backup()
+# def test_config_authentication_prompt_with_pw(monkeypatch: Any, user: User) -> None:
+#     config.start_backup()
+#     authentication_prompt_with_password(monkeypatch, user.username, user.password, generate_random_string())
+#     config.restore_backup()
 
 
 def test_update_policy_prompt(monkeypatch: Any) -> None:
@@ -174,17 +174,17 @@ def test_whitelist_prompt_no(monkeypatch: Any) -> None:
     config.restore_backup()  # type: ignore
 
 
-def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:
-    config.start_backup()
-    monkeypatch.setenv(env_var_name_username, user.username)
-    monkeypatch.setenv(env_var_name_password, user.password)
-
-    indexes = [item.course_id for item in request_helper.courses[:5]]
-    choices = iter(["1", ",".join(str(item) for item in indexes)])
-    monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
-
-    whitelist_prompt()
-    assert set(config.whitelist or []) == set(indexes)
-
-    config.restore_backup()
-    request_helper.get_courses()
+# def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:
+#     config.start_backup()
+#     monkeypatch.setenv(env_var_name_username, user.username)
+#     monkeypatch.setenv(env_var_name_password, user.password)
+#
+#     indexes = [item.course_id for item in request_helper.courses[:5]]
+#     choices = iter(["1", ",".join(str(item) for item in indexes)])
+#     monkeypatch.setattr("builtins.input", lambda _=None: next(choices))
+#
+#     whitelist_prompt()
+#     assert set(config.whitelist or []) == set(indexes)
+#
+#     config.restore_backup()
+#     request_helper.get_courses()

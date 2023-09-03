@@ -72,8 +72,7 @@ class BadUrl(DataBase):  # type:ignore[valid-type, misc]
 class User(DataBase):  # type:ignore[valid-type, misc]
     __tablename__ = "users"
 
-    # The User ID according to ISIS
-    user_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(primary_key=True)  # The User ID according to ISIS
     username: Mapped[str] = mapped_column(Text)
     encrypted_password: Mapped[str] = mapped_column(Text)
 

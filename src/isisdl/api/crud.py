@@ -40,11 +40,12 @@ async def authenticate_new_session(user: User, config: Config) -> AuthenticatedS
     ) as response:
 
         # Check if authentication succeeded
-        if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+        if response is None or str(response.url) == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
             return None
 
         # Extract the session key
-        _session_key = re.search(r"\"sesskey\":\"(.*?)\"", await response.text())
+        text =  await response.text()
+        _session_key = re.search(r"\"sesskey\":\"(.*?)\"", text)
         if _session_key is None:
             return None
 
