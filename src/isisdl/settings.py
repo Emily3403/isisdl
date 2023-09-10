@@ -56,7 +56,7 @@ error_text = "\033[1;91mError:\033[0m"
 
 
 def error_exit(code: int, reason: str) -> NoReturn:
-    print(f"{error_text} {reason}", flush=True)
+    print(f"{error_text} \"{reason}\"", flush=True, file=sys.stderr)
     os._exit(code)
 
 
@@ -88,7 +88,7 @@ source_code_location = Path(isisdl.__file__).parent
 # The path to the user-configuration directory.
 if is_windows:
     if (_appdata_path := os.getenv("APPDATA")) is None:
-        error_exit(1, "The %APPDATA% environment variable was not set ... why?")
+        error_exit(4, "The %APPDATA% environment variable was not set ... why?")
 
     config_dir_location = os.path.join(_appdata_path, "isisdl")
 else:
@@ -300,14 +300,14 @@ regex_is_isis_document = re.compile(
 # @formatter:off
 extern_ignore = re.compile(
     "(?:"
-        "(?:https://)?(:?"
+        "(?:https://)?(:?"  # noqa:E131
         # Full urls
         "berlin.de|tu-berlin.de|archive.org|b.sc|m.sc|nebula.stream"
         # Spam urls
         "|zmeu.us|69n.de|4-5.FM|6cin.de|6e.de|6e.de|6e.de|9.FM|10.FM|s.th|lin.de|flinga.fi|ICUnet.AG"
     "))"
         # Python files
-        "|\w+\.py"
+        r"|\w+\.py"
     "|"
         # Match part of url's
         ".*(?:"
@@ -389,9 +389,19 @@ if is_testing:
 
     working_dir_location = os.path.join(os.path.expanduser("~"), "testisisdl")
     config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "testisisdl")
+
+    database_file_location = os.path.join(intern_dir_location, ".state.db")
+    log_file_location = os.path.join(intern_dir_location, "isisdl.log")
+    lock_file_location = os.path.join(intern_dir_location, ".lock")
+    subscribed_courses_file_location = os.path.join(intern_dir_location, "subscribed_courses.json")
+    error_directory_location = os.path.join(intern_dir_location, ".errors")
+
+    config_file_location = os.path.join(config_dir_location, "config.yaml")
     example_config_file_location = os.path.join(config_dir_location, "example.yaml")
     export_config_file_location = os.path.join(config_dir_location, "export.yaml")
-    config_file_location = os.path.join(config_dir_location, "config.yaml")
+
+    database_url_location = os.path.join(config_dir_location, "database_url")
+    fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
 
     status_time = 1000000
 

@@ -32,6 +32,6 @@ def read_config(db: DatabaseSession) -> Config:
     configs = db.execute(select(Config)).scalars().all()
 
     if len(configs) != 1:
-        error_exit(1, f"Could not load config! Got {len(configs)} config database entries, expected 1\nPlease make sure you have set the config with `isisdl --init`!")
+        error_exit(2, f"Could not load config! Got {len(configs)} config database entries, expected 1\nPlease make sure you have set the config with `isisdl --init`!")
 
     return configs[0]

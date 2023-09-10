@@ -3,8 +3,9 @@ requires = ["setuptools>=42.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.mypy]
-check_untyped_defs = true
+strict = true
 disallow_any_generics = true
+check_untyped_defs = true
 ignore_missing_imports = true
 show_error_codes = true
 strict_equality = true
@@ -14,4 +15,4 @@ warn_unreachable = true
 warn_unused_configs = true
 no_implicit_reexport = true
 disallow_untyped_defs = true
-strict = true
+

@@ -39,7 +39,7 @@ class SessionWithKey(Session):
     key: str
     token: str
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     _lock = Lock()
 
@@ -197,7 +197,7 @@ class PreMediaContainer:
     is_cached: bool
     parent_path: Path
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, url: str, course: Course, media_type: MediaType, name: str | None = None, relative_location: str | None = None, size: MediaContainerSize = MediaContainerSize.no_size.new(),
                  time: int | None = None):
@@ -241,7 +241,7 @@ class MediaContainer:
     _newly_downloaded: bool
     _newly_discovered: bool
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, _name: str, url: str, download_url: str, time: int | None, course: Course,
                  media_type: MediaType, size: MediaContainerSize, checksum: Optional[str] = None,
@@ -596,7 +596,7 @@ class Course:
     name: str
     course_id: int
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, displayname: str, _name: str, name: str, course_id: int) -> None:
         self.displayname = displayname

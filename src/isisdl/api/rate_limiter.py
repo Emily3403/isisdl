@@ -5,13 +5,12 @@ import sys
 from asyncio import get_event_loop, create_task, Condition, Task, Event, wait_for
 from dataclasses import dataclass, field
 from enum import Enum
-from numbers import Number
-from typing import TYPE_CHECKING, MutableMapping, overload
+from typing import TYPE_CHECKING
 
 from typing_extensions import Self
 
 from isisdl.api.models import MediaType
-from isisdl.settings import download_chunk_size, token_queue_refresh_rate, token_queue_bandwidths_save_for, DEBUG_ASSERTS, debug_cycle_time_deviation_allowed
+from isisdl.settings import download_chunk_size, token_queue_refresh_rate, token_queue_bandwidths_save_for, DEBUG_ASSERTS, debug_cycle_time_deviation_allowed, is_windows
 from isisdl.utils import normalize, get_async_time, T
 
 
@@ -118,7 +117,7 @@ class RateLimiter:
 
     @classmethod
     def from_bandwidth(cls, num_mbits: float, _condition: Condition | None = None) -> Self:
-        return cls(num_mbits * 1024 ** 2 // download_chunk_size * token_queue_refresh_rate)
+        return cls(int(num_mbits * 1024 ** 2 / download_chunk_size * token_queue_refresh_rate))
 
     def calculate_max_num_tokens(self) -> int:
         if self.rate is None:
@@ -174,6 +173,7 @@ class RateLimiter:
         num_to_keep_in_bytes_downloaded = int(token_queue_bandwidths_save_for / token_queue_refresh_rate)
 
         while True:
+
             if self._stop_event.is_set():
                 return
 
@@ -197,6 +197,8 @@ class RateLimiter:
 
             # Finally, compute how much time we've spent doing this stuff and sleep the remainder.
             await asyncio.sleep(max(token_queue_refresh_rate - (event_loop.time() - start), 0))
+            if is_windows:
+                return
 
     def return_token(self, token: Token) -> None:
         self.returned_tokens.append(token)

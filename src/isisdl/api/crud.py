@@ -44,7 +44,7 @@ async def authenticate_new_session(user: User, config: Config) -> AuthenticatedS
             return None
 
         # Extract the session key
-        text =  await response.text()
+        text = await response.text()
         _session_key = re.search(r"\"sesskey\":\"(.*?)\"", text)
         if _session_key is None:
             return None

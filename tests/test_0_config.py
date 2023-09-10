@@ -4,11 +4,10 @@ from typing import Any, Optional
 
 from yaml import safe_load
 
-from isisdl.backend.crypt import decryptor
-from isisdl.backend.request_helper import RequestHelper
-from isisdl.utils import config, User, export_config, startup
 from isisdl.backend.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
-from isisdl.settings import export_config_file_location, master_password, env_var_name_username, env_var_name_password, is_windows
+from isisdl.backend.crypt import decryptor
+from isisdl.settings import export_config_file_location, master_password, is_windows
+from isisdl.utils import config, export_config, startup
 
 
 def generate_random_string() -> str:
@@ -17,15 +16,15 @@ def generate_random_string() -> str:
 
 
 def assert_config_expected(
-        password_encrypted: Optional[Any] = None,
-        username: Optional[Any] = None,
-        password: Optional[Any] = None,
-        filename_replacing: Optional[Any] = None,
-        throttle_rate: Optional[Any] = None,
-        throttle_rate_autorun: Optional[Any] = None,
-        update_policy: Optional[Any] = None,
-        telemetry_policy: Optional[Any] = None,
-        **_: Any) -> None:
+    password_encrypted: Optional[Any] = None,
+    username: Optional[Any] = None,
+    password: Optional[Any] = None,
+    filename_replacing: Optional[Any] = None,
+    throttle_rate: Optional[Any] = None,
+    throttle_rate_autorun: Optional[Any] = None,
+    update_policy: Optional[Any] = None,
+    telemetry_policy: Optional[Any] = None, **_: Any
+) -> None:
     from isisdl.utils import config
 
     if password_encrypted is not None:
@@ -172,7 +171,6 @@ def test_whitelist_prompt_no(monkeypatch: Any) -> None:
 
     assert config.whitelist is None
     config.restore_backup()  # type: ignore
-
 
 # def test_whitelist_prompt(monkeypatch: Any, user: User, request_helper: RequestHelper) -> None:
 #     config.start_backup()

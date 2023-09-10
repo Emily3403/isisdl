@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 import traceback
-from asyncio import BaseEventLoop, get_event_loop, AbstractEventLoop
+from asyncio import get_event_loop, AbstractEventLoop
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
@@ -128,7 +128,7 @@ class Config:
 
     auto_subscribed_courses: Optional[List[int]]
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
@@ -1085,7 +1085,7 @@ class User:
     username: str
     password: str
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, username: str, password: str):
         self.username = username
@@ -1336,7 +1336,7 @@ class DataLogger(Thread):
     done: Queue[None]  # Used to communicate
     generic_msg: dict[str, Any]
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self) -> None:
         self.s = Session()
@@ -1413,7 +1413,7 @@ class DownloadThrottler(Thread):
     download_rate: int
     refresh_rate: float
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     token = Token()
     timestamps: list[float] = []
@@ -1545,6 +1545,7 @@ def normalize(it: dict[T, int]) -> dict[T, float]:
     total = sum(it.values())
     return {k: v / total if not isclose(total, 0) else 0 for k, v in it.items()}
 
+
 def get_async_time(event_loop: AbstractEventLoop | None = None) -> float:
     return (event_loop or get_event_loop()).time()
 
@@ -1571,10 +1572,9 @@ class HumanBytes:
         unit_step = 1024
         unit_step_thresh = unit_step - 0.5
 
-        unit = None
         for unit in unit_labels:
             if num < unit_step_thresh:
-                # Only return when under the rounding threshhold
+                # Only return when under the rounding threshold
                 break
             if unit != last_label:
                 num /= unit_step

@@ -46,7 +46,7 @@ class DatabaseHelper:
     con: Connection
     cur: Cursor
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     lock = Lock()
     _bad_urls: dict[str, BadUrl] = dict()

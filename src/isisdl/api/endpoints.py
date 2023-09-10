@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from json import JSONDecodeError
-from typing import Any, Self, cast
+from typing import Any, cast
 
 from sqlalchemy.orm import Session as DatabaseSession
+from typing_extensions import Self
 
 from isisdl.api.crud import parse_courses_from_API, read_downloadable_media_containers
 from isisdl.api.models import AuthenticatedSession, Course, Error, MediaType, DownloadableMediaContainer
@@ -44,7 +45,7 @@ class APIEndpoint:
                 return None
 
             try:
-                match (x := await response.json()):
+                match await response.json():
                     case {"errorcode": _} | {"exception": _}:
                         return None
 

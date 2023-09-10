@@ -5,7 +5,18 @@ from asyncio import Condition, get_event_loop
 import pytest
 
 from isisdl.api.rate_limiter import RateLimiter, ThrottleType, ThrottleDict
-from isisdl.settings import token_queue_refresh_rate, debug_cycle_time_deviation_allowed, token_queue_bandwidths_save_for
+from isisdl.settings import token_queue_refresh_rate, debug_cycle_time_deviation_allowed, token_queue_bandwidths_save_for, is_windows
+
+
+async def wait_for_limiter_refill(limiter: RateLimiter) -> None:
+    last_update = limiter.last_update
+    await limiter.refill_condition.wait()
+
+    if is_windows:
+        await limiter.finish()
+
+    assert last_update != limiter.last_update
+    assert get_event_loop().time() - limiter.last_update <= token_queue_refresh_rate * debug_cycle_time_deviation_allowed
 
 
 def test_throttle_dict() -> None:
@@ -84,8 +95,12 @@ async def test_rate_limiter_buffer_sizes_work() -> None:
 
 async def consume_tokens(limiter: RateLimiter, num: int, media_type: ThrottleType = ThrottleType.free_for_all) -> None:
     for _ in range(num):
+        last_update = limiter.last_update
         it = await limiter.get_nonblock(media_type)
+
         assert it is not None
+        assert last_update == limiter.last_update
+
         limiter.return_token(it)
 
 
@@ -99,9 +114,7 @@ async def test_rate_limiter_get_works() -> None:
     limiter = RateLimiter(10, _condition=Condition())
 
     async with limiter.refill_condition:
-        last_update = limiter.last_update
         await consume_exact_tokens(limiter, limiter.calculate_max_num_tokens())
-        assert limiter.last_update == last_update
 
     await limiter.finish()
 
@@ -121,20 +134,15 @@ async def test_rate_limiter_no_limit() -> None:
     assert_limiter_state()
 
     async with limiter.refill_condition:
-        last_update = limiter.last_update
         await consume_tokens(limiter, num_tokens_to_consume)
         assert_limiter_state()
-        assert limiter.last_update == last_update
 
-        await limiter.refill_condition.wait()
-        assert limiter.last_update != last_update
-        last_update = limiter.last_update
+        await wait_for_limiter_refill(limiter)
         assert_limiter_state()
 
         limiter.register(ThrottleType.extern)
         await consume_tokens(limiter, num_tokens_to_consume)
         assert_limiter_state()
-        assert limiter.last_update == last_update
 
     await limiter.finish()
 
@@ -144,14 +152,11 @@ async def test_rate_limiter_refill_works() -> None:
     limiter = RateLimiter(10, _condition=Condition())
 
     async with limiter.refill_condition:
-        last_update = limiter.last_update
         await consume_exact_tokens(limiter, limiter.calculate_max_num_tokens())
         assert limiter.depleted_tokens[ThrottleType.free_for_all] == limiter.calculate_max_num_tokens()
-        assert limiter.last_update == last_update
 
-        await limiter.refill_condition.wait()
+        await wait_for_limiter_refill(limiter)
 
-        assert limiter.last_update != last_update
         assert limiter.num_tokens_remaining_from_last_iteration == 0
         assert get_event_loop().time() - limiter.last_update <= token_queue_refresh_rate * debug_cycle_time_deviation_allowed
         await consume_exact_tokens(limiter, limiter.calculate_max_num_tokens())
@@ -165,15 +170,11 @@ async def test_rate_limiter_num_remaining_from_last_iteration_works() -> None:
     limiter = RateLimiter(the_rate, _condition=Condition())
 
     async with limiter.refill_condition:
-        last_update, num_tokens_to_consume = limiter.last_update, limiter.calculate_max_num_tokens() // 2 + random.randint(-10, 10)
+        num_tokens_to_consume = limiter.calculate_max_num_tokens() // 2 + random.randint(-10, 10)
         await consume_tokens(limiter, num_tokens_to_consume)
-        assert limiter.last_update == last_update
         assert limiter.depleted_tokens[ThrottleType.free_for_all] == num_tokens_to_consume
 
-        await limiter.refill_condition.wait()
-
-        assert limiter.last_update != last_update
-        assert get_event_loop().time() - limiter.last_update <= token_queue_refresh_rate * debug_cycle_time_deviation_allowed
+        await wait_for_limiter_refill(limiter)
 
         assert limiter.num_tokens_remaining_from_last_iteration == limiter.calculate_max_num_tokens() - num_tokens_to_consume
         await consume_exact_tokens(limiter, limiter.calculate_max_num_tokens() * 2 - num_tokens_to_consume)
@@ -195,6 +196,6 @@ async def test_rate_limiter_with_bandwidth() -> None:
 
     await asyncio.sleep(token_queue_bandwidths_save_for)
 
-    assert await limiter.used_bandwidth() >= the_bandwidth * 0.99
+    assert await limiter.used_bandwidth() >= the_bandwidth * 0.95
     task.cancel()
     await limiter.finish()

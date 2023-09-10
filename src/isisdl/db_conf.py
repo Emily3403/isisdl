@@ -30,7 +30,7 @@ try:
     database_engine.connect()
 
 except Exception as ex:
-    error_exit(1, f"Database connection failed with the url `{database_url}`:\n{ex}")
+    error_exit(3, f"Database connection failed with the url `{database_url}`:\n{ex}")
 
 
 class DatabaseObject:

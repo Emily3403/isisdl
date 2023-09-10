@@ -3,7 +3,6 @@ import asyncio
 import sys
 import time
 from asyncio import create_task
-from threading import Thread
 
 import isisdl.compress as compress
 from isisdl.api.crud import authenticate_new_session
@@ -11,11 +10,11 @@ from isisdl.api.endpoints import CourseContentsAPI, UserCourseListAPI
 from isisdl.api.rate_limiter import RateLimiter, ThrottleType
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
-from isisdl.backend.crud import read_config, read_user, create_default_config, store_user
+from isisdl.backend.crud import read_config, read_user
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.db_conf import init_database, DatabaseSessionMaker
-from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online, DEBUG_ASSERTS
-from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff
+from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff, HumanBytes
 from isisdl.version import __version__
 
 
@@ -39,7 +38,8 @@ async def getter(id: int, limiter: RateLimiter) -> None:
     while True:
         token = await limiter.get(ThrottleType.free_for_all)
         await asyncio.sleep(0.01)
-        print(f"Got token from task {id}!")
+        print(f"Got token from task {id} and I can download {token.num_bytes} bytes! That is {HumanBytes.format(token.num_bytes)}")
+
 
 async def _new_main() -> None:
     with DatabaseSessionMaker() as db:
@@ -58,13 +58,13 @@ async def _new_main() -> None:
 
         s = time.perf_counter()
         contents = await CourseContentsAPI.get(db, session, courses)
+        _ = contents
         print(f"{time.perf_counter() - s:.3f}s")
 
         limiter = RateLimiter(20)
         create_task(getter(1, limiter))
         create_task(getter(2, limiter))
         create_task(getter(3, limiter))
-
 
         # TODO: How to deal with crashing threads
         #   - Have a menu which enables 3 choices:
@@ -79,7 +79,6 @@ async def _new_main() -> None:
 
 
 def _main() -> None:
-
     init_database()
 
     if is_first_time:
@@ -136,8 +135,6 @@ Please press enter to continue.
         sys.exit(1)
 
     asyncio.run(_new_main())
-
-    return
 
     install_latest_version()
 
