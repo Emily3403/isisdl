@@ -6,6 +6,7 @@ import random
 import re
 import time
 from base64 import standard_b64decode
+from bs4 import BeautifulSoup as BS
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -54,7 +55,7 @@ class SessionWithKey(Session):
             s = cls("", "")
             s.headers.update({"User-Agent": "isisdl (Python Requests)"})
 
-            s.get_("https://isis.tu-berlin.de/auth/shibboleth/index.php?")
+            s.get_("https://isis.tu-berlin.de/auth/shibboleth/index.php")
             s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s1",
                     data={
                         "shib_idp_ls_exception.shib_idp_session_ss": "",
@@ -63,11 +64,25 @@ class SessionWithKey(Session):
                         "shib_idp_ls_exception.shib_idp_persistent_ss": "",
                         "shib_idp_ls_success.shib_idp_persistent_ss": "false",
                         "shib_idp_ls_value.shib_idp_persistent_ss": "",
-                        "shib_idp_ls_supported": "", "_eventId_proceed": "",
+                        "shib_idp_ls_supported": "",
+                        "_eventId_proceed": "",
                     })
 
             response = s.post_("https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s2",
                                params={"j_username": user.username, "j_password": user.password, "_eventId_proceed": ""})
+
+            soup = BS(response.text, "lxml")
+
+            form = soup.find("form")
+            if form is None:
+                # If we don't find a form stotop here
+                return None
+
+            # emulate submiting the form
+            inputs = soup.find_all("input")
+            data = {input_.get("name"): input_.get("value") for input_ in inputs}
+
+            response = s.post(form.get("action"), data=data)
 
             if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
                 # The redirection did not work → credentials are wrong
