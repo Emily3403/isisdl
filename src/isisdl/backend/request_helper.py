@@ -10,6 +10,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from html import unescape
 from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
@@ -71,6 +72,12 @@ class SessionWithKey(Session):
 
             if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
                 # The redirection did not work → credentials are wrong
+                return None
+
+            data = {k: unescape(v) for k, v in re.findall('<input type="hidden" name="(.*)" value="(.*)"/>', response.text)}
+            response = s.post_("https://isis.tu-berlin.de/Shibboleth.sso/SAML2/POST-SimpleSign", data=data)
+
+            if response is None:
                 return None
 
             # Extract the session key
