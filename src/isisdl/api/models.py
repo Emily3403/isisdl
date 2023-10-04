@@ -42,11 +42,11 @@ class MediaType(Enum):
     hardlink = 5
 
 
-class DownloadableMediaContainer(DataBase):  # type:ignore[valid-type, misc]
+class MediaURL(DataBase):  # type:ignore[valid-type, misc]
     """
     This class is a glorified URL with some metadata associated with it.
     """
-    __tablename__ = "downloadable_media_containers"
+    __tablename__ = "media_urls"
 
     url: Mapped[str] = mapped_column(String(420), primary_key=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
@@ -105,9 +105,9 @@ class AuthenticatedSession:
 
     @staticmethod
     def calculate_timeout(url: str, times_retried: int) -> float | None:
-        from isisdl.api.endpoints import APIEndpoint
+        from isisdl.api.endpoints import MoodleAPIEndpoint
 
-        if url == APIEndpoint.url:
+        if url == MoodleAPIEndpoint.url:
             # The API is reliable and may take a long time to complete the request. So don't timeout it.
             return None
 
@@ -130,10 +130,12 @@ class AuthenticatedSession:
 
         return Error()
 
-    def post(self, url: str, data: dict[str, Any], **kwargs: Any) -> _RequestContextManager | Error:
+    def post(self, url: str, data: dict[str, Any] | list[dict[str, Any]], post_json: bool, **kwargs: Any) -> _RequestContextManager | Error:
+        kwargs = {"json" if post_json else "data": data}
+
         for i in range(num_tries_download):
             try:
-                return self.session.post(url, data=data, timeout=self.calculate_timeout(url, i), **kwargs)
+                return self.session.post(url, timeout=self.calculate_timeout(url, i), **kwargs)
 
             except Exception:
                 time.sleep(download_static_sleep_time)

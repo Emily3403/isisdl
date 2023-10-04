@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 import asyncio
 import sys
-import time
-from asyncio import create_task
 
 import isisdl.compress as compress
 from isisdl.api.crud import authenticate_new_session
-from isisdl.api.endpoints import CourseContentsAPI, UserCourseListAPI
-from isisdl.api.rate_limiter import RateLimiter, ThrottleType
+from isisdl.api.download_urls import download_media_urls, gather_media_urls
+from isisdl.api.endpoints import UserCourseListAPI
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
 from isisdl.backend.crud import read_config, read_user
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.db_conf import init_database, DatabaseSessionMaker
 from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
-from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff, HumanBytes
+from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff
 from isisdl.version import __version__
 
 
@@ -34,13 +32,6 @@ database_version = {Config.default("database_version")}
 """)
 
 
-async def getter(id: int, limiter: RateLimiter) -> None:
-    while True:
-        token = await limiter.get(ThrottleType.free_for_all)
-        await asyncio.sleep(0.01)
-        print(f"Got token from task {id} and I can download {token.num_bytes} bytes! That is {HumanBytes.format(token.num_bytes)}")
-
-
 async def _new_main() -> None:
     with DatabaseSessionMaker() as db:
         config = read_config(db)
@@ -49,22 +40,23 @@ async def _new_main() -> None:
             return
 
         session = await authenticate_new_session(user, config)
+
         if session is None:
             return
 
         courses = await UserCourseListAPI.get(db, session, user, config)
+        # courses = read_courses(db)
         if courses is None:
             return
 
-        s = time.perf_counter()
-        contents = await CourseContentsAPI.get(db, session, courses)
-        _ = contents
-        print(f"{time.perf_counter() - s:.3f}s")
+        urls = await gather_media_urls(db, session, courses)
+        # if urls is None:
+        #     return
 
-        limiter = RateLimiter(20)
-        create_task(getter(1, limiter))
-        create_task(getter(2, limiter))
-        create_task(getter(3, limiter))
+        # urls = read_downloadable_media_containers(db)
+        downloaded_content = await download_media_urls(db, urls)
+
+        _ = downloaded_content
 
         # TODO: How to deal with crashing threads
         #   - Have a menu which enables 3 choices:

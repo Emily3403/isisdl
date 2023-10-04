@@ -26,6 +26,7 @@ from contextlib import ExitStack
 from datetime import datetime
 from functools import wraps
 from itertools import repeat
+from math import isclose
 from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
 from tempfile import TemporaryDirectory
@@ -36,7 +37,6 @@ from urllib.parse import unquote, parse_qs, urlparse
 import colorama
 import distro as distro
 import requests
-from math import isclose
 from packaging import version
 from packaging.version import Version
 from requests import Session
@@ -653,6 +653,9 @@ def get_download_url_from_url(url: str, session: SessionWithKey) -> str | None:
         pass
 
     elif 'onlinelibrary.wiley.com' == hostname:
+        pass
+
+    elif 'arxiv.org' == hostname:
         pass
 
     return url

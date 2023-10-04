@@ -1,45 +1,56 @@
 from __future__ import annotations
 
 import asyncio
+from abc import abstractmethod
 from collections import defaultdict
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Any, cast, TYPE_CHECKING
 
 from sqlalchemy.orm import Session as DatabaseSession
-from typing_extensions import Self
 
 from isisdl.api.crud import parse_courses_from_API, read_downloadable_media_containers
-from isisdl.api.models import AuthenticatedSession, Course, Error, MediaType, DownloadableMediaContainer
+from isisdl.api.models import AuthenticatedSession, Course, Error, MediaType, MediaURL
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database
-from isisdl.settings import isis_ignore, url_finder, extern_ignore, regex_is_isis_document
+from isisdl.settings import isis_ignore, url_finder, extern_ignore, regex_is_isis_document, DEBUG_ASSERTS
 from isisdl.utils import datetime_fromtimestamp_with_None, normalize_url, flat_map
 
 
 # TODO: AJAX
 
 class APIEndpoint:
-    url = "https://isis.tu-berlin.de/webservice/rest/server.php"
+    url: str
     function: str
-    static_data = {
-        "moodlewssettingfilter": "true",
-        "moodlewssettingfileurl": "true",
-        "moodlewsrestformat": "json",
-    }
 
     @classmethod
-    def new(cls) -> Self:
-        return cls()
-        pass
+    @abstractmethod
+    def json_data(cls, session: AuthenticatedSession) -> dict[str, Any]:
+        ...
 
     @classmethod
-    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | None = None) -> Any | None:
-        data = (data or {}) | cls.static_data | {
-            "wsfunction": cls.function,
-            "wstoken": session.api_token,
-        }
+    @abstractmethod
+    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
+        ...
 
-        async with session.post(cls.url, data) as response:
+    @classmethod
+    def enrich_data(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None) -> dict[str, Any] | list[dict[str, Any]]:
+        cls_data = cls.json_data(session)
+
+        if data is None:
+            return cls_data
+
+        if isinstance(data, dict):
+            data |= cls_data
+            return data
+
+        for it in data:
+            it |= cls_data
+
+        return data
+
+    @classmethod
+    async def _get_(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]], post_json: bool) -> Any | None:
+        async with session.post(cls.url, data, post_json) as response:
 
             if isinstance(response, Error) or not response.ok:
                 return None
@@ -56,7 +67,52 @@ class APIEndpoint:
                 return None
 
 
-class UserIDAPI(APIEndpoint):
+class MoodleAPIEndpoint(APIEndpoint):
+    url = "https://isis.tu-berlin.de/webservice/rest/server.php"
+
+    @classmethod
+    def json_data(cls, session: AuthenticatedSession) -> dict[str, Any]:
+        return {
+            "moodlewssettingfilter": "true",
+            "moodlewssettingfileurl": "true",
+            "moodlewsrestformat": "json",
+            "wsfunction": cls.function,
+            "wstoken": session.api_token,
+        }
+
+    @classmethod
+    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
+        return await super()._get_(session, cls.enrich_data(session, data), post_json=False)
+
+
+class AjaxAPIEndpoint(APIEndpoint):
+    url = "https://isis.tu-berlin.de/lib/ajax/service.php"
+
+    @classmethod
+    def json_data(cls, session: AuthenticatedSession) -> dict[str, Any]:
+        return {
+            "methodname": cls.function,
+        }
+
+    @classmethod
+    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
+        return await super()._get_(session, cls.enrich_data(session, data), post_json=True)
+
+
+class VideoListAPI(AjaxAPIEndpoint):
+    function = "mod_videoservice_get_videos"
+
+    @classmethod
+    async def get(cls, session: AuthenticatedSession, courses: list[Course]) -> Any:
+        data = [{
+            "args": {"courseid": course.course_id},
+            "index": i
+        } for i, course in enumerate(courses)]
+
+        return await super()._get(session, data)
+
+
+class UserIDAPI(MoodleAPIEndpoint):
     function = "core_webservice_get_site_info"
 
     @classmethod
@@ -69,7 +125,7 @@ class UserIDAPI(APIEndpoint):
         return cast(int, response["userid"])
 
 
-class UserCourseListAPI(APIEndpoint):
+class UserCourseListAPI(MoodleAPIEndpoint):
     function = "core_enrol_get_users_courses"
 
     @classmethod
@@ -81,7 +137,7 @@ class UserCourseListAPI(APIEndpoint):
         return parse_courses_from_API(db, response, config)
 
 
-class CourseListAPI(APIEndpoint):
+class CourseListAPI(MoodleAPIEndpoint):
     # TODO: check out core_course_get_courses_by_field
     function = "core_course_search_courses"
 
@@ -90,29 +146,29 @@ class CourseListAPI(APIEndpoint):
         return cls._get(session, data={"criterianame": "search", "criteriavalue": "", })
 
 
-class TestAPI(APIEndpoint):
+class TestAPI(MoodleAPIEndpoint):
     function = "core_course_get_course_module"
 
 
-class TestAjaxAPI(APIEndpoint):
+class TestAjaxAPI(MoodleAPIEndpoint):
     url = "https://isis.tu-berlin.de/lib/ajax/service.php"
     function = ""
 
 
-class CourseContentsAPI(APIEndpoint):
+class DocumentListAPI(MoodleAPIEndpoint):
     function = "core_course_get_contents"
 
     @classmethod
-    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | None = None) -> tuple[list[dict[str, list[dict[str, list[dict[str, Any]]]]]], int] | None:
-        data = (data or {}) | cls.static_data | {
-            "wsfunction": cls.function,
-            "wstoken": session.api_token,
-        }
+    async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None, post_json: bool = False) -> tuple[list[dict[str, list[dict[str, list[dict[str, Any]]]]]], int] | None:
+        data = cls.enrich_data(session, data)
+
+        if TYPE_CHECKING or DEBUG_ASSERTS:
+            assert not isinstance(data, list)
 
         if "courseid" not in data:
             return None
 
-        async with session.post(cls.url, data) as response:
+        async with session.post(cls.url, data, post_json) as response:
 
             if isinstance(response, Error) or not response.ok:
                 return None
@@ -218,7 +274,7 @@ class CourseContentsAPI(APIEndpoint):
         existing_containers = {(it.course_id, normalize_url(it.url)): it for it in read_downloadable_media_containers(db)}
 
         return add_or_update_objects_to_database(
-            db, existing_containers, files, DownloadableMediaContainer, lambda x: (x["course_id"], normalize_url(x["fileurl"])),
+            db, existing_containers, files, MediaURL, lambda x: (x["course_id"], normalize_url(x["fileurl"])),
             {"url": "fileurl", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path",
              "name": "filename", "size": "filesize", "time_created": "timecreated", "time_modified": "timemodified"},
             {"url": normalize_url, "time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None}
@@ -302,22 +358,22 @@ class CourseContentsAPI(APIEndpoint):
         existing_containers = {(it.course_id, it.url): it for it in read_downloadable_media_containers(db)}
 
         return add_or_update_objects_to_database(
-            db, existing_containers, new_data, DownloadableMediaContainer, lambda x: (x["course_id"], x["fileurl"]),
+            db, existing_containers, new_data, MediaURL, lambda x: (x["course_id"], x["fileurl"]),
             {"url": "fileurl", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path",
              "name": "filename", "size": "filesize", "time_created": "timecreated", "time_modified": "timemodified"},
             {"url": normalize_url, "time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None}
         )
 
 
-class CourseEnrollmentAPI(APIEndpoint):
+class CourseEnrollmentAPI(MoodleAPIEndpoint):
     function = "enrol_self_enrol_user"
 
 
-class CourseUnEnrollmentAPI(APIEndpoint):
+class CourseUnEnrollmentAPI(MoodleAPIEndpoint):
     function = "enrol_self_unenrol_user"
 
 
-class AssignmentAPI(APIEndpoint):
+class AssignmentAPI(MoodleAPIEndpoint):
     function = "mod_assign_get_assignments"
 
 # TODO Content parsing:

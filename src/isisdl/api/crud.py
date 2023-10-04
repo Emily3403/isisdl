@@ -3,13 +3,14 @@ from __future__ import annotations
 import re
 from base64 import standard_b64decode
 from datetime import datetime
+from html import unescape
 from typing import Any
 
 from aiohttp import ClientSession as InternetSession
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.models import AuthenticatedSession, Course, DownloadableMediaContainer
+from isisdl.api.models import AuthenticatedSession, Course, MediaURL
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database
 from isisdl.version import __version__
@@ -40,12 +41,18 @@ async def authenticate_new_session(user: User, config: Config) -> AuthenticatedS
     ) as response:
 
         # Check if authentication succeeded
-        if response is None or str(response.url) == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
+        if response is None or "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3" in str(response.url):
             return None
 
+        data = {k: unescape(v) for k, v in re.findall('<input type="hidden" name="(.*)" value="(.*)"/>', await response.text())}
+
+    async with session.post(
+        "https://isis.tu-berlin.de/Shibboleth.sso/SAML2/POST-SimpleSign",
+        data=data
+    ) as response:
+
         # Extract the session key
-        text = await response.text()
-        _session_key = re.search(r"\"sesskey\":\"(.*?)\"", text)
+        _session_key = re.search(r"\"sesskey\":\"(.*?)\"", await response.text())
         if _session_key is None:
             return None
 
@@ -82,5 +89,5 @@ def read_courses(db: DatabaseSession) -> list[Course]:
     return list(db.execute(select(Course)).scalars().all())
 
 
-def read_downloadable_media_containers(db: DatabaseSession) -> list[DownloadableMediaContainer]:
-    return list(db.execute(select(DownloadableMediaContainer)).scalars().all())
+def read_downloadable_media_containers(db: DatabaseSession) -> list[MediaURL]:
+    return list(db.execute(select(MediaURL)).scalars().all())

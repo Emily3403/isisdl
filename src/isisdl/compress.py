@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import math
 import os
 import re
 import signal
@@ -13,8 +14,6 @@ from pathlib import Path
 from statistics import variance, stdev, mean
 from threading import Thread, Lock
 from typing import Optional, List, Dict, Any, Tuple
-
-import math
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer

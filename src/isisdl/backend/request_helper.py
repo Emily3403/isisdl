@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import math
 import os
 import random
 import re
@@ -11,6 +12,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
+from html import unescape
 from itertools import repeat, chain
 from pathlib import Path
 from queue import Queue
@@ -18,7 +20,6 @@ from threading import Thread, Lock, current_thread
 from typing import Optional, Dict, List, Any, cast, Iterable, DefaultDict, Tuple
 from urllib.parse import urlparse, ParseResultBytes
 
-import math
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from requests.exceptions import InvalidSchema
@@ -74,6 +75,12 @@ class SessionWithKey(Session):
 
             if response is None or response.url == "https://shibboleth.tubit.tu-berlin.de/idp/profile/SAML2/Redirect/SSO?execution=e1s3":
                 # The redirection did not work → credentials are wrong
+                return None
+
+            data = {k: unescape(v) for k, v in re.findall('<input type="hidden" name="(.*)" value="(.*)"/>', response.text)}
+            response = s.post_("https://isis.tu-berlin.de/Shibboleth.sso/SAML2/POST-SimpleSign", data=data)
+
+            if response is None:
                 return None
 
             # Extract the session key
@@ -259,7 +266,6 @@ class MediaContainer:
         self._stop = False
         self._done = False
         self._newly_downloaded = _newly_downloaded
-        self._newly_discovered = _newly_discovered
 
     @classmethod
     def from_dump(cls, url: str, course: Course) -> bool | MediaContainer:
