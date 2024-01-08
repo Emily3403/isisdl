@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DatabaseSession
 from isisdl.api.models import AuthenticatedSession, Course, MediaURL
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database
+from isisdl.utils import datetime_fromtimestamp_with_None
 from isisdl.version import __version__
 
 
@@ -80,7 +81,7 @@ def parse_courses_from_API(db: DatabaseSession, courses: list[dict[str, Any]], c
         db, existing_courses, courses, Course, lambda course: course["id"],
         {"id": "id", "preferred_name": "shortname" if config.fs_course_default_shortname else "fullname", "short_name": "shortname", "full_name": "fullname",
          "number_users": "enrolledusercount", "is_favorite": "isfavourite", "time_of_last_access": "lastaccess", "time_of_last_modification": "timemodified", "time_of_start": "startdate", "time_of_end": "enddate"},
-        {"time_of_last_access": datetime.fromtimestamp, "time_of_last_modification": datetime.fromtimestamp, "time_of_start": datetime.fromtimestamp, "time_of_end": datetime.fromtimestamp},
+        {"time_of_last_access": datetime_fromtimestamp_with_None, "time_of_last_modification": datetime_fromtimestamp_with_None, "time_of_start": datetime_fromtimestamp_with_None, "time_of_end": datetime_fromtimestamp_with_None},
         {"preferred_name"}
     )
 

@@ -96,7 +96,24 @@ class AjaxAPIEndpoint(APIEndpoint):
 
     @classmethod
     async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
-        return await super()._get_(session, cls.enrich_data(session, data), post_json=True)
+        async with session.get(cls.url, data=cls.enrich_data(session, data), ) as response:
+
+            if isinstance(response, Error) or not response.ok:
+                return None
+
+            try:
+                match await response.json():
+                    case {"errorcode": _} | {"exception": _}:
+                        return None
+
+                    case valid:
+                        return valid
+
+            except JSONDecodeError:
+                return None
+
+
+        return await super()._get_(session, , post_json=True, params={"sesskey": session.session_key})
 
 
 class VideoListAPI(AjaxAPIEndpoint):
@@ -105,7 +122,7 @@ class VideoListAPI(AjaxAPIEndpoint):
     @classmethod
     async def get(cls, session: AuthenticatedSession, courses: list[Course]) -> Any:
         data = [{
-            "args": {"courseid": course.course_id},
+            "args": {"courseid": course.id},
             "index": i
         } for i, course in enumerate(courses)]
 

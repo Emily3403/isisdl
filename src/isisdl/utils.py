@@ -889,7 +889,7 @@ WantedBy=timers.target
 
 
 # TODO: Try to limit test this function with the test courses. What about emojis in course names? Slashes? Backslashes? So many ideas :D
-
+# TODO: Profile this and see how memory and time intensive it is
 def sanitize_name(name: str, is_dir: bool) -> str:
     # Remove unnecessary whitespace
     name = name.strip()
@@ -910,6 +910,12 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     str_list = list(name)
     final = []
 
+    # TODO: Split this into two steps:
+    #  1. General replacing such as NULL bytes or slashes
+    #  2. OS-Specific replacement
+    #  3. Replace chars with "safe" versions if the user has configured it
+    #  4. Length constraint
+
     if config.filename_replacing:
         final = str_list
 
@@ -921,8 +927,8 @@ def sanitize_name(name: str, is_dir: bool) -> str:
         while i < len(str_list):
             char = str_list[i]
 
-            if char == "\0":
-                pass
+            if char == "\0" or char == "/":
+                pass  # Forbid NULL bytes and slashes. Even though macOS *could* handle them, it leads to problems.
             elif char in whitespaces:
                 next_upper = True
 
@@ -943,7 +949,10 @@ def sanitize_name(name: str, is_dir: bool) -> str:
     final_str = "".join(item for item in final if item not in forbidden_chars)
 
     # All supported filesystems have a limit of 255 bytes for the filename. Enforce it.
-    return final_str.encode()[:255].decode()
+    def enforce_length(it: str) -> str:
+        return it.encode()[:255].decode()
+
+    return enforce_length(final_str)
 
 
 def get_input(allowed: set[str]) -> str:

@@ -28,10 +28,10 @@ class Course(DataBase):  # type:ignore[valid-type, misc]
     number_users: Mapped[int] = mapped_column(nullable=False)
     is_favorite: Mapped[bool] = mapped_column(nullable=False)
 
-    time_of_last_access: Mapped[datetime] = mapped_column(nullable=False)
-    time_of_last_modification: Mapped[datetime] = mapped_column(nullable=False)
-    time_of_start: Mapped[datetime] = mapped_column(nullable=False)
-    time_of_end: Mapped[datetime] = mapped_column(nullable=False)
+    time_of_last_access: Mapped[datetime | None] = mapped_column(nullable=True)
+    time_of_last_modification: Mapped[datetime | None] = mapped_column(nullable=True)
+    time_of_start: Mapped[datetime | None] = mapped_column(nullable=True)
+    time_of_end: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class MediaType(Enum):
