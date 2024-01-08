@@ -66,6 +66,7 @@ def get_args() -> argparse.Namespace:
 
     operations = parser.add_mutually_exclusive_group()
 
+
     operations.add_argument("-v", "--version", help="Print the version number and exit", action="store_true")
     operations.add_argument("--init", help="Guides you through the initial configuration and setup process.", action="store_true")
     operations.add_argument("--config", help="Guides you through additional configuration which focuses on what to download from ISIS.", action="store_true")
