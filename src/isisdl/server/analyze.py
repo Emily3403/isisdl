@@ -8,8 +8,7 @@ from datetime import datetime
 from distutils.version import Version
 from typing import List, Union, Dict, Any, Optional, Set, DefaultDict
 
-import matplotlib.pyplot as plt
-from distlib.version import LegacyVersion
+import matplotlib.pyplot as plt  # type: ignore[import]
 
 from isisdl.server.server_settings import server_path, log_dir_location, log_type, log_dir_version, graph_dir_location
 
@@ -24,7 +23,7 @@ class DataV1:
     username: str
     OS: str
     OS_spec: str
-    version: Union[LegacyVersion, Version]
+    version: Union[Version]
 
     time: datetime
     is_first_time: bool
@@ -63,12 +62,12 @@ def get_data() -> List[DataV1]:
 
 def analyze_versions() -> None:
     data = get_data()
-    users: DefaultDict[str, List[Union[LegacyVersion, Version]]] = defaultdict(list)
+    users: DefaultDict[str, List[Version]] = defaultdict(list)
 
     for dat in data:
         users[dat.username].append(dat.version)
 
-    versions: Dict[str, Union[LegacyVersion, Version]] = {}
+    versions: Dict[str, Version] = {}
     for user, _version in users.items():
         versions[user] = max(_version)
 
@@ -101,7 +100,7 @@ def analyze_users_per_day() -> None:
     plt.xticks(rotation=90)
     plt.plot(list(users.keys()), list(users.values()))
     plt.tight_layout()
-    plt.show()
+    plt.show()  # type:ignore[no-untyped-call]
     plt.savefig(server_path.joinpath(log_dir_location, log_dir_version, graph_dir_location, "users_per_day.png"))
 
 

@@ -110,7 +110,7 @@ class Config:
 
     auto_subscribed_courses: Optional[List[int]]
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     default_config: Dict[str, Union[bool, str, int, None, Dict[int, str]]] = {
         "password_encrypted": False,
@@ -1005,7 +1005,7 @@ class User:
     username: str
     password: str
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, username: str, password: str):
         self.username = username
@@ -1255,7 +1255,7 @@ class DataLogger(Thread):
     done: Queue[None]  # Used to communicate
     generic_msg: Dict[str, Any]
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self) -> None:
         self.s = Session()
@@ -1332,7 +1332,7 @@ class DownloadThrottler(Thread):
     download_rate: int
     refresh_rate: float
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     token = Token()
     timestamps: List[float] = []

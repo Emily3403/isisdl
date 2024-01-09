@@ -214,7 +214,7 @@ class DownloadStatus(Status):
     def done_streaming(self) -> None:
         self.stream_file = None
 
-    def done(self, thread_num: int, container: MediaContainer, *args: Any, **kwargs: Any) -> None:  # type: ignore
+    def done(self, thread_num: int, container: MediaContainer, *args: Any, **kwargs: Any) -> None:
         with self._lock:
             item = self.thread_files[thread_num]
             self.thread_files[thread_num] = None

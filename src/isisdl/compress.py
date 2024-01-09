@@ -153,7 +153,7 @@ class CompressStatus(Thread):
     last_text_len: int
     last_file_size_stat: int
 
-    __slots__ = tuple(__annotations__)  # type: ignore
+    __slots__ = tuple(__annotations__)
 
     def __init__(self, files: List[MediaContainer], helper: RequestHelper) -> None:
         self.files = files
