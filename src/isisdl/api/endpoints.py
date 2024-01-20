@@ -8,7 +8,7 @@ from typing import Any, cast, TYPE_CHECKING
 
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.crud import parse_courses_from_API, read_downloadable_media_containers
+from isisdl.api.crud import parse_courses_from_API, read_media_urls, parse_videos_from_API
 from isisdl.api.models import AuthenticatedSession, Course, Error, MediaType, MediaURL
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database
@@ -96,14 +96,14 @@ class AjaxAPIEndpoint(APIEndpoint):
 
     @classmethod
     async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
-        async with session.get(cls.url, data=cls.enrich_data(session, data), ) as response:
+        async with session.get(cls.url, params={"sesskey": session.session_key}, json=cls.enrich_data(session, data)) as response:
 
             if isinstance(response, Error) or not response.ok:
                 return None
 
             try:
-                match await response.json():
-                    case {"errorcode": _} | {"exception": _}:
+                match x := await response.json():
+                    case {"error": _} | {"errorcode": _} | {"exception": _}:
                         return None
 
                     case valid:
@@ -113,20 +113,21 @@ class AjaxAPIEndpoint(APIEndpoint):
                 return None
 
 
-        return await super()._get_(session, , post_json=True, params={"sesskey": session.session_key})
-
 
 class VideoListAPI(AjaxAPIEndpoint):
     function = "mod_videoservice_get_videos"
 
     @classmethod
-    async def get(cls, session: AuthenticatedSession, courses: list[Course]) -> Any:
-        data = [{
+    async def get(cls, db: DatabaseSession, session: AuthenticatedSession, courses: list[Course], config: Config) -> Any:
+        response = await super()._get(session, [{
             "args": {"courseid": course.id},
             "index": i
-        } for i, course in enumerate(courses)]
+        } for i, course in enumerate(courses)])
 
-        return await super()._get(session, data)
+        if response is None:
+            return None
+
+        return parse_videos_from_API(db, response, config)
 
 
 class UserIDAPI(MoodleAPIEndpoint):
@@ -152,24 +153,6 @@ class UserCourseListAPI(MoodleAPIEndpoint):
             return None
 
         return parse_courses_from_API(db, response, config)
-
-
-class CourseListAPI(MoodleAPIEndpoint):
-    # TODO: check out core_course_get_courses_by_field
-    function = "core_course_search_courses"
-
-    @classmethod
-    async def get(cls, session: AuthenticatedSession) -> Any:
-        return cls._get(session, data={"criterianame": "search", "criteriavalue": "", })
-
-
-class TestAPI(MoodleAPIEndpoint):
-    function = "core_course_get_course_module"
-
-
-class TestAjaxAPI(MoodleAPIEndpoint):
-    url = "https://isis.tu-berlin.de/lib/ajax/service.php"
-    function = ""
 
 
 class DocumentListAPI(MoodleAPIEndpoint):
@@ -288,7 +271,7 @@ class DocumentListAPI(MoodleAPIEndpoint):
 
         files = cls._filter_duplicates_from_files(normalized_files_with_duplicates)
 
-        existing_containers = {(it.course_id, normalize_url(it.url)): it for it in read_downloadable_media_containers(db)}
+        existing_containers = {(it.course_id, normalize_url(it.url)): it for it in read_media_urls(db) if it.media_type in {MediaType.document, MediaType.extern}}
 
         return add_or_update_objects_to_database(
             db, existing_containers, files, MediaURL, lambda x: (x["course_id"], normalize_url(x["fileurl"])),
@@ -372,7 +355,7 @@ class DocumentListAPI(MoodleAPIEndpoint):
                 "timemodified": next((name for file in files if (name := file["timemodified"]) is not None), None),
             })
 
-        existing_containers = {(it.course_id, it.url): it for it in read_downloadable_media_containers(db)}
+        existing_containers = {(it.course_id, it.url): it for it in read_media_urls(db)}
 
         return add_or_update_objects_to_database(
             db, existing_containers, new_data, MediaURL, lambda x: (x["course_id"], x["fileurl"]),

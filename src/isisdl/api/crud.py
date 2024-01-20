@@ -10,10 +10,10 @@ from aiohttp import ClientSession as InternetSession
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.models import AuthenticatedSession, Course, MediaURL
+from isisdl.api.models import AuthenticatedSession, Course, MediaURL, MediaType
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database
-from isisdl.utils import datetime_fromtimestamp_with_None
+from isisdl.utils import datetime_fromtimestamp_with_None, flat_map
 from isisdl.version import __version__
 
 
@@ -85,10 +85,26 @@ def parse_courses_from_API(db: DatabaseSession, courses: list[dict[str, Any]], c
         {"preferred_name"}
     )
 
+def parse_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], config: Config) -> list[MediaURL] | None:
+    if config.dl_download_videos is False:
+        return []
+
+    vid = list(
+        flat_map(
+            lambda it: it.get("videos", [{}]) | {"courseid": it.get("courseid")},
+            map(lambda it: it.get("data", {}), videos)
+        )
+    )
+
+    existing_videos = {it.course_id: it for it in read_media_urls(db) if it.media_type == MediaType.video}
+
+
+    pass
+
 
 def read_courses(db: DatabaseSession) -> list[Course]:
     return list(db.execute(select(Course)).scalars().all())
 
 
-def read_downloadable_media_containers(db: DatabaseSession) -> list[MediaURL]:
+def read_media_urls(db: DatabaseSession) -> list[MediaURL]:
     return list(db.execute(select(MediaURL)).scalars().all())

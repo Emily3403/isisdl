@@ -4,17 +4,19 @@ import asyncio
 
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.endpoints import VideoListAPI
+from isisdl.api.endpoints import VideoListAPI, DocumentListAPI
 from isisdl.api.models import MediaContainer, MediaURL, AuthenticatedSession, Course
 
 __all__ = ["download_media_urls"]
 
+from isisdl.backend.models import Config
 
-async def gather_media_urls(db: DatabaseSession, session: AuthenticatedSession, courses: list[Course]) -> list[MediaURL]:
+
+async def gather_media_urls(db: DatabaseSession, session: AuthenticatedSession, courses: list[Course], config: Config) -> list[MediaURL]:
     urls = []
     for response in asyncio.as_completed([
         # DocumentListAPI.get(db, session, courses),
-        VideoListAPI.get(session, courses)]
+        VideoListAPI.get(db, session, courses, config)]
     ):
         urls.extend(await response)
 

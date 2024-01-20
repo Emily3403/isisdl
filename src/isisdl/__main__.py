@@ -5,10 +5,10 @@ import sys
 import isisdl.compress as compress
 from isisdl.api.crud import authenticate_new_session
 from isisdl.api.download_urls import download_media_urls, gather_media_urls
-from isisdl.api.endpoints import UserCourseListAPI
+from isisdl.api.endpoints import UserCourseListAPI, UserIDAPI
 from isisdl.backend import sync_database
 from isisdl.backend.config import init_wizard, config_wizard
-from isisdl.backend.crud import read_config, read_user
+from isisdl.backend.crud import read_config, read_user, create_default_config, store_user
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.db_conf import init_database, DatabaseSessionMaker
 from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
@@ -45,13 +45,12 @@ async def _new_main() -> None:
             return
 
         courses = await UserCourseListAPI.get(db, session, user, config)
-        # courses = read_courses(db)
         if courses is None:
             return
 
-        urls = await gather_media_urls(db, session, courses)
-        # if urls is None:
-        #     return
+        urls = await gather_media_urls(db, session, courses, config)
+        if not urls:
+            return None
 
         # urls = read_downloadable_media_containers(db)
         downloaded_content = await download_media_urls(db, urls)
