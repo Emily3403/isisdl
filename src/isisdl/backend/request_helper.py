@@ -441,8 +441,9 @@ class MediaContainer:
         self.media_type = other.media_type
         self.checksum = other.checksum
 
-        self.path.unlink(missing_ok=True)
-        os.link(other.path, self.path)
+        if self.path != other.path:
+            self.path.unlink(missing_ok=True)
+            os.link(other.path, self.path)
 
         self.dump()
         self._done = True
@@ -551,6 +552,9 @@ class MediaContainer:
             if self.media_type != MediaType.video:
                 # The video server is sometimes unreliable but it _should_ always work. So don't add these url's
                 database_helper.add_bad_url(self.url)
+
+            with self.path.open("wb") as f:
+                pass
 
             for link in self._links:
                 if link.should_download:
@@ -694,8 +698,10 @@ class Course:
 
                 if "contents" in module:
                     for file in module["contents"]:
-                        if config.follow_links and "type" in file and file["type"] == "url" and "fileurl" in file and extern_ignore.match(file["fileurl"]) is None \
-                                and isis_ignore.match(file["fileurl"]) is None:
+                        if file.get("fileurl") is None:
+                            continue
+
+                        if config.follow_links and "type" in file and file["type"] == "url" and extern_ignore.match(file["fileurl"]) is None and isis_ignore.match(file["fileurl"]) is None:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
                         else:
                             all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
@@ -929,11 +935,12 @@ class RequestHelper:
 
                         for file in assignment["introattachments"]:
                             file["filepath"] = assignment["name"]
-                            all_content.append(
-                                PreMediaContainer(
-                                    file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                    file["filename"], file["filepath"], file["filesize"], file["timemodified"])
-                            )
+                            if file["fileurl"] is not None:
+                                all_content.append(
+                                    PreMediaContainer(
+                                        file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
+                                        file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                                )
 
             return all_content
 
@@ -1012,12 +1019,18 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
 
     new_files = []
     for conflict in hard_link_conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            conflict[0]._links.extend(conflict[1:])
-            final_list.append(conflict[0])
+        conflict.sort(key=lambda x: x.time)
+        resolution = conflict.pop(0)
+        if not conflict:
+            # Hand it through to the next round
+            new_files.append(resolution)
+
         else:
-            new_files.append(conflict[0])
+            for con in conflict:
+                if resolution.path != con.path:
+                    resolution._links.append(con)
+
+        final_list.append(resolution)
 
     files = new_files
 
@@ -1056,14 +1069,13 @@ def check_for_conflicts_in_files(files: List[MediaContainer]) -> List[MediaConta
         hard_link_conflicts[file.download_url].append(file)
 
     for conflict in hard_link_conflicts.values():
-        if len(conflict) > 1:
-            conflict.sort(key=lambda x: x.time)
-            conflict[0]._links.extend(conflict[1:])
-            # conflict_urls.add(conflict[0].url)
-            final_list.append(conflict[0])
+        conflict.sort(key=lambda x: x.time)
+        resolution = conflict.pop(0)
+        for con in conflict:
+            if resolution.path != con.path:
+                resolution._links.append(con)
 
-        else:
-            final_list.append(conflict[0])
+        final_list.append(resolution)
 
     return final_list
 

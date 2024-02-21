@@ -295,6 +295,9 @@ if not is_windows:
     if data is not None:
         _globs = globals()
         for k, v in data.items():
+            if k == "working_dir_location" and v.startswith("~/"):
+                v = os.path.expanduser(v)
+
             if k in _globs:
                 _globs[k] = v
 
@@ -346,9 +349,9 @@ enable_multithread = True
 global_vars = globals()
 
 testing_download_sizes = {
-    1: 1_000_000_000,  # Video
-    2: 2_500_000_000,  # Documents
-    3: 1_000_000_000,  # Extern
+    1: 200_000_000,  # Video
+    2: 250_000_000,  # Documents
+    3: 100_000_000,  # Extern
     4: 0,  # Corrupted
 }
 
@@ -372,6 +375,8 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
     "ext3": linux_forbidden_chars,
     "ext4": linux_forbidden_chars,
     "btrfs": linux_forbidden_chars,
+    "zfs": linux_forbidden_chars,
+    "xfs": linux_forbidden_chars,
 
     "exfat": {chr(item) for item in range(0, 0x1f + 1)} | linux_forbidden_chars,
 
@@ -386,16 +391,19 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
 
 # This is a constant to be overwritten for debugging purposes from the config file
 force_filesystem: Optional[str] = None
+fstype = None
 
 if _path in _mount_partitions:
-
     # If the path is mounted with windows names also forbid the windows chars
     if "windows_names" in _mount_partitions[_path].opts:
         forbidden_chars.update(windows_forbidden_chars)
 
     # Linux uses Filesystem in userspace and reports "fuseblk".
     if _mount_partitions[_path].fstype == "fuseblk":
-        fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
+        if force_filesystem is None and shutil.which("lsblk") is None:
+            print(f"{error_text} I could not find the `lsblk` binary in your PATH. Please install it or provide a filesystem in the config file.")
+        else:
+            fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
 
     else:
         fstype = _mount_partitions[_path].fstype
@@ -413,9 +421,8 @@ if _path in _mount_partitions:
         if _fs_forbidden_chars[fstype] == windows_forbidden_chars:
             replace_dot_at_end_of_dir_name = True
 
-else:
-    print(f"{error_text} your filesystem is very wierd. Falling back on os-dependant fstype!")
-
+# TODO: This currently breaks using live USBs as it is under `/iso`
+if fstype is None:
     # This should not happen
     if is_windows:
         fstype = "ntfs"
@@ -423,5 +430,7 @@ else:
         fstype = "apfs"
     else:
         fstype = "ext4"
+
+    print(f"{error_text} Could not detect filesystem! Falling back on os-dependant fstype: {fstype}!")
 
 # -/- Filesystem settings ---
