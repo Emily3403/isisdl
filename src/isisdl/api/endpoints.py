@@ -102,7 +102,7 @@ class AjaxAPIEndpoint(APIEndpoint):
                 return None
 
             try:
-                match x := await response.json():
+                match await response.json():
                     case {"error": _} | {"errorcode": _} | {"exception": _}:
                         return None
 
@@ -111,7 +111,6 @@ class AjaxAPIEndpoint(APIEndpoint):
 
             except JSONDecodeError:
                 return None
-
 
 
 class VideoListAPI(AjaxAPIEndpoint):

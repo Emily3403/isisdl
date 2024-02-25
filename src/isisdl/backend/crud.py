@@ -4,18 +4,30 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
+from isisdl.api.crud import authenticate_new_session
+from isisdl.api.endpoints import UserIDAPI
 from isisdl.backend.models import User, Config, generate_key
 from isisdl.db_conf import add_object_to_database
 from isisdl.settings import master_password, error_exit
 
 
-def store_user(db: DatabaseSession, username: str, password: str, user_id: int, password_to_encrypt: str | None, config: Config) -> User | None:
+async def store_user(db: DatabaseSession, config: Config, username: str, password: str,  password_to_encrypt: str | None = None, user_id: int | None = None) -> User | None:
     the_password_to_encrypt = password_to_encrypt if config.pw_encrypt_password else master_password
     if the_password_to_encrypt is None:
         return None
 
     key = generate_key(the_password_to_encrypt, config)
     encrypted_password = Fernet(key).encrypt(password.encode()).decode()
+
+    if user_id is None:
+        user = User(user_id=None, username=username, encrypted_password=encrypted_password)
+        session = await authenticate_new_session(user, config)
+        if session is None:
+            return None
+
+        user_id = await UserIDAPI.get(session)
+        if user_id is None:
+            return None
 
     return add_object_to_database(db, User(username=username, encrypted_password=encrypted_password, user_id=user_id))
 

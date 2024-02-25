@@ -38,7 +38,7 @@ def test_settings() -> None:
     assert password_hash_algorithm == SHA3_512
     assert 390_000 <= password_hash_iterations <= 1_000_000
     assert password_hash_length == 32
-    assert master_password == "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
+    assert master_password == "qhoRmVBeH4km7vx84WK5pPm7KC7HAxKtQnewt2DwhDckKPSEo1q8uiTu4dK5soGn"
 
     assert 30 <= status_progress_bar_resolution <= 60
     assert 8 <= download_progress_bar_resolution <= 12

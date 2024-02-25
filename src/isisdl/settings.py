@@ -163,7 +163,7 @@ password_hash_iterations = 420_000
 password_hash_length = 32
 
 # The password used to encrypt if no password is provided
-master_password = "eeb36e726e3ffec16da7798415bb4e531bf8a57fbe276fcc3fc6ea986cb02e9a"
+master_password = "qhoRmVBeH4km7vx84WK5pPm7KC7HAxKtQnewt2DwhDckKPSEo1q8uiTu4dK5soGn"
 
 # The length of the salt stored in the database
 random_salt_length = 64

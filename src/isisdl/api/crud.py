@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from base64 import standard_b64decode
-from datetime import datetime
 from html import unescape
 from typing import Any
 
@@ -85,21 +84,34 @@ def parse_courses_from_API(db: DatabaseSession, courses: list[dict[str, Any]], c
         {"preferred_name"}
     )
 
-def parse_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], config: Config) -> list[MediaURL] | None:
+
+def create_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], course_id: int) -> list[MediaURL] | None:
+    # Filter out duplicate videos
+    videos = list({video["url"]: video for video in videos}.values())
+
+    existing_videos = {it.url: it for it in read_media_urls(db) if it.media_type == MediaType.video}
+    videos = list(map(lambda it: it | {"course_id": course_id, "media_type": MediaType.video, "relative_path": "Videos", "size": None, "time_modified": None}, videos))
+
+    return add_or_update_objects_to_database(
+        db, existing_videos, videos, MediaURL, lambda video: video["url"],
+        {"url": "url", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path", "name": "collectionname", "size": "size", "time_created": "timecreated", "time_modified": "time_modified"},
+        {"time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None},
+    )
+
+
+def parse_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], config: Config) -> list[MediaURL]:
     if config.dl_download_videos is False:
         return []
 
-    vid = list(
-        flat_map(
-            lambda it: it.get("videos", [{}]) | {"courseid": it.get("courseid")},
-            map(lambda it: it.get("data", {}), videos)
+    return list(
+        filter(
+            lambda it: it is not None,
+            flat_map(
+                lambda data: create_videos_from_API(db, data.get("videos"), data.get("courseid")) or [],
+                map(lambda it: it.get("data", {}), videos)
+            )
         )
     )
-
-    existing_videos = {it.course_id: it for it in read_media_urls(db) if it.media_type == MediaType.video}
-
-
-    pass
 
 
 def read_courses(db: DatabaseSession) -> list[Course]:
