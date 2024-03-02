@@ -1,7 +1,0 @@
-*.build
-*.dist
-*.onefile-build
-isisdl-linux.bin
-isisdl-compress-linux.bin
-isisdl-sync-linux.bin
-isisdl-config-linux.bin

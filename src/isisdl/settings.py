@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.hashes import SHA3_512
 from psutil._common import sdiskpart
 from yaml import YAMLError, safe_load
 
-import isisdl.autorun
+import isisdl.frontend.autorun
 
 # --- Options for this executable ---
 
@@ -80,7 +80,7 @@ is_macos = platform.system() == "Darwin"
 has_ffmpeg = shutil.which("ffmpeg") is not None
 
 # Check if being automatically run
-is_autorun = sys.argv[0] == isisdl.autorun.__file__
+is_autorun = sys.argv[0] == isisdl.frontend.autorun.__file__
 
 # The location of the source code on disk
 source_code_location = Path(isisdl.__file__).parent
@@ -293,9 +293,8 @@ isis_ignore = re.compile(
 )
 # @formatter:on
 
-regex_is_isis_document = re.compile(
-    r".*isis\.tu-berlin\.de/(?:webservice/|)pluginfile\.php/.*"
-)
+regex_is_isis_document = re.compile(r".*isis\.tu-berlin\.de/(?:webservice/|)pluginfile\.php/.*", re.IGNORECASE)
+regex_is_isis_video = re.compile(r".*isis\.tu-berlin\.de/videoservice/file.php/.*", re.IGNORECASE)
 
 # @formatter:off
 extern_ignore = re.compile(

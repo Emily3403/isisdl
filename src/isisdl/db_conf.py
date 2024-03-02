@@ -45,7 +45,7 @@ class DatabaseObject:
 
 
 # This Callable can be used to create new Session objects for interacting with a database
-DatabaseSessionMaker = sessionmaker(autocommit=False, bind=database_engine)
+DatabaseSessionMaker = sessionmaker(bind=database_engine)
 DataBase: Type[DeclarativeMeta] = declarative_base(cls=DatabaseObject)
 DB_T = TypeVar("DB_T", bound=DatabaseObject)
 
@@ -122,29 +122,29 @@ def add_or_update_objects_to_database(
 
     all_objects: list[DB_T] = []
 
-    for dict_item in new_data:
-        maybe_item = existing_items.get(lookup_func(dict_item))
-
-        if maybe_item is None:
-            kwargs = {}
-            for db_type_attr, new_data_attr in attr_translator.items():
-                kwargs[db_type_attr] = translate_attribute(db_type_attr, new_data_attr, dict_item)
-
-            db_item = db_type(**kwargs)
-
-        else:
-            for db_type_attr, new_data_attr in attr_translator.items():
-                if attr_update_blacklist is not None and db_type_attr in attr_update_blacklist:
-                    continue
-
-                setattr(maybe_item, db_type_attr, translate_attribute(db_type_attr, new_data_attr, dict_item))
-
-            db_item = maybe_item
-
-        db.add(db_item)
-        all_objects.append(db_item)
-
     try:
+        for dict_item in new_data:
+            maybe_item = existing_items.get(lookup_func(dict_item))
+
+            if maybe_item is None:
+                kwargs = {}
+                for db_type_attr, new_data_attr in attr_translator.items():
+                    kwargs[db_type_attr] = translate_attribute(db_type_attr, new_data_attr, dict_item)
+
+                db_item = db_type(**kwargs)
+
+            else:
+                for db_type_attr, new_data_attr in attr_translator.items():
+                    if attr_update_blacklist is not None and db_type_attr in attr_update_blacklist:
+                        continue
+
+                    setattr(maybe_item, db_type_attr, translate_attribute(db_type_attr, new_data_attr, dict_item))
+
+                db_item = maybe_item
+
+            db.add(db_item)
+            all_objects.append(db_item)
+
         db.commit()
     except SQLAlchemyError as e:
         error(f"Merging into the database failed: \"{e}\"")

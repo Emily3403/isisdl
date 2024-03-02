@@ -26,12 +26,10 @@ from requests.exceptions import InvalidSchema
 
 from isisdl.backend.crypt import get_credentials
 from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperStatus
-from isisdl.settings import download_base_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, \
-    log_file_location, datetime_str, regex_is_isis_document, token_queue_bandwidths_save_for, download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc, \
-    checksum_algorithm
+from isisdl.settings import download_base_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_bandwidths_save_for, \
+    download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc, checksum_algorithm
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
-from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, DownloadThrottler, MediaType, HumanBytes, normalize_url, \
-    get_download_url_from_url
+from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, DownloadThrottler, MediaType, HumanBytes, get_download_url_from_url
 from isisdl.utils import calculate_local_checksum
 from isisdl.version import __version__
 

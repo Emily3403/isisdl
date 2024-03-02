@@ -10,8 +10,7 @@ from sqlite3 import Connection, Cursor
 from threading import Lock
 from typing import TYPE_CHECKING, cast, Set, Dict, List, Any, Union, DefaultDict, Iterable, Tuple
 
-from isisdl.settings import database_file_location, error_text, bad_url_cache_reeval_times_mul, bad_url_cache_reeval_exp, \
-    bad_url_cache_reeval_static_mul, random_salt_length
+from isisdl.settings import database_file_location, error_text, bad_url_cache_reeval_times_mul, bad_url_cache_reeval_exp, bad_url_cache_reeval_static_mul, random_salt_length
 
 if TYPE_CHECKING:
     from isisdl.backend.request_helper import MediaContainer

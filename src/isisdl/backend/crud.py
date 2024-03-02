@@ -11,7 +11,7 @@ from isisdl.db_conf import add_object_to_database
 from isisdl.settings import master_password, error_exit
 
 
-async def store_user(db: DatabaseSession, config: Config, username: str, password: str,  password_to_encrypt: str | None = None, user_id: int | None = None) -> User | None:
+async def store_user(db: DatabaseSession, config: Config, username: str, password: str, password_to_encrypt: str | None = None, user_id: int | None = None) -> User | None:
     the_password_to_encrypt = password_to_encrypt if config.pw_encrypt_password else master_password
     if the_password_to_encrypt is None:
         return None
@@ -45,5 +45,7 @@ def read_config(db: DatabaseSession) -> Config:
 
     if len(configs) != 1:
         error_exit(2, f"Could not load config! Got {len(configs)} config database entries, expected 1\nPlease make sure you have set the config with `isisdl --init`!")
+
+    # Now factor in the configuration file
 
     return configs[0]

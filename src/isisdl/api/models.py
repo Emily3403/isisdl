@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from types import TracebackType
-from typing import Any, Type
+from typing import Any, Type, TypedDict
 
 from aiohttp import ClientSession as InternetSession
 from aiohttp.client import _RequestContextManager
@@ -38,10 +38,31 @@ class MediaType(Enum):
     document = 1
     extern = 2
     video = 3
-    corrupted = 4
-    hardlink = 5
+
+    # TODO: Do I really need that big of a distinction?
+    corrupted_on_disk = 10
+    not_available = 11
+    not_available_for_legal_reasons = 12
+
+    hardlink = 20
+
+    def __gt__(self, other: MediaType) -> bool:
+        return self.value > other.value
 
 
+class NormalizedDocument(TypedDict):
+    url: str
+    course_id: int
+    media_type: MediaType
+    relative_path: str
+
+    name: str | None
+    size: int | None
+    time_created: int | None
+    time_modified: int | None
+
+
+# https://mypy.readthedocs.io/en/stable/literal_types.html#tagged-unions for size
 class MediaURL(DataBase):  # type:ignore[valid-type, misc]
     """
     This class is a glorified URL with some metadata associated with it.

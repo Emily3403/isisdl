@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from yaml import safe_load
 
-from isisdl.backend.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
+from isisdl.frontend.config import authentication_prompt, update_policy_prompt, whitelist_prompt, filename_prompt, throttler_prompt
 from isisdl.backend.crypt import decryptor
 from isisdl.settings import export_config_file_location, master_password, is_windows
 from isisdl.utils import config, export_config, startup

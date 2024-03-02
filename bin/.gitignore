@@ -1,0 +1,9 @@
+# compile-isisdl
+static-compile/*.build
+static-compile/*.dist
+static-compile/*.onefile-build
+static-compile/isisdl-linux.bin
+static-compile/isisdl-windows.exe
+
+# upload-PyPI
+build/
