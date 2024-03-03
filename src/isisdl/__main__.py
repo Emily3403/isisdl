@@ -6,11 +6,12 @@ import isisdl.frontend.compress as compress
 from isisdl.api.crud import authenticate_new_session
 from isisdl.api.download import download_media_urls, gather_media_urls
 from isisdl.api.endpoints import UserCourseListAPI
-from isisdl.frontend import sync_database
-from isisdl.frontend.config import init_wizard, config_wizard
 from isisdl.backend.crud import read_config, read_user
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.db_conf import init_database, DatabaseSessionMaker
+from isisdl.frontend import sync_database
+from isisdl.frontend.config import init_wizard, config_wizard
+from isisdl.frontend.new_ui import main_with_new_ui
 from isisdl.settings import is_first_time, is_static, forbidden_chars, has_ffmpeg, fstype, is_windows, working_dir_location, python_executable, is_macos, is_online
 from isisdl.utils import args, acquire_file_lock_or_exit, generate_error_message, install_latest_version, export_config, database_helper, config, migrate_database, Config, compare_download_diff
 from isisdl.version import __version__
@@ -33,6 +34,7 @@ database_version = {Config.default("database_version")}
 
 
 async def _new_main() -> None:
+    await asyncio.sleep(6000000)
     with DatabaseSessionMaker() as db:
         config = read_config(db)
         user = read_user(db)
@@ -119,7 +121,10 @@ Please press enter to continue.
         print("I cannot establish an internet connection.")
         sys.exit(1)
 
-    asyncio.run(_new_main())
+    if args.new_ui:
+        main_with_new_ui()
+    else:
+        asyncio.run(_new_main())
 
     install_latest_version()
 

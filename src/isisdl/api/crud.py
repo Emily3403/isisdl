@@ -207,7 +207,7 @@ def resolve_duplicates(files: list[NormalizedDocument]) -> NormalizedDocument:
     if len(files) == 1:
         return files[0]
 
-    def resolve_conflict(attr: Literal["url"] | Literal["course_id"] | Literal["media_type"] | Literal["relative_path"] | Literal["name"] | Literal["size"] | Literal["time_created"] | Literal["time_modified"]) -> Any:
+    def resolve_conflict(attr: Literal["url", "course_id", "media_type", "relative_path", "name", "size", "time_created", "time_modified"]) -> Any:
         conflicting_attrs = sorted({it for file in files if (it := file[attr]) is not None})
         if len(conflicting_attrs) == 0:
             return None
