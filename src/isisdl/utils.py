@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import colorama
+import distro as distro
 import enum
 import json
 import os
 import platform
 import random
 import re
+import requests
 import shutil
 import signal
 import stat
@@ -22,20 +25,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
 from itertools import repeat
+from packaging import version
+from packaging.version import Version
 from pathlib import Path
 from queue import PriorityQueue, Queue, Full, Empty
+from requests import Session
 from tempfile import TemporaryDirectory
 from threading import Thread
 from typing import Callable, List, Tuple, Dict, Any, Set, cast, Iterable, NoReturn, TYPE_CHECKING, DefaultDict
 from typing import Optional, Union
 from urllib.parse import unquote, parse_qs, urlparse
-
-import colorama
-import distro as distro
-import requests
-from packaging import version
-from packaging.version import Version
-from requests import Session
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
@@ -254,9 +253,9 @@ def encode_yaml(st: Union[bool, str, int, None, Dict[int, str]]) -> str:
 
 
 def generate_config_str(
-        working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
-        throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
-        status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: Optional[str], make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
+    working_dir_location: str, database_file_location: str, master_password: str, filename_replacing: bool, download_videos: bool, whitelist: Optional[List[int]], blacklist: Optional[List[int]],
+    throttle_rate: Optional[int], throttle_rate_autorun: Optional[int], update_policy: Optional[str], telemetry_policy: bool, status_time: float, video_size_discover_num_threads: int,
+    status_progress_bar_resolution: int, download_progress_bar_resolution: int, force_filesystem: Optional[str], make_subdirs: bool, follow_links: bool, absolute_path_filename: bool
 ) -> str:
     return f"""---
 
@@ -446,7 +445,9 @@ def startup() -> None:
         if shutil.which("bash") is not None:
             final_path = f"{user_dir}/.local/share/bash-completion/completions"
             os.makedirs(final_path, exist_ok=True)
-            shutil.copy(source_code_location.joinpath("resources", "completions", "zsh", "_isisdl"), final_path)
+            completion_source = source_code_location.joinpath("resources", "completions", "zsh", "_isisdl")
+            if completion_source.exists():
+                shutil.copy(completion_source, final_path)
 
 
 def clear() -> None:
@@ -1509,6 +1510,7 @@ if is_first_time:
     if is_autorun:
         os._exit(1)
 
+created_lock_file = False
 colorama.init()
 startup()
 OnKill()
@@ -1517,6 +1519,5 @@ args = get_args()
 database_helper = DatabaseHelper()
 bad_urls = database_helper.get_bad_urls()
 config = Config()
-created_lock_file = False
 
 logger = DataLogger()
