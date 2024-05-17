@@ -435,6 +435,10 @@ def startup() -> None:
             completion_source = source_code_location.joinpath("resources", "completions", "zsh", "_isisdl")
             if completion_source.exists():
                 shutil.copy(completion_source, final_path)
+                os.chmod(
+                    os.path.join(final_path, "_isisdl"),
+                    stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH,
+                )
 
             # TODO: Also tag this file as autoloadable
 
@@ -448,6 +452,10 @@ def startup() -> None:
             completion_source = source_code_location.joinpath("resources", "completions", "zsh", "_isisdl")
             if completion_source.exists():
                 shutil.copy(completion_source, final_path)
+                os.chmod(
+                    os.path.join(final_path, "_isisdl"),
+                    stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH,
+                )
 
 
 def clear() -> None:
