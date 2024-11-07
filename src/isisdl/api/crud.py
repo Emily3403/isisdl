@@ -1,26 +1,32 @@
 from __future__ import annotations
 
+import asyncio
 import re
+from asyncio import Event
 from base64 import standard_b64decode
 from collections import defaultdict
+from datetime import datetime
 from html import unescape
 from itertools import chain
-from typing import Any, Literal, cast, DefaultDict
+from typing import Any, Literal, cast, DefaultDict, Iterable
 
-from aiohttp import ClientSession as InternetSession
+import aiofiles
+import aiofiles.os
+from aiohttp import ClientSession as InternetSession, TCPConnector, ClientConnectorSSLError, ClientConnectorCertificateError, ClientSSLError, ClientConnectorError
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.models import AuthenticatedSession, Course, MediaURL, MediaType, NormalizedDocument
+from isisdl.api.models import AuthenticatedSession, Course, MediaURL, MediaType, NormalizedDocument, TempFile, BadURL, MediaContainer, Error
+from isisdl.api.rate_limiter import RateLimiter, ThrottleType
 from isisdl.backend.models import User, Config
-from isisdl.db_conf import add_or_update_objects_to_database
-from isisdl.settings import url_finder, isis_ignore, extern_ignore, regex_is_isis_document, regex_is_isis_video
-from isisdl.utils import datetime_fromtimestamp_with_None, flat_map
+from isisdl.db_conf import add_or_update_objects_to_database, add_object_to_database
+from isisdl.settings import url_finder, isis_ignore, extern_ignore, regex_is_isis_document, regex_is_isis_video, connection_pool_limit, download_chunk_size, DEBUG_ASSERTS, logger
+from isisdl.utils import datetime_fromtimestamp_with_None, flat_map, get_download_url_from_url
 from isisdl.version import __version__
 
 
 async def authenticate_new_session(user: User, config: Config) -> AuthenticatedSession | None:
-    session = InternetSession(headers={"User-Agent": f"isisdl (Python aiohttp) version {__version__}"})
+    session = InternetSession(headers={"User-Agent": f"isisdl (Python aiohttp) version {__version__}"}, connector=TCPConnector(limit=connection_pool_limit))
 
     # First step of authenticating
     await session.get("https://isis.tu-berlin.de/auth/shibboleth/index.php")
@@ -80,6 +86,23 @@ async def authenticate_new_session(user: User, config: Config) -> AuthenticatedS
 
 def read_courses(db: DatabaseSession) -> list[Course]:
     return list(db.execute(select(Course)).scalars().all())
+
+
+def sort_courses(courses: Iterable[Course]) -> list[Course]:
+    """
+    Sort courses based on time_of_last_access if it is not None,
+    otherwise, sort based on time_of_last_modification if it is not None,
+    otherwise, sort based on time_of_start if it is not None,
+    otherwise, sort based on time_of_end if it is not None,
+    """
+    earliest = datetime.fromtimestamp(0)
+
+    return sorted(courses, key=lambda course: (
+        course.time_of_last_access or earliest,
+        course.time_of_last_modification or earliest,
+        course.time_of_start or earliest,
+        course.time_of_end or earliest
+    ), reverse=True)
 
 
 def parse_courses_from_API(db: DatabaseSession, courses: list[dict[str, Any]], config: Config) -> list[Course] | None:
@@ -258,3 +281,115 @@ def parse_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], con
             )
         )
     )
+
+
+# --- Bad URLs ---
+
+def read_bad_urls(db: DatabaseSession) -> dict[tuple[str, int], BadURL]:
+    return {(it.url, it.course_id): it for it in db.execute(select(BadURL)).scalars().all()}
+
+
+def filter_bad_urls(db: DatabaseSession, urls: list[MediaURL]) -> list[MediaURL]:
+    bad_urls = read_bad_urls(db)
+
+    good_urls = []
+    for url in urls:
+        bad_url = bad_urls.get((url.url, url.course_id))
+        if bad_url is None or bad_url.should_retry():
+            good_urls.append(url)
+
+    return good_urls
+
+
+def create_bad_url(db: DatabaseSession, url: MediaURL) -> BadURL | None:
+    # TODO
+    pass
+
+
+# --- Temp Files ---
+
+def read_temp_files(db: DatabaseSession) -> dict[int, dict[str, MediaURL]]:
+    final: DefaultDict[int, dict[str, MediaURL]] = defaultdict(dict)
+    for it in db.execute(select(MediaURL)).scalars().all():
+        final[it.course_id][it.url] = it
+
+    return dict(final)
+
+
+async def download_media_url_to_temp_file(db: DatabaseSession, session: AuthenticatedSession, rate_limiter: RateLimiter, url: MediaURL, course: Course, stop: Event, priority: int, config: Config, extra_args: dict[str, Any] | None = None) -> TempFile | BadURL | None:
+    if stop.is_set():
+        return None
+
+    try:
+        temp_file = await create_temp_file(db, session, url, course)
+        if temp_file is None:
+            return None  # TODO
+
+        path = temp_file.path(config)
+        extra_args = extra_args or {}
+
+        await aiofiles.os.makedirs(path.parent, exist_ok=True)
+        await rate_limiter.register_url(course, temp_file.throttle_type)
+
+        print(f"Writing {path}")
+
+        async with aiofiles.open(path, "wb") as f, session.get(temp_file.download_url, **(extra_args | {"params": {"token": session.api_token}})) as response:
+            if isinstance(response, Error) or response.status != 200:
+                return create_bad_url(db, url)
+
+            chunked_response = response.content.iter_chunked(download_chunk_size)
+
+            while True:
+                if stop.is_set():
+                    return None
+
+                token = await rate_limiter.get(temp_file.throttle_type)
+                if token is None:
+                    continue
+
+                try:
+                    chunk = await anext(chunked_response)
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    await asyncio.sleep(0.5)
+                    continue
+
+                if DEBUG_ASSERTS:
+                    assert len(chunk) <= token.num_bytes
+
+                await f.write(chunk)
+                rate_limiter.return_token(token)
+
+            rate_limiter.complete_url(course, temp_file.throttle_type)
+
+        print(f"Finished! {path}")
+        return temp_file
+
+    except (ClientSSLError, ClientConnectorSSLError, ClientConnectorError, ClientConnectorCertificateError) as ex:
+        logger.error(f"SSL Error downloading {url.url}: {type(ex)} {ex}")
+
+        # TODO: Won't this crash eventually?
+        # return await download_temp_file(db, session, rate_limiter, url, course, stop, priority, config, {})
+
+    except Exception as ex:
+        logger.error(f"Error downloading {url.url}: {type(ex)} {ex}")
+        raise
+
+    # TODO: What does this mean?
+    return None
+
+
+async def create_temp_file(db: DatabaseSession, session: AuthenticatedSession, url: MediaURL, course: Course) -> TempFile | None:
+    return add_object_to_database(db, TempFile(
+        course=course,
+        url=url.url,
+        download_url=await get_download_url_from_url(db, session, url) or url.url,
+        throttle_type=ThrottleType.from_media_type(url.media_type),
+    ))
+
+
+# --- MediaContainers ---
+
+def create_media_containers_from_temp_files(db: DatabaseSession, temp_files: list[TempFile]) -> list[MediaContainer] | None:
+    return None

@@ -4,6 +4,7 @@ from asyncio import Condition, get_event_loop
 
 import pytest
 
+from isisdl.api.models import Course
 from isisdl.api.rate_limiter import RateLimiter, ThrottleType, ThrottleDict
 from isisdl.settings import token_queue_refresh_rate, debug_cycle_time_deviation_allowed, token_queue_bandwidths_save_for, is_windows
 
@@ -47,46 +48,59 @@ def num_tokens_should_be_able_to_obtain(limiter: RateLimiter, media_types: list[
     return sum(limiter.buffer_sizes[it] for it in media_types) * limiter.calculate_max_num_tokens()
 
 
+course = Course(
+    id=0,
+
+    preferred_name="Hi",
+    short_name="Test",
+    full_name="More Test",
+
+    number_users=42,
+    is_favorite=True,
+)
+
+
 @pytest.mark.asyncio
 async def test_rate_limiter_buffer_sizes_work() -> None:
     the_rate = 10
     limiter = RateLimiter(the_rate, _condition=Condition())
+
     max_num_tokens = limiter.calculate_max_num_tokens()
 
     # When no ThrottleType is registered, all tokens should be obtainable from `ThrottleType.free_for_all`
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.free_for_all]) == max_num_tokens
 
     # Now, only 1 extern ThrottleType is waiting. It should have full priority.
-    limiter.register(ThrottleType.extern)
+    await limiter.register_url(course, ThrottleType.extern)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) == max_num_tokens
 
     for _ in range(10):
-        limiter.register(ThrottleType.extern)
+        await limiter.register_url(course, ThrottleType.extern)
         assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) == max_num_tokens
 
-    limiter.register(ThrottleType.document)
+    await limiter.register_url(course, ThrottleType.document)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.document, ThrottleType.extern]) == max_num_tokens
 
-    limiter.register(ThrottleType.video)
+    await limiter.register_url(course, ThrottleType.video)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern, ThrottleType.document]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern, ThrottleType.document, ThrottleType.video]) == max_num_tokens
 
-    limiter.register(ThrottleType.free_for_all)
+    await limiter.register_url(course, ThrottleType.free_for_all)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern, ThrottleType.document]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern, ThrottleType.document, ThrottleType.video]) == max_num_tokens
 
-    limiter.completed(ThrottleType.video)
+    limiter.complete_url(course, ThrottleType.video)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) != max_num_tokens
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern, ThrottleType.document]) == max_num_tokens
 
-    limiter.completed(ThrottleType.document)
+    limiter.complete_url(course, ThrottleType.document)
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.extern]) == max_num_tokens
 
     for _ in range(11):
-        limiter.completed(ThrottleType.extern)
+        limiter.complete_url(course, ThrottleType.extern)
 
     assert num_tokens_should_be_able_to_obtain(limiter, [ThrottleType.free_for_all]) == max_num_tokens
 
@@ -140,7 +154,7 @@ async def test_rate_limiter_no_limit() -> None:
         await wait_for_limiter_refill(limiter)
         assert_limiter_state()
 
-        limiter.register(ThrottleType.extern)
+        await limiter.register_url(course, ThrottleType.extern)
         await consume_tokens(limiter, num_tokens_to_consume)
         assert_limiter_state()
 
@@ -190,6 +204,7 @@ async def test_rate_limiter_with_bandwidth() -> None:
     async def consumer() -> None:
         while True:
             token = await limiter.get(ThrottleType.free_for_all)
+            assert token is not None
             limiter.return_token(token)
 
     task = asyncio.create_task(consumer())

@@ -29,7 +29,7 @@ from isisdl.backend.status import StatusOptions, DownloadStatus, RequestHelperSt
 from isisdl.settings import download_base_timeout, download_timeout_multiplier, download_static_sleep_time, num_tries_download, status_time, perc_diff_for_checksum, error_text, extern_ignore, log_file_location, datetime_str, regex_is_isis_document, token_queue_bandwidths_save_for, \
     download_chunk_size, download_progress_bar_resolution, bandwidth_download_files_mavg_perc, checksum_algorithm
 from isisdl.settings import enable_multithread, discover_num_threads, is_windows, is_macos, is_testing, testing_bad_urls, url_finder, isis_ignore
-from isisdl.utils import User, path, sanitize_name, args, on_kill, database_helper, config, generate_error_message, logger, DownloadThrottler, MediaType, HumanBytes, get_download_url_from_url
+from isisdl.utils import User, path, sanitize_path, args, on_kill, database_helper, config, generate_error_message, data_logger, DownloadThrottler, MediaType, HumanBytes, get_download_url_from_url
 from isisdl.utils import calculate_local_checksum
 from isisdl.version import __version__
 
@@ -217,7 +217,7 @@ class PreMediaContainer:
         self.course = course
         self.media_type = media_type
         self.is_cached = not (database_helper.know_url(url, course.course_id) is True)
-        self.parent_path = course.path(sanitize_name(relative_location, True))
+        self.parent_path = course.path(sanitize_path(relative_location, True))
         self.parent_path.mkdir(exist_ok=True)
 
     def __str__(self) -> str:
@@ -385,18 +385,18 @@ class MediaContainer:
         return self
 
     def string_dump(self) -> str:
-        return f"Name: {sanitize_name(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size.val)}\n" \
+        return f"Name: {sanitize_path(self._name, False)!r}\nCourse: {self.course!r}\nSize: {HumanBytes.format_str(self.size.val)}\n" \
                f"Time: {datetime.fromtimestamp(self.time or -1).strftime(datetime_str)}\nIs downloaded: {self.checksum is not None}\nPath: {self.path}\n"
 
     @property
     def path(self) -> Path:
-        return self.course.path(self.media_type.dir_name, sanitize_name(self._name, False))
+        return self.course.path(self.media_type.dir_name, sanitize_path(self._name, False))
 
     def __str__(self) -> str:
         if config.absolute_path_filename:
             return str(self.path)
 
-        return sanitize_name(self._name, False)
+        return sanitize_path(self._name, False)
 
     def render_progress_bar(self) -> str:
         if self.size != MediaContainerSize.in_bytes or self.size.val in {0, -1, None}:
@@ -619,7 +619,7 @@ class Course:
         else:
             name = config.renamed_courses.get(id, "") or _name
 
-        obj = cls(sanitize_name(displayname, True), _name, sanitize_name(name, True), id)
+        obj = cls(sanitize_path(displayname, True), _name, sanitize_path(name, True), id)
         obj.make_directories()
 
         return obj
@@ -664,11 +664,11 @@ class Course:
                 is_no_download = re.match(".*mod/(?:folder|resource|url)/.*", url) is None
                 if is_no_download:
                     # No blacklist match
-                    logger.assert_fail(f"""re.match(".*mod/(?:folder|resource|url)/.*", url) is None\n\nCurrent url: {url}""")
+                    data_logger.assert_fail(f"""re.match(".*mod/(?:folder|resource|url)/.*", url) is None\n\nCurrent url: {url}""")
 
                 if "contents" not in module and is_no_download:
                     # Probably the black/white- list didn't match.
-                    logger.assert_fail(f'"contents not in file\n\nCurrent url: {url}')
+                    data_logger.assert_fail(f'"contents not in file\n\nCurrent url: {url}')
                     continue
 
                 if "contents" in module:
@@ -700,7 +700,7 @@ class Course:
 
     def path(self, *args: str) -> Path:
         # Custom path function that prepends the args with the course name.
-        return path(sanitize_name(self.name, True), *args)
+        return path(sanitize_path(self.name, True), *args)
 
     @property
     def ok(self) -> bool:
@@ -1099,7 +1099,7 @@ class CourseDownloader:
         conf = config.to_dict()
         del conf["password"]
 
-        logger.post({
+        data_logger.post({
             "num_g_files": len(containers),
             "num_c_files": len(containers),
             "course_ids": sorted([course.course_id for course in helper._courses]),
@@ -1112,7 +1112,7 @@ class CourseDownloader:
                 item._done = True
 
             if not (config.telemetry_policy is False or is_testing):
-                logger.done.get()
+                data_logger.done.get()
 
             self.message_what_did_i_do(containers)
             return

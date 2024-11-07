@@ -5,11 +5,11 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from distutils.version import Version
 from typing import List, Union, Dict, Any, Set, DefaultDict, Tuple
 
 import matplotlib.pyplot as plt
 from distlib.version import LegacyVersion
+from distutils.version import Version
 
 from isisdl.server.server_settings import server_path, log_dir_location, log_type, log_dir_version, graph_dir_location
 

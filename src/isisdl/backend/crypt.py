@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from isisdl.settings import password_hash_algorithm, password_hash_length, password_hash_iterations, env_var_name_username, env_var_name_password, is_autorun, master_password, error_text
-from isisdl.utils import User, config, logger, database_helper
+from isisdl.utils import User, config, data_logger, database_helper
 
 # TODO: Also make the caching work for when the password is entered manually
 last_password: Optional[str] = None
@@ -69,7 +69,7 @@ def get_credentials(alternative_master_passwords: Optional[List[str]] = None) ->
         print("Please provide authentication for ISIS.")
         username = input("Username: ")
         password = getpass.getpass("Password: ")
-        logger.set_username(username)
+        data_logger.set_username(username)
 
         return User(username, password)
 

@@ -22,9 +22,9 @@ import traceback
 from asyncio import get_event_loop, AbstractEventLoop
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
 from datetime import datetime
 from functools import wraps
+from html import unescape
 from itertools import repeat
 from math import isclose
 from pathlib import Path
@@ -40,6 +40,7 @@ import requests
 from packaging import version
 from packaging.version import Version
 from requests import Session
+from sqlalchemy.orm import Session as DatabaseSession
 
 from isisdl import settings
 from isisdl.backend.database_helper import DatabaseHelper
@@ -51,7 +52,9 @@ from isisdl.version import __version__
 
 if TYPE_CHECKING:
     from isisdl.backend.status import Status
-    from isisdl.backend.request_helper import RequestHelper, SessionWithKey
+    from isisdl.backend.models import Config as NewConfig
+    from isisdl.backend.request_helper import RequestHelper
+    from isisdl.api.models import AuthenticatedSession, MediaURL
 
 
 def get_args() -> argparse.Namespace:
@@ -587,8 +590,10 @@ def get_url_from_gdrive_confirmation(contents: str) -> str | None:
     return url
 
 
-def get_download_url_from_url(url: str, session: SessionWithKey) -> str | None:
-    # TODO: Verify all stuff works
+async def get_download_url_from_url(db: DatabaseSession, session: AuthenticatedSession, media_url: MediaURL) -> str | None:
+    from isisdl.api.crud import create_bad_url
+
+    url = media_url.url
     hostname = urlparse(url).hostname
 
     if "tu-berlin.hosted.exlibrisgroup.com" == hostname:
@@ -597,33 +602,32 @@ def get_download_url_from_url(url: str, session: SessionWithKey) -> str | None:
     elif "drive.google.com" == hostname:
         drive_id = parse_google_drive_url(url)
         if drive_id is None:
-            database_helper.add_bad_url(url)
+            create_bad_url(db, media_url)
             return None
 
         confirm_url = f"https://drive.google.com/uc?id={drive_id}"
+        _ = confirm_url
 
-        with ExitStack() as defer:
-            con = session.get_(confirm_url, stream=True)
-
-            if con is None:
-                database_helper.add_bad_url(url)
-                return None
-
-            defer.callback(con.close)
-
-            if "Content-Disposition" in con.headers:
-                # This is the file
-                return confirm_url
-
-            else:
-                # Confirm google drive
-                _url = get_url_from_gdrive_confirmation(con.text)
-
-                if _url is None:
-                    database_helper.add_bad_url(url)
-                    return None
-
-                return _url
+        # TODO: This needs fixing
+        # con = session.get(confirm_url)
+        # if isinstance(con, Error):
+        #     create_bad_url(db, media_url)
+        #     return None
+        #
+        # if "Content-Disposition" in con.headers:
+        #     # This is the file
+        #     return confirm_url
+        #
+        # else:
+        #     # Confirm google drive
+        #     txt = await con.text()
+        #     _url = get_url_from_gdrive_confirmation(txt)
+        #
+        #     if _url is None:
+        #         create_bad_url(db, media_url)
+        #         return None
+        #
+        #     return _url
 
     elif "tubcloud.tu-berlin.de" == hostname:
         if url.endswith("/download"):
@@ -694,7 +698,7 @@ def is_h265(file: Path) -> bool | None:
         return None
 
     if "codec_name" not in video_stream:
-        logger.assert_fail('"codec_name" not in video_stream')
+        data_logger.assert_fail('"codec_name" not in video_stream')
         return None
 
     return bool(video_stream["codec_name"] == "hevc")
@@ -884,33 +888,35 @@ WantedBy=timers.target
 
 # TODO: Try to limit test this function with the test courses. What about emojis in course names? Slashes? Backslashes? So many ideas :D
 # TODO: Profile this and see how memory and time intensive it is
-def sanitize_name(name: str, is_dir: bool) -> str:
-    # Remove unnecessary whitespace
-    name = name.strip()
-    name = unquote(name)
+def sanitize_path(path: str, is_dir: bool, config: NewConfig) -> str:
+    # Remove and replace unnecessary chars
+    path = unescape(unquote(path.strip()))
 
     # First replace umlaute
     for a, b in {"ä": "a", "ö": "o", "ü": "u"}.items():
-        name = name.replace(a, b).replace(a.upper(), b.upper())
+        path = path.replace(a, b).replace(a.upper(), b.upper())
 
     # Now replace any remaining funny symbols with a `?`
-    name = name.encode("ascii", errors="replace").decode()
+    path = path.encode("ascii", errors="replace").decode()
 
-    if config.filename_replacing:
+    if config.fs_sanitize_filenames:
         char_string = r"""!"#$%&'()*+,/:;<=>?@[\]^`{|}~"""
-        name = name.translate(str.maketrans(char_string, "\0" * len(char_string)))
+        path = path.translate(str.maketrans(char_string, "\0" * len(char_string)))
+    else:
+        # Replace / with | to preserve separators such as WiSe 23/24 → 23|24, if they still exist
+        path = path.replace("/", "|")
 
     # This is probably a suboptimal solution, but it works…
-    str_list = list(name)
+    str_list = list(path)
     final = []
 
-    # TODO: Split this into two steps:
+    # TODO: Split this into multiple steps:
     #  1. General replacing such as NULL bytes or slashes
     #  2. OS-Specific replacement
     #  3. Replace chars with "safe" versions if the user has configured it
     #  4. Length constraint
 
-    if config.filename_replacing:
+    if not config.fs_sanitize_filenames:
         final = str_list
 
     else:
@@ -1644,4 +1650,4 @@ database_helper = DatabaseHelper()
 config = Config()
 created_lock_file = False
 
-logger = DataLogger()
+data_logger = DataLogger()

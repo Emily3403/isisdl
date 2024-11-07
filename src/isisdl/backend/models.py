@@ -3,14 +3,13 @@ from __future__ import annotations
 import base64
 import random
 import string
-from datetime import datetime
 from enum import Enum
 from functools import cache
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from sqlalchemy import Text, String, Enum as SQLEnum
+from sqlalchemy import Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from isisdl.db_conf import DataBase
@@ -59,14 +58,6 @@ class Config(DataBase):  # type:ignore[valid-type, misc]
 
     def to_tuple(self) -> tuple[tuple[str, Any], ...]:
         return tuple((k, v) for k, v in self.__dict__.items() if not k.startswith("_sa"))
-
-
-class BadUrl(DataBase):  # type:ignore[valid-type, misc]
-    __tablename__ = "bad_urls"
-
-    url: Mapped[str] = mapped_column(String(420), primary_key=True)
-    last_checked: Mapped[datetime] = mapped_column()
-    times_checked: Mapped[int] = mapped_column()
 
 
 class User(DataBase):  # type:ignore[valid-type, misc]

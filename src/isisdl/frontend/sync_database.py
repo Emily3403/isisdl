@@ -16,7 +16,7 @@ from isisdl.backend.crypt import get_credentials
 from isisdl.backend.request_helper import RequestHelper, MediaContainer
 from isisdl.backend.status import RequestHelperStatus, Status
 from isisdl.settings import database_file_location, lock_file_location, enable_multithread, log_file_location
-from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_name, do_ffprobe, get_input, MediaType, HumanBytes
+from isisdl.utils import path, calculate_local_checksum, database_helper, sanitize_path, do_ffprobe, get_input, MediaType, HumanBytes
 
 _checksum_cache: Dict[Path, str] = {}
 
@@ -118,7 +118,7 @@ def restore_file(
             possible = possible_files[0]
         else:
             # If there are multiple use the file name as a last resort to differentiate them
-            possible = next((item for item in possible_files if sanitize_name(item._name, False) == file.name), None)
+            possible = next((item for item in possible_files if sanitize_path(item._name, False) == file.name), None)
 
         if possible is not None and possible.size == file_size:
             # possible.path = file

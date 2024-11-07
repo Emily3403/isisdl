@@ -11,7 +11,7 @@ from isisdl.db_conf import add_object_to_database
 from isisdl.settings import master_password, error_exit
 
 
-async def store_user(db: DatabaseSession, config: Config, username: str, password: str, password_to_encrypt: str | None = None, user_id: int | None = None) -> User | None:
+async def create_user(db: DatabaseSession, config: Config, username: str, password: str, password_to_encrypt: str | None = None, user_id: int | None = None) -> User | None:
     the_password_to_encrypt = password_to_encrypt if config.pw_encrypt_password else master_password
     if the_password_to_encrypt is None:
         return None

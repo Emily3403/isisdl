@@ -11,7 +11,7 @@ from isisdl.backend.crypt import get_credentials, store_user
 from isisdl.backend.request_helper import RequestHelper, SessionWithKey
 from isisdl.settings import is_online, error_text, forbidden_chars
 from isisdl.settings import is_windows, systemd_timer_file_location, working_dir_location, is_static
-from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, logger, install_systemd_timer, database_helper, sanitize_name
+from isisdl.utils import get_input, User, clear, config, on_kill, remove_systemd_timer, data_logger, install_systemd_timer, database_helper, sanitize_path
 
 was_in_configuration = False
 
@@ -258,7 +258,7 @@ If you do have systemd installed, please submit a bug-report at
 https://github.com/Emily3403/isisdl/issues
 
 Press enter to continue.""")
-        logger.assert_fail("Systemd not installed")
+        data_logger.assert_fail("Systemd not installed")
         input()
         return
 
@@ -670,9 +670,9 @@ def full_filename_prompt() -> None:
 
 For example:
 
-`{'/'.join(sanitize_name(item, False) for item in Path('/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf').parts)}`
+`{'/'.join(sanitize_path(item, False) for item in Path('/home/emily/isisdl/[SoSe 2021] CSC/Week 8-1.pdf').parts)}`
 vs
-`{sanitize_name('Week 8-1.pdf', False)}`
+`{sanitize_path('Week 8-1.pdf', False)}`
 """)
     bool_prompt("absolute_path_filename")
 

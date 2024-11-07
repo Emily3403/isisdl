@@ -2,6 +2,7 @@
 # Don't overwrite any settings since you will have to manually edit this file everytime.
 # Use the config file feature instead.
 
+import logging.config
 import os
 import platform
 import re
@@ -28,15 +29,14 @@ working_dir_location = os.path.join(os.path.expanduser("~"), "isisdl")
 
 intern_dir_location = ".intern"
 
-# The name of the SQLite Database
-database_file_location = os.path.join(intern_dir_location, ".state.db")
-
+database_file_location = os.path.join(intern_dir_location, "state.db")
+temp_file_location = os.path.join(intern_dir_location, "temp_courses")
 log_file_location = os.path.join(intern_dir_location, "isisdl.log")
 
 datetime_str = "%Y-%m-%d %H:%M:%S"
 
 # Settings for the lock
-lock_file_location = os.path.join(intern_dir_location, ".lock")
+lock_file_location = os.path.join(intern_dir_location, "isisdl.lock")
 enable_lock = False
 
 # Options for the `--subscribe` feature
@@ -51,7 +51,7 @@ course_ids_cant_unsub_from = {
 }
 
 # Settings for errors
-error_directory_location = os.path.join(intern_dir_location, ".errors")
+error_directory_location = os.path.join(intern_dir_location, "errors")
 error_text = "\033[1;91mError:\033[0m"
 
 
@@ -122,15 +122,54 @@ bad_url_cache_reeval_times_mul = 5
 bad_url_cache_reeval_exp = 3
 bad_url_cache_reeval_static_mul = 60
 
+# Logging
+logger_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    "formatters": {
+        "simple": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+
+    "loggers": {
+        "root": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "shila-lager": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+    },
+}
+
+logging.config.dictConfig(logger_config)
+logger = logging.getLogger("isisdl")
+
 # -/- Options for this executable ---
 
 # --- Database Configuration ---
 
 database_url_location = os.path.join(config_dir_location, "database_url")
-fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
+fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, 'new_state.db')}"
 # "postgresql+psycopg2://isisdl:isisdl@localhost:5432/isisdl"
 # "mariadb+mariadbconnector://isisdl:isisdl@localhost:3306/isisdl_prod"
-# f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
+# f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, 'new_state.db')}"
 
 database_connect_args = {"check_same_thread": False}
 
@@ -157,7 +196,7 @@ perc_diff_for_checksum = 0.1  # 10% ± is allowed
 
 # --- Password options ---
 
-# This is what Django recommends as of January 2021
+# TODO: Think about replacing SHA3 with Argon2id
 password_hash_algorithm = SHA3_512
 password_hash_iterations = 420_000
 password_hash_length = 32
@@ -196,6 +235,9 @@ status_time = 0.2 if not is_windows else 0.75
 # Chunks of this size are read and saved to file.
 download_chunk_size = 2 ** 16
 
+# Limit the size of the connection pool
+connection_pool_limit = 16  # TODO: Test different values
+
 # Number of threads to discover download urls.
 discover_num_threads = 32
 
@@ -204,7 +246,7 @@ discover_num_threads = 32
 for i in range(num_tries_download):
     download_timeout + download_timeout_multiplier ** (1.7 * i)
 """
-num_tries_download = 3
+num_tries_download = 2
 download_base_timeout = 5
 download_timeout_multiplier = 2
 
@@ -216,12 +258,15 @@ bandwidth_mavg_perc = 0.2
 
 bandwidth_download_files_mavg_perc = 0.6
 
+# Should an invalid SSL (HTTPS) certificate be ignored?
+download_ignore_bad_certificate = True
+
 # -/- Download options ---
 
 
 # --- Throttler options ---
 # DownloadThrottler refresh rate in s
-token_queue_refresh_rate = 0.1
+token_queue_refresh_rate = 0.01
 
 # Collect the amount of handed out tokens in the last ↓ secs for measuring the bandwidth
 token_queue_bandwidths_save_for = 3
@@ -262,7 +307,7 @@ systemd_service_file_location = os.path.join(systemd_dir_location, "isisdl.servi
 # --- Regex stuff ---
 
 # Finds all urls in a given piece of text. Copied from https://gist.github.com/gruber/8891611
-_url_finder = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%])|[a-z0-9.\-]+[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)/)(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""  # noqa
+_url_finder = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%]))(?:[^\s()<>{}\[\]]+|\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\))+(?:\([^\s()]*?\([^\s()]+\)[^\s()]*?\)|\([^\s]+?\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|(?:(?<!@)[a-z0-9]+(?:[.\-][a-z0-9]+)*[.](?:com|net|org|edu|gov|mil|aero|asia|biz|cat|coop|info|int|jobs|mobi|museum|name|post|pro|tel|travel|xxx|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cs|cu|cv|cx|cy|cz|dd|de|dj|dk|dm|do|dz|ec|ee|eg|eh|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kp|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|me|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|rs|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|Ja|sk|sl|sm|sn|so|sr|ss|st|su|sv|sx|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw)\b/?(?!@)))"""  # noqa
 url_finder = re.compile(_url_finder)
 
 # Testing urls to be excluded. We know that they will not lead to a valid download.
@@ -389,9 +434,9 @@ if is_testing:
     working_dir_location = os.path.join(os.path.expanduser("~"), "testisisdl")
     config_dir_location = os.path.join(os.path.expanduser("~"), ".config", "testisisdl")
 
-    database_file_location = os.path.join(intern_dir_location, ".state.db")
+    database_file_location = os.path.join(intern_dir_location, "state.db")
     log_file_location = os.path.join(intern_dir_location, "isisdl.log")
-    lock_file_location = os.path.join(intern_dir_location, ".lock")
+    lock_file_location = os.path.join(intern_dir_location, "isisdl.lock")
     subscribed_courses_file_location = os.path.join(intern_dir_location, "subscribed_courses.json")
     error_directory_location = os.path.join(intern_dir_location, ".errors")
 
@@ -400,7 +445,7 @@ if is_testing:
     export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 
     database_url_location = os.path.join(config_dir_location, "database_url")
-    fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, '.new_state.db')}"
+    fallback_database_url = f"sqlite:///{os.path.join(working_dir_location, intern_dir_location, 'new_state.db')}"
 
     status_time = 1000000
 

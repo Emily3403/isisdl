@@ -34,7 +34,6 @@ database_version = {Config.default("database_version")}
 
 
 async def _new_main() -> None:
-    await asyncio.sleep(6000000)
     with DatabaseSessionMaker() as db:
         config = read_config(db)
         user = read_user(db)
@@ -42,7 +41,6 @@ async def _new_main() -> None:
             return
 
         session = await authenticate_new_session(user, config)
-
         if session is None:
             return
 
@@ -52,9 +50,9 @@ async def _new_main() -> None:
 
         urls = await gather_media_urls(db, session, courses, config)
         if not urls:
-            return None
+            return
 
-        downloaded_content = await download_media_urls(db, urls)
+        downloaded_content = await download_media_urls(db, session, urls, config)
         # After downloading everything, run the hardlink resolution, this time based on checksums.
 
         _ = downloaded_content
