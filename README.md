@@ -1,6 +1,11 @@
 # isisdl
 
-![Tests](https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg)
+<div style="display: inline-block">
+
+![Tests](https://github.com/Emily3403/isisdl/actions/workflows/tests.yml/badge.svg) 
+![Packaging Status](https://repology.org/badge/vertical-allrepos/isisdl.svg?header=isisdl%20Packaging%20Status)
+
+</div>
 
 A downloading utility for [ISIS](https://isis.tu-berlin.de/) of TU-Berlin. Download all your files and videos from ISIS.
 
