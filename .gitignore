@@ -134,10 +134,6 @@ massif.out.*
 # Pyre type checker
 .pyre/
 
-
-
-
-
 # Custom stuff
-data
-LegalConflict.txt
+/src/isisdl/resources/state.db
+/src/isisdl/resources/new_state.db
