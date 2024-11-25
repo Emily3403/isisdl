@@ -10,10 +10,14 @@ from sqlalchemy.orm import Session as DatabaseSession
 from isisdl.api.crud import parse_courses_from_API, read_media_urls, parse_videos_from_API, parse_documents_from_API
 from isisdl.api.models import AuthenticatedSession, Course, Error, MediaURL
 from isisdl.backend.models import User, Config
-from isisdl.settings import DEBUG_ASSERTS
+from isisdl.settings import DEBUG_ASSERTS, num_tries_download
 
 
-# TODO: AJAX
+# TODO:
+#  - Rethink Ajax concept
+#  - Make types for moodle object | list | None
+#  - Better error handling (return None in production and raise if testing)
+
 
 class APIEndpoint:
     url: str
@@ -47,21 +51,26 @@ class APIEndpoint:
 
     @classmethod
     async def _get_(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]], post_json: bool) -> Any | None:
-        async with session.post(cls.url, data, post_json) as response:
+        # response.json() may raise a TimeoutError, handle it gracefully
+        for i in range(num_tries_download):
+            async with session.post(cls.url, data, post_json) as response:
 
-            if isinstance(response, Error) or not response.ok:
-                return None
+                if isinstance(response, Error) or not response.ok:
+                    return None
 
-            try:
-                match await response.json():
-                    case {"errorcode": _} | {"exception": _}:
-                        return None
+                try:
+                    match await response.json():
+                        case {"errorcode": _} | {"exception": _}:
+                            return None
 
-                    case valid:
-                        return valid
+                        case valid:
+                            return valid
 
-            except JSONDecodeError:
-                return None
+                except TimeoutError:
+                    continue
+                except JSONDecodeError:
+                    return None
+        return None
 
 
 class MoodleAPIEndpoint(APIEndpoint):
@@ -93,21 +102,25 @@ class AjaxAPIEndpoint(APIEndpoint):
 
     @classmethod
     async def _get(cls, session: AuthenticatedSession, data: dict[str, Any] | list[dict[str, Any]] | None = None) -> Any | None:
-        async with session.get(cls.url, params={"sesskey": session.session_key}, json=cls.enrich_data(session, data)) as response:
+        for i in range(num_tries_download):
+            async with session.get(cls.url, params={"sesskey": session.session_key}, json=cls.enrich_data(session, data)) as response:
 
-            if isinstance(response, Error) or not response.ok:
-                return None
+                if isinstance(response, Error) or not response.ok:
+                    return None
 
-            try:
-                match await response.json():
-                    case {"error": _} | {"errorcode": _} | {"exception": _}:
-                        return None
+                try:
+                    match await response.json():
+                        case {"error": _} | {"errorcode": _} | {"exception": _}:
+                            return None
 
-                    case valid:
-                        return valid
+                        case valid:
+                            return valid
 
-            except JSONDecodeError:
-                return None
+                except TimeoutError:
+                    continue  # TODO: Somehow increment the timeout of .json()
+                except JSONDecodeError:
+                    return None
+        return None
 
 
 class VideoListAPI(AjaxAPIEndpoint):
@@ -144,6 +157,7 @@ class UserCourseListAPI(MoodleAPIEndpoint):
 
     @classmethod
     async def get(cls, db: DatabaseSession, session: AuthenticatedSession, user: User, config: Config) -> list[Course] | None:
+        # This could be a one-liner if python had the question mark operator: `parse_courses_from_API(db, await cls._get(session, data={"userid": user.user_id})?, config)`
         response: list[dict[str, Any]] | None = await cls._get(session, data={"userid": user.user_id})
         if response is None:
             return None

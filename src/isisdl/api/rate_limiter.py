@@ -4,17 +4,12 @@ import asyncio
 import sys
 from asyncio import get_event_loop, create_task, Condition, Task, Event, wait_for
 from dataclasses import dataclass, field
-from enum import Enum
-from math import isclose
-from typing import TYPE_CHECKING
 
 from typing_extensions import Self
 
+from isisdl.api.models import MediaType, Course
 from isisdl.settings import download_chunk_size, token_queue_refresh_rate, token_queue_bandwidths_save_for, DEBUG_ASSERTS, debug_cycle_time_deviation_allowed, is_windows
 from isisdl.utils import normalize, get_async_time, T
-
-if TYPE_CHECKING:
-    from isisdl.api.models import MediaType, Course
 
 
 @dataclass
@@ -22,49 +17,26 @@ class Token:
     num_bytes: int = field(default=download_chunk_size)
 
 
-class ThrottleType(Enum):
-    stream = 1
-    extern = 2
-    document = 3
-    video = 4
-
-    # This ThrottleType is used to add an entry in the `buffer_sizes` dict for every ThrottleType to use.
-    free_for_all = 5
-
-    @staticmethod
-    def from_media_type(it: MediaType) -> ThrottleType:
-        from isisdl.api.models import MediaType
-        match it:
-            case MediaType.extern:
-                return ThrottleType.extern
-
-            case MediaType.video:
-                return ThrottleType.video
-
-            case _:
-                return ThrottleType.document
-
-
-class ThrottleDict(dict[ThrottleType, T]):
-    def __init__(self, it: dict[ThrottleType, T]) -> None:
+class ThrottleDict(dict[MediaType, T]):
+    def __init__(self, it: dict[MediaType, T]) -> None:
         super().__init__(it)
         self.assert_valid_state()
 
-    def __setitem__(self, key: ThrottleType, value: T) -> None:
+    def __setitem__(self, key: MediaType, value: T) -> None:
         super().__setitem__(key, value)
         self.assert_valid_state()
 
-    def __delitem__(self, key: ThrottleType) -> None:
+    def __delitem__(self, key: MediaType) -> None:
         super().__delitem__(key)
         self.assert_valid_state()
 
     def assert_valid_state(self) -> None:
         if DEBUG_ASSERTS:
-            assert set(self.keys()) == set(ThrottleType)
+            assert set(self.keys()) == set(MediaType)
 
     @classmethod
     def from_default(cls, default: T) -> ThrottleDict[T]:
-        return cls({it: default for it in ThrottleType})
+        return cls({it: default for it in MediaType})
 
 
 class RateLimiter:
@@ -83,6 +55,15 @@ class RateLimiter:
       - Return the token by calling the `.return_token` method
     5. Mark the task as completed by calling the `.complete_url()` method
     6. Upon finishing downloading the entire course, complete it with `.complete_course()`.
+
+    The fundamental idea of rate limiting is having reserved capacities per MediaType, and carrying the not-used tokens into the next round with
+    num_tokens_remaining_from_last_iteration, letting the video download consume the remains of the last iteration.
+
+    Fundamentally, a compromise between handing out tokens prematurely in order to maximize bandwidth and slow download servers has to be made.
+    Assuming external links, a .get can easily take upwards of 10 seconds. We want to prioritize these slow downloads as they make up, especially at the end,
+    the biggest time consumption. However, we also want to spend the tokens of the MediaType.extern if they are not used up as they make up a significant percentage of the total tokens.
+
+    Thus, we must always reserve a few tokens for slow downloads, but also use all of them eventually.
     """
 
     rate: int | None
@@ -94,6 +75,10 @@ class RateLimiter:
 
     courses: dict[int, Course]
     urls: ThrottleDict[int]
+
+    # min 1 Condition per Course, notify one url of the waiting urls for the course
+    # somehow iteration by course, by url (both sorted) has to be possible. Then, notify each url to continue if capacity remains
+    # uncouple the token timewindow from the loop rate. When the loop rate is significantly higher, it should be possible to hand out all tokens
 
     returned_tokens: list[Token]
     bytes_downloaded: list[int]  # This list is a collection of how much bandwidth was used over the last n timesteps
@@ -140,20 +125,22 @@ class RateLimiter:
         if self.rate is None:
             return
 
-        # The idea is to assign, for each ThrottleType that is waiting, a number.
+        # The idea is to assign, for each MediaType that is waiting, a number.
         # Then, after all assignments have been made, the resulting dictionary is normalized to a percentage.
 
+        def maybe(num: int, tt: MediaType) -> int:
+            return num if self.urls[tt] else 0
+
         buffer_sizes = {
-            ThrottleType.stream: 1000 if self.urls[ThrottleType.stream] else 0,
-            ThrottleType.extern: 100 if self.urls[ThrottleType.extern] else 0,
-            ThrottleType.document: 50 if self.urls[ThrottleType.document] else 0,
-            ThrottleType.video: 10 if self.urls[ThrottleType.video] else 0,
-            ThrottleType.free_for_all: 0,
+            MediaType.extern: maybe(100, MediaType.extern),
+            MediaType.document: maybe(50, MediaType.document),
+            MediaType.video: maybe(10, MediaType.video),
+            # TODO: How do I do the free_for_all thing?
         }
 
         normalized_buffer_sizes = normalize(buffer_sizes)
-        if isclose(sum(normalized_buffer_sizes.values()), 0):
-            normalized_buffer_sizes[ThrottleType.free_for_all] = 1
+        # if isclose(sum(normalized_buffer_sizes.values()), 0):
+        #     normalized_buffer_sizes[MediaType.free_for_all] = 1
 
         self.buffer_sizes = ThrottleDict(normalized_buffer_sizes)
 
@@ -169,14 +156,14 @@ class RateLimiter:
     def complete_course(self, course: Course) -> None:
         del self.courses[course.id]
 
-    async def register_url(self, course: Course, media_type: ThrottleType) -> None:
+    async def register_url(self, course: Course, media_type: MediaType) -> None:
         while sum(self.urls.values()) > 5:
             await asyncio.sleep(1)
 
         self.urls[media_type] += 1
         self.recalculate_buffer_sizes()
 
-    def complete_url(self, course: Course, media_type: ThrottleType) -> None:
+    def complete_url(self, course: Course, media_type: MediaType) -> None:
         self.urls[media_type] -= 1
         self.recalculate_buffer_sizes()
 
@@ -192,11 +179,11 @@ class RateLimiter:
             self.task.cancel()
 
     async def refill_tokens(self) -> None:
+        # TODO: Test how long a loop takes and what that means for sleep times
         event_loop = get_event_loop()
         num_to_keep_in_bytes_downloaded = int(token_queue_bandwidths_save_for / token_queue_refresh_rate)
 
         while True:
-
             if self._stop_event.is_set():
                 return
 
@@ -229,33 +216,33 @@ class RateLimiter:
     def return_token(self, token: Token) -> None:
         self.returned_tokens.append(token)
 
-    def is_able_to_obtain_token(self, media_type: ThrottleType) -> bool:
+    def is_able_to_obtain_token(self, media_type: MediaType) -> bool:
         if self.rate is None:
             return True
 
         max_num_tokens = self.calculate_max_num_tokens()
 
-        def can_obtain(it: ThrottleType) -> bool:
+        def can_obtain(it: MediaType) -> bool:
             return self.depleted_tokens[it] < self.buffer_sizes[it] * max_num_tokens
 
         # As a first step try the free_for_all buffer. It should always be depleted first.
-        if can_obtain(ThrottleType.free_for_all):
-            return True
+        # if can_obtain(MediaType.free_for_all):
+        #     return True
 
-        # Otherwise, check the ThrottleType specific buffer
+        # Otherwise, check the MediaType specific buffer
         return can_obtain(media_type)
 
-    async def get(self, media_type: ThrottleType) -> Token | None:
+    async def get(self, media_type: MediaType) -> Token | None:
         token = await self._get(media_type, block=True)
         if DEBUG_ASSERTS:
             assert token is not None
 
         return token
 
-    async def get_nonblock(self, media_type: ThrottleType) -> Token | None:
+    async def get_nonblock(self, media_type: MediaType) -> Token | None:
         return await self._get(media_type, block=False)
 
-    async def _get(self, media_type: ThrottleType, block: bool = True) -> Token | None:
+    async def _get(self, media_type: MediaType, block: bool = True) -> Token | None:
         if self.rate is None:
             return Token()
 
@@ -277,6 +264,7 @@ class RateLimiter:
 
                 await self.refill_condition.wait()
 
+            # TODO: What if .is_able_to_obtain_token did a ffa one?
             self.depleted_tokens[media_type] += 1
             return Token()
 

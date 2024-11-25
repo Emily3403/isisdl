@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os.path
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -10,10 +11,9 @@ from typing import Any, Type, TypedDict, TYPE_CHECKING
 
 from aiohttp import ClientSession as InternetSession
 from aiohttp.client import _RequestContextManager, ClientTimeout
-from sqlalchemy import Text, Enum as SQLEnum, ForeignKey, String
+from sqlalchemy import Text, Enum as SQLEnum, ForeignKey, String, Integer, ForeignKeyConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from isisdl.api.rate_limiter import ThrottleType
 from isisdl.db_conf import DataBase
 from isisdl.settings import download_base_timeout, download_timeout_multiplier, num_tries_download, download_static_sleep_time, working_dir_location, temp_file_location, checksum_algorithm, logger
 from isisdl.utils import sanitize_path
@@ -63,6 +63,11 @@ class MediaType(Enum):
         return self.value > other.value
 
 
+class MediaState(Enum):
+    discovered = "media_url"
+    bad = "bad_url"
+
+
 class NormalizedDocument(TypedDict):
     url: str
     course_id: int
@@ -71,92 +76,128 @@ class NormalizedDocument(TypedDict):
 
     name: str | None
     size: int | None
-    time_created: int | None
-    time_modified: int | None
+
+    isis_ctime: int | None
+    isis_mtime: int | None
 
 
 # https://mypy.readthedocs.io/en/stable/literal_types.html#tagged-unions for size
 class MediaURL(DataBase):  # type:ignore[valid-type, misc]
     """
-    This class is a glorified URL with some metadata associated with it.
+    This class is the representation of a crawled url and it's corresponding download url.
+
+    It should always be in a valid state, however the valid state does not encompass it being downloadable.
+    This could be due to a number of factors that can also change between runs of isisdl.
+    As downloading a MediaURL resolves this problem completely (we don't have to track anymore if the url is valid or not), only store the failed data.
+
+    It should always be checked, if corrupted MediaURLs are still corrupted and all those that haven't been downloaded have to be re-checked
+
+    TODO: Is MediaURL immutable?
     """
     __tablename__ = "media_urls"
 
-    url: Mapped[str] = mapped_column(String(420), primary_key=True)
+    url: Mapped[str] = mapped_column(String(1337), primary_key=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
 
+    media_state: Mapped[MediaState] = mapped_column(SQLEnum(MediaState), nullable=False, default=MediaState.discovered)
     media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
     relative_path: Mapped[str] = mapped_column(Text, nullable=False)
 
-    name: Mapped[str | None] = mapped_column(Text, nullable=True)
-    size: Mapped[int | None] = mapped_column(nullable=True)
-    time_created: Mapped[datetime | None] = mapped_column(nullable=True)
-    time_modified: Mapped[datetime | None] = mapped_column(nullable=True)
+    discovered_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discovered_size: Mapped[int | None] = mapped_column(nullable=True)
+    discovered_ctime: Mapped[datetime | None] = mapped_column(nullable=True)
+    discovered_mtime: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    time_discovered: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now())
+    time_last_checked: Mapped[datetime | None] = mapped_column(nullable=True)
+    times_checked: Mapped[int] = mapped_column(nullable=False, default=0)
 
     course: Mapped[Course] = relationship("Course")
+    downloads: Mapped[list[DownloadedURL]] = relationship("DownloadedURL")  # There may be 0, 1 or multiple downloaded files for a single MediaURL
+
+    def should_download(self) -> bool:
+        if len(self.downloads) > 0:
+            return False
+
+        if self.times_checked == 0:
+            return True
+
+        # TODO: Fill in other gaps
+
+        # TODO: Check if the parameters are good
+        delta = timedelta(seconds=(self.times_checked * 5) ** 3 * 60)
+        return bool(datetime.now() > self.last_checked + delta)
+
+    def temp_path(self, config: Config) -> Path:
+        return Path(working_dir_location) / temp_file_location / self.course.dir_name(config) / checksum_algorithm(self.url.encode()).hexdigest()
 
 
-class BadURL(DataBase):  # type:ignore[valid-type, misc]
+class BadURL(MediaURL):  # type:ignore[valid-type, misc]
     """
     This class represents a URL which could not be downloaded in the past.
     We can't know for sure if the URL still can't be downloaded, but we can try again.
     """
     __tablename__ = "bad_urls"
+    __table_args__ = (ForeignKeyConstraint(["url", "course_id", "version"], ["media_urls.url", "media_urls.course_id", "media_urls.version"]),)
 
-    url: Mapped[str] = mapped_column(ForeignKey("media_urls.url"), primary_key=True)
+    url: Mapped[str] = mapped_column(String(1337), primary_key=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
 
     last_checked: Mapped[datetime] = mapped_column(nullable=False)
-    times_checked: Mapped[int] = mapped_column(nullable=False)
-
-    media_url: Mapped[MediaURL] = relationship("MediaURL")
 
     def should_retry(self) -> bool:
-        # TODO: Check if the parameters are good
-        delta = timedelta(seconds=(self.times_checked * 5) ** 3 * 60)
-        return bool(datetime.now() > self.last_checked + delta)
+        return False  # TODO: Implement this
 
 
-class TempFile(DataBase):  # type:ignore[valid-type, misc]
+class TempURL(DataBase):  # type:ignore[valid-type, misc]
     """
-    This class represents a temporary file, in the `.intern/temp_courses` directory.
-    It exists such that conflicts between files can be resolved.
+    This class represents a downloaded piece of media in the temporary directory.
+    It has to be checked for conflicts and duplicates.
     """
+    __tablename__ = "temp_urls"
+    __table_args__ = (ForeignKeyConstraint(["url", "course_id", "version"], ["media_urls.url", "media_urls.course_id", "media_urls.version"]),)
 
-    __tablename__ = "temp_files"
-
+    url: Mapped[str] = mapped_column(String(1337), primary_key=True)
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
-    url: Mapped[str] = mapped_column(ForeignKey("media_urls.url"), primary_key=True)
-    download_url: Mapped[str] = mapped_column(Text, nullable=False)
-    throttle_type: Mapped[ThrottleType] = mapped_column(SQLEnum(ThrottleType), nullable=False)
-
-    course: Mapped[Course] = relationship("Course")
-    media_url: Mapped[MediaURL] = relationship("MediaURL")
-
-    def path(self, config: Config) -> Path:
-        return Path(working_dir_location) / temp_file_location / self.course.dir_name(config) / checksum_algorithm(self.download_url.encode()).hexdigest()
-
-
-class MediaContainer(DataBase):  # type:ignore[valid-type, misc]
-    """
-    This class represent a piece of media that has been downloaded
-    """
-    __tablename__ = "media_containers"
-
-    url: Mapped[str] = mapped_column(ForeignKey("media_urls.url"), primary_key=True)
-    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
-
-    download_url: Mapped[str] = mapped_column(Text, nullable=False)
-    media_type: Mapped[MediaType] = mapped_column(SQLEnum(MediaType), nullable=False)
-    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
 
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    download_url: Mapped[str] = mapped_column(Text, nullable=False)
     size: Mapped[int] = mapped_column(nullable=False)
-    time_created: Mapped[datetime] = mapped_column(nullable=False)
-    time_modified: Mapped[datetime] = mapped_column(nullable=False)
-    checksum: Mapped[str] = mapped_column(Text)
+    checksum: Mapped[str] = mapped_column(Text, nullable=False)
+    time_downloaded: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now())
 
-    course: Mapped[Course] = relationship("Course")
+    media_url: Mapped[MediaURL] = relationship("MediaURL")
+
+    def temp_path(self, config: Config) -> Path:
+        return self.media_url.temp_path(config)
+
+    def final_path(self, config: Config) -> Path:
+        base, ext = os.path.split(self.name)
+        return Path(working_dir_location) / self.media_url.course.dir_name(config) / self.media_url.relative_path / self.name if self.version == 0 else f"{base}.{self.version}.{ext}"
+
+
+class DownloadedURL(DataBase):  # type:ignore[valid-type, misc]
+    """
+    This class represent a piece of media that has been downloaded.
+    """
+    __tablename__ = "downloaded_urls"
+
+    # Link each instance to a MediaURL
+    __table_args__ = (ForeignKeyConstraint(["url", "course_id", "version"], ["media_urls.url", "media_urls.course_id", "media_urls.version"]),)
+
+    url: Mapped[str] = mapped_column(String(1337), primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
+
+    download_url: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    size: Mapped[int] = mapped_column(nullable=False)
+    checksum: Mapped[str] = mapped_column(Text, nullable=False)
+
+    time_downloaded: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now())
 
 
 class Error:
@@ -172,7 +213,7 @@ class Error:
         return False
 
 
-@dataclass(slots=True)
+@dataclass
 class AuthenticatedSession:
     session: InternetSession
     session_key: str

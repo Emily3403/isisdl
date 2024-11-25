@@ -1,27 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import os.path
 import re
+import traceback
 from asyncio import Event
 from base64 import standard_b64decode
 from collections import defaultdict
 from datetime import datetime
+from email.message import Message
 from html import unescape
 from itertools import chain
 from typing import Any, Literal, cast, DefaultDict, Iterable
 
 import aiofiles
 import aiofiles.os
-from aiohttp import ClientSession as InternetSession, TCPConnector, ClientConnectorSSLError, ClientConnectorCertificateError, ClientSSLError, ClientConnectorError
+from aiohttp import ClientSession as InternetSession, TCPConnector, ClientConnectorSSLError, ClientConnectorCertificateError, ClientSSLError, ClientConnectorError, ServerDisconnectedError
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
 
-from isisdl.api.models import AuthenticatedSession, Course, MediaURL, MediaType, NormalizedDocument, TempFile, BadURL, MediaContainer, Error
-from isisdl.api.rate_limiter import RateLimiter, ThrottleType
+from isisdl.api.models import AuthenticatedSession, Course, MediaURL, MediaType, NormalizedDocument, BadURL, DownloadedURL, Error, TempURL
+from isisdl.api.rate_limiter import RateLimiter
 from isisdl.backend.models import User, Config
 from isisdl.db_conf import add_or_update_objects_to_database, add_object_to_database
 from isisdl.settings import url_finder, isis_ignore, extern_ignore, regex_is_isis_document, regex_is_isis_video, connection_pool_limit, download_chunk_size, DEBUG_ASSERTS, logger
-from isisdl.utils import datetime_fromtimestamp_with_None, flat_map, get_download_url_from_url
+from isisdl.utils import datetime_fromtimestamp_with_None, flat_map, get_download_url_from_url, calculate_local_checksum, get_name_from_headers, reject_wrong_mimetype
 from isisdl.version import __version__
 
 
@@ -132,8 +135,8 @@ def create_documents_from_API(db: DatabaseSession, data: list[NormalizedDocument
 
     return add_or_update_objects_to_database(
         db, existing_documents, _data, MediaURL, lambda doc: doc["url"],
-        {it: it for it in NormalizedDocument.__annotations__.keys()},
-        {"time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None},
+        {"url": "url", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path", "discovered_name": "name", "discovered_size": "size", "discovered_ctime": "isis_ctime", "discovered_mtime": "isis_mtime"},
+        {"discovered_ctime": datetime_fromtimestamp_with_None, "discovered_mtime": datetime_fromtimestamp_with_None},
     )
 
 
@@ -215,8 +218,8 @@ def normalize_file(file: dict[str, Any], course_id: int) -> NormalizedDocument |
         "relative_path": (file.get("filepath") or "").lstrip("/"),
         "name": file.get("filename"),
         "size": file.get("filesize"),
-        "time_created": file.get("timecreated") or file.get("timemodified"),
-        "time_modified": file.get("timemodified") or file.get("timecreated"),
+        "isis_ctime": file.get("timecreated") or file.get("timemodified"),
+        "isis_mtime": file.get("timemodified") or file.get("timecreated"),
     }
 
 
@@ -230,7 +233,7 @@ def resolve_duplicates(files: list[NormalizedDocument]) -> NormalizedDocument:
     if len(files) == 1:
         return files[0]
 
-    def resolve_conflict(attr: Literal["url", "course_id", "media_type", "relative_path", "name", "size", "time_created", "time_modified"]) -> Any:
+    def resolve_conflict(attr: Literal["url", "course_id", "media_type", "relative_path", "name", "size", "isis_ctime", "isis_mtime"]) -> Any:
         conflicting_attrs = sorted({it for file in files if (it := file[attr]) is not None})
         if len(conflicting_attrs) == 0:
             return None
@@ -244,8 +247,8 @@ def resolve_duplicates(files: list[NormalizedDocument]) -> NormalizedDocument:
         "relative_path": resolve_conflict("relative_path"),
         "name": resolve_conflict("name"),
         "size": resolve_conflict("size"),
-        "time_created": resolve_conflict("time_created"),
-        "time_modified": resolve_conflict("time_modified"),
+        "isis_ctime": resolve_conflict("isis_ctime"),
+        "isis_mtime": resolve_conflict("isis_mtime"),
     }
 
 
@@ -256,12 +259,12 @@ def create_videos_from_API(db: DatabaseSession, videos: list[dict[str, Any]], co
     # Filter out duplicate videos
     videos = list({video["url"]: video for video in videos}.values())
 
-    videos = list(map(lambda it: it | {"course_id": course_id, "media_type": MediaType.video, "relative_path": "Videos", "size": None, "time_modified": None}, videos))
+    videos = list(map(lambda it: it | {"course_id": course_id, "media_type": MediaType.video, "relative_path": os.path.join("Videos", it["collectionname"]), "size": None, "time_modified": None}, videos))
 
     return add_or_update_objects_to_database(
         db, existing_videos, videos, MediaURL, lambda video: video["url"],
-        {"url": "url", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path", "name": "collectionname", "size": "size", "time_created": "timecreated", "time_modified": "time_modified"},
-        {"time_created": datetime_fromtimestamp_with_None, "time_modified": datetime_fromtimestamp_with_None},
+        {"url": "url", "course_id": "course_id", "media_type": "media_type", "relative_path": "relative_path", "discovered_name": "title", "discovered_size": "size", "discovered_ctime": "timecreated", "discovered_mtime": "time_modified"},
+        {"discovered_ctime": datetime_fromtimestamp_with_None, "discovered_mtime": datetime_fromtimestamp_with_None},
     )
 
 
@@ -306,44 +309,75 @@ def create_bad_url(db: DatabaseSession, url: MediaURL) -> BadURL | None:
     pass
 
 
-# --- Temp Files ---
+# --- Temp URLs ---
 
-def read_temp_files(db: DatabaseSession) -> dict[int, dict[str, MediaURL]]:
-    final: DefaultDict[int, dict[str, MediaURL]] = defaultdict(dict)
-    for it in db.execute(select(MediaURL)).scalars().all():
-        final[it.course_id][it.url] = it
+def create_temp_url(db: DatabaseSession, config: Config, url: MediaURL, download_url: str, name: str) -> TempURL | None:
+    try:
+        path = url.temp_path(config)
+        size = path.stat().st_size
+        checksum = calculate_local_checksum(path)
+        return add_object_to_database(db, TempURL(url=url.url, course_id=url.course_id, version=url.version, name=name, download_url=download_url, checksum=checksum, size=size))
 
-    return dict(final)
+    except FileNotFoundError as ex:
+        logger.error(f"Could not open {url.temp_path(config)}: {str(ex)}")
+        return None
 
 
-async def download_media_url_to_temp_file(db: DatabaseSession, session: AuthenticatedSession, rate_limiter: RateLimiter, url: MediaURL, course: Course, stop: Event, priority: int, config: Config, extra_args: dict[str, Any] | None = None) -> TempFile | BadURL | None:
+def get_temp_file(db: DatabaseSession, url: str, course_id: int, version: int) -> TempURL | None:
+    return db.get(TempURL, (url, course_id, version))
+
+
+async def download_media_url(db: DatabaseSession, session: AuthenticatedSession, rate_limiter: RateLimiter, url: MediaURL, course: Course, stop: Event, priority: int, config: Config, extra_args: dict[str, Any] | None = None) -> TempURL | BadURL | None:
     if stop.is_set():
         return None
 
     try:
-        temp_file = await create_temp_file(db, session, url, course)
-        if temp_file is None:
-            return None  # TODO
-
-        path = temp_file.path(config)
-        extra_args = extra_args or {}
+        path = url.temp_path(config)
 
         await aiofiles.os.makedirs(path.parent, exist_ok=True)
-        await rate_limiter.register_url(course, temp_file.throttle_type)
+        await rate_limiter.register_url(course, url.media_type)
 
-        print(f"Writing {path}")
+        # Note we do not check if a downloaded_url exists, as there might be multiple and the file could have changed.
+        maybe_temp_file = get_temp_file(db, url.url, url.course_id, url.version)
+        if maybe_temp_file is not None:
+            # Temp file was already downloaded
+            try:
 
-        async with aiofiles.open(path, "wb") as f, session.get(temp_file.download_url, **(extra_args | {"params": {"token": session.api_token}})) as response:
+                if calculate_local_checksum(path) == maybe_temp_file.checksum:
+                    return maybe_temp_file
+
+                logger.error(f"Discovered wrong checksum for file {path}! Re-downloading it!")
+
+            except FileNotFoundError:
+                logger.error(f"Got Temp file for {path} but no local file was found! Re-downloading it!")
+
+        download_url = await get_download_url_from_url(db, session, url.url, url.course_id)
+        if download_url is None:
+            return None  # TODO
+
+        params = {"params": {"token": session.api_token}}
+        name = url.discovered_name
+
+        async with aiofiles.open(path, "wb") as f, session.get(download_url, **((extra_args or {}) | params)) as response:
+            if reject_wrong_mimetype(response.headers.get("Content-Type")):
+                return create_bad_url(db, url)
+
+            if name is None:
+                name = get_name_from_headers(dict(response.headers))
+
+            if name is None:
+                pass
+
             if isinstance(response, Error) or response.status != 200:
                 return create_bad_url(db, url)
 
+            # TODO: Should download_chunk_size not be related to token_size?
             chunked_response = response.content.iter_chunked(download_chunk_size)
-
             while True:
                 if stop.is_set():
                     return None
 
-                token = await rate_limiter.get(temp_file.throttle_type)
+                token = await rate_limiter.get(url.media_type)
                 if token is None:
                     continue
 
@@ -361,10 +395,10 @@ async def download_media_url_to_temp_file(db: DatabaseSession, session: Authenti
                 await f.write(chunk)
                 rate_limiter.return_token(token)
 
-            rate_limiter.complete_url(course, temp_file.throttle_type)
+            rate_limiter.complete_url(course, url.media_type)
 
         print(f"Finished! {path}")
-        return temp_file
+        return create_temp_url(db, config, url, download_url, name)
 
     except (ClientSSLError, ClientConnectorSSLError, ClientConnectorError, ClientConnectorCertificateError) as ex:
         logger.error(f"SSL Error downloading {url.url}: {type(ex)} {ex}")
@@ -372,24 +406,55 @@ async def download_media_url_to_temp_file(db: DatabaseSession, session: Authenti
         # TODO: Won't this crash eventually?
         # return await download_temp_file(db, session, rate_limiter, url, course, stop, priority, config, {})
 
+    except (TimeoutError, ServerDisconnectedError) as ex:
+        # TODO: Retry the download sometime later
+        pass
+
     except Exception as ex:
-        logger.error(f"Error downloading {url.url}: {type(ex)} {ex}")
+        logger.error(f"Error downloading {url.url}: {type(ex)} {ex}\n\n{traceback.format_exc()}")
+
         raise
 
     # TODO: What does this mean?
     return None
 
 
-async def create_temp_file(db: DatabaseSession, session: AuthenticatedSession, url: MediaURL, course: Course) -> TempFile | None:
-    return add_object_to_database(db, TempFile(
-        course=course,
-        url=url.url,
-        download_url=await get_download_url_from_url(db, session, url) or url.url,
-        throttle_type=ThrottleType.from_media_type(url.media_type),
-    ))
+# --- DownloadedURL ---
+
+def read_downloaded_urls_to_dict(db: DatabaseSession) -> dict[int, list[DownloadedURL]]:
+    final: DefaultDict[int, list[DownloadedURL]] = defaultdict(list)
+    for it in db.execute(select(DownloadedURL)).scalars().all():
+        final[it.course_id].append(it)
+
+    return dict(final)
 
 
-# --- MediaContainers ---
+async def create_downloaded_urls(db: DatabaseSession, temp_files: list[TempURL], course_id: int, existing_media_containers: dict[int, list[DownloadedURL]], config: Config) -> list[DownloadedURL] | None:
+    existing_containers = existing_media_containers.get(course_id, [])
 
-def create_media_containers_from_temp_files(db: DatabaseSession, temp_files: list[TempFile]) -> list[MediaContainer] | None:
-    return None
+    def to_downloaded_url(it: TempURL) -> dict[str, Any]:
+        return {
+            "url": it.url,
+            "course_id": it.course_id,
+            "version": it.version,
+
+            "download_url": it.download_url,
+            "name": it.name,
+            "size": it.size,
+            "checksum": it.checksum,
+            "time_downloaded": it.time_downloaded,
+        }
+
+    # Remove the temporary files
+    for file in temp_files:
+        final = file.final_path(config)
+        await aiofiles.os.makedirs(final.parent, exist_ok=True)
+
+        file.temp_path(config).replace(final)
+        db.delete(file)
+
+    # TODO: Test if converting TempURLs into a dict is a performance hit
+    return add_or_update_objects_to_database(
+        db, {(it.url, it.course_id, it.version): it for it in existing_containers}, [to_downloaded_url(it) for it in temp_files], DownloadedURL, lambda it: (it["url"], it["course_id"], it["version"]),
+        {it: it for it in DownloadedURL.__annotations__}, {}
+    )

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 import asyncio
 import sys
 
@@ -6,7 +7,8 @@ import isisdl.frontend.compress as compress
 from isisdl.api.crud import authenticate_new_session
 from isisdl.api.download import download_media_urls, gather_media_urls
 from isisdl.api.endpoints import UserCourseListAPI
-from isisdl.backend.crud import read_config, read_user
+from isisdl.backend.crud import read_config, read_user, create_user, create_default_config
+from isisdl.backend.crypt import store_user
 from isisdl.backend.request_helper import CourseDownloader
 from isisdl.db_conf import init_database, DatabaseSessionMaker
 from isisdl.frontend import sync_database
@@ -53,6 +55,7 @@ async def _new_main() -> None:
             return
 
         downloaded_content = await download_media_urls(db, session, urls, config)
+        print("Done!")
         # After downloading everything, run the hardlink resolution, this time based on checksums.
 
         _ = downloaded_content

@@ -23,6 +23,7 @@ from asyncio import get_event_loop, AbstractEventLoop
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from email.message import Message
 from functools import wraps
 from html import unescape
 from itertools import repeat
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
     from isisdl.backend.status import Status
     from isisdl.backend.models import Config as NewConfig
     from isisdl.backend.request_helper import RequestHelper
-    from isisdl.api.models import AuthenticatedSession, MediaURL
+    from isisdl.api.models import AuthenticatedSession
 
 
 def get_args() -> argparse.Namespace:
@@ -590,11 +591,11 @@ def get_url_from_gdrive_confirmation(contents: str) -> str | None:
     return url
 
 
-async def get_download_url_from_url(db: DatabaseSession, session: AuthenticatedSession, media_url: MediaURL) -> str | None:
-    from isisdl.api.crud import create_bad_url
-
-    url = media_url.url
+async def get_download_url_from_url(db: DatabaseSession, session: AuthenticatedSession, url: str, course_id: int) -> str | None:
     hostname = urlparse(url).hostname
+
+    # TODO: Convert this into a match statement
+    # From ISIS: mod/resource and mod/url need following
 
     if "tu-berlin.hosted.exlibrisgroup.com" == hostname:
         return url
@@ -602,7 +603,8 @@ async def get_download_url_from_url(db: DatabaseSession, session: AuthenticatedS
     elif "drive.google.com" == hostname:
         drive_id = parse_google_drive_url(url)
         if drive_id is None:
-            create_bad_url(db, media_url)
+            from isisdl.api.crud import create_bad_url
+            create_bad_url(db, url)
             return None
 
         confirm_url = f"https://drive.google.com/uc?id={drive_id}"
@@ -664,6 +666,22 @@ async def get_download_url_from_url(db: DatabaseSession, session: AuthenticatedS
         pass
 
     return url
+
+
+def get_name_from_headers(headers: dict[str, Any]) -> str | None:
+    if "Content-Disposition" in headers:
+        # Inspect the "Content-Disposition" header for metadata about the filename
+        msg = Message()
+        msg["content-disposition"] = headers["Content-Disposition"]
+        return msg.get_filename()
+
+
+def reject_wrong_mimetype(mimetype: str) -> bool:
+    """If this function returns True, the download should be aborted."""
+    if mimetype.startswith("text/html"):
+        return True
+
+    return False
 
 
 def run_cmd_with_error(args: list[str]) -> None:

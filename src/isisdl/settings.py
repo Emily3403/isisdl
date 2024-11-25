@@ -13,7 +13,7 @@ from collections import defaultdict
 from hashlib import sha256
 from http.client import HTTPSConnection
 from pathlib import Path
-from typing import Any, DefaultDict, Dict, Optional, Set, NoReturn
+from typing import Any, DefaultDict, NoReturn
 
 import psutil as psutil
 from cryptography.hazmat.primitives.hashes import SHA3_512
@@ -102,9 +102,9 @@ export_config_file_location = os.path.join(config_dir_location, "export.yaml")
 # Forbidden chars lookup-able dependent on OS.
 # Reference: https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
 
-windows_forbidden_chars: Set[str] = {"\\", "/", "?", "*", ":", "|", "\"", "<", ">", "\0"}
-linux_forbidden_chars: Set[str] = {"\0", "/"}
-macos_forbidden_chars: Set[str] = {"\0", "/"}
+windows_forbidden_chars: set[str] = {"\\", "/", "?", "*", ":", "|", "\"", "<", ">", "\0"}
+linux_forbidden_chars: set[str] = {"\0", "/"}
+macos_forbidden_chars: set[str] = {"\0", "/"}
 
 if is_windows:
     forbidden_chars = windows_forbidden_chars
@@ -311,7 +311,7 @@ _url_finder = r"""(?i)\b((?:https?:(?:/{1,3}|[a-z0-9%]))(?:[^\s()<>{}\[\]]+|\([^
 url_finder = re.compile(_url_finder)
 
 # Testing urls to be excluded. We know that they will not lead to a valid download.
-testing_bad_urls: Set[str] = {
+testing_bad_urls: set[str] = {
     'https://tubcloud.tu-berlin.de/s/d8R6wdi2sTt5Jrj',
 }
 
@@ -474,13 +474,17 @@ testing_download_sizes = {
 # Reference: https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
 
 # Find out the `_path` of the mounted directory where the `working_dir_location` lives
-_mount_partitions: Dict[str, sdiskpart] = {part.mountpoint: part for part in psutil.disk_partitions()}
+_mount_partitions: dict[str, sdiskpart] = {part.mountpoint: part for part in psutil.disk_partitions()}
 
 _working_path = Path(working_dir_location)
-while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.resolve().parent != _working_path.resolve():
+i = 0  # The loop can go on infinitely if ... (When does it happen?). Force stop it after 1000 iterations
+while (_path := str(_working_path.resolve())) not in _mount_partitions and _working_path.resolve().parent != _working_path.resolve() and i < 1000:
+    i += 1
     _working_path = _working_path.parent
 
-_fs_forbidden_chars: Dict[str, Set[str]] = {
+# TODO: Make this more declarative with linux: ext2..4, windows: ...
+# Also, expand the list with e.g. zfs, xfs, ...
+_fs_forbidden_chars: dict[str, set[str]] = {
     "ext": linux_forbidden_chars,
     "ext2": linux_forbidden_chars,
     "ext3": linux_forbidden_chars,
@@ -499,7 +503,7 @@ _fs_forbidden_chars: Dict[str, Set[str]] = {
 }
 
 # This is a constant to be overwritten for debugging purposes from the config file
-force_filesystem: Optional[str] = None
+force_filesystem: str | None = None
 
 if _path in _mount_partitions:
 
@@ -509,6 +513,7 @@ if _path in _mount_partitions:
 
     # Linux uses Filesystem in userspace and reports "fuseblk".
     if _mount_partitions[_path].fstype == "fuseblk":
+        # TODO: Dynamic dependency of lsblk. What if the system does not have it?
         fstype = subprocess.check_output(f'lsblk -no fstype "$(findmnt --target "{_path}" -no SOURCE)"', shell=True).decode().strip()
 
     else:
@@ -517,8 +522,7 @@ if _path in _mount_partitions:
     # Maybe apply the fstype overwrite
     if force_filesystem is not None:
         if force_filesystem not in _fs_forbidden_chars:
-            print(f"{error_text} you have forced a filesystem, but it is not in the expected:\n\n" + "\n".join(repr(item) for item in _fs_forbidden_chars))
-            os._exit(1)
+            error_exit(1, "You have forced a filesystem, but it is not in the expected:\n\n" + "\n".join(repr(item) for item in _fs_forbidden_chars))
 
         fstype = force_filesystem
 
@@ -526,6 +530,9 @@ if _path in _mount_partitions:
         forbidden_chars.update(_fs_forbidden_chars[fstype])
         if _fs_forbidden_chars[fstype] == windows_forbidden_chars:
             replace_dot_at_end_of_dir_name = True
+    else:
+        # TODO: Print a warning of some sort
+        pass
 
 else:
     print(f"{error_text} your filesystem is very wierd. Falling back on os-dependant fstype!")

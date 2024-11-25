@@ -146,6 +146,7 @@ def add_or_update_objects_to_database(
             all_objects.append(db_item)
 
         db.commit()
+
     except SQLAlchemyError as e:
         error(f"Merging into the database failed: \"{e}\"")
 

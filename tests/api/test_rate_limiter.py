@@ -5,7 +5,7 @@ from asyncio import Condition, get_event_loop
 import pytest
 
 from isisdl.api.models import Course
-from isisdl.api.rate_limiter import RateLimiter, ThrottleType, ThrottleDict
+from isisdl.api.rate_limiter import RateLimiter, ThrottleDict
 from isisdl.settings import token_queue_refresh_rate, debug_cycle_time_deviation_allowed, token_queue_bandwidths_save_for, is_windows
 
 
