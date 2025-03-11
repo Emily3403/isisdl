@@ -308,7 +308,8 @@ def check_online() -> bool:
     try:
         conn.request("HEAD", "/")
         return True
-    except Exception:
+    except Exception as ex:
+        print(f"{error_text} Cannot establish connection to isis.tu-berlin.de: {ex!r}")
         return False
     finally:
         conn.close()
