@@ -304,7 +304,7 @@ if not is_windows:
 
 def check_online() -> bool:
     # Copied from https://stackoverflow.com/a/29854274
-    conn = HTTPSConnection("8.8.8.8", timeout=5)
+    conn = HTTPSConnection("isis.tu-berlin.de", timeout=5)
     try:
         conn.request("HEAD", "/")
         return True
